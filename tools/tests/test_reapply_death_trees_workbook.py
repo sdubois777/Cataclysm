@@ -27,6 +27,9 @@ import reapply_death_trees_workbook as reapply  # noqa: E402
 import reapply_death_finish_c_workbook as finish_c  # noqa: E402
 import reapply_death_finish_e_shadow_workbook as finish_e  # noqa: E402
 
+sys.path.insert(0, str(REPO_ROOT / "tools" / "tests"))
+import without_the_aura_reservation  # noqa: E402
+
 #: THE SCRIPTS THAT WRITE MORE DEATH ROWS AFTER THIS ONE, in the order the bundle ran them on the committed workbook.
 #: Taking every Death row out takes theirs out too, so rebuilding the committed sheets runs each after this script. The
 #: finishing of the Death Cataclysm (2026-11-26): each slice owns its own script. AN EXPLICIT LIST IN RUN ORDER, not the
@@ -44,7 +47,9 @@ FOLLOWING = (
 )
 
 
-WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
+# COMPARED WITH THE AURA RESERVATION OF 2026-11-27 TAKEN OUT: it came after these scripts and appends its passive
+# rows after theirs. `without_the_aura_reservation.py` says why.
+WORKBOOK = without_the_aura_reservation.workbook()
 SHEETS = (reapply.EFFECTS_SHEET, reapply.CLASS_SHEET)
 
 

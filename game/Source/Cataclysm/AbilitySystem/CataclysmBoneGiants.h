@@ -53,8 +53,9 @@ struct FCataclysmGiantsOfAPlayer
  *     the player or its followers killed on the floor, rule-sent ones included, and the same shares of each kill after.
  *     Its health is raised by the player's minion health rows as any minion's is; its blow by minion damage at each
  *     swing, as any minion's is.
- *   - RESERVES 100, a flat figure that is not `UCataclysmCommand::ReserveFor`'s, so no reserve row reaches it, Lone
- *     Revenant's included; the player's followers are released oldest first (`UCataclysmCommand::ReleasableOldestFirst`)
+ *   - RESERVES 100, THROUGH `UCataclysmCommand::ReserveFor` SINCE 2026-11-27 (ruled by the coordinating session:
+ *     "Route the Bone Colossus and the Abomination through ReserveFor, so reductions reach them"), asked with its type's
+ *     tags, which carry no `Minion.Permanent`, so Lone Revenant's "more" still does not reach it; the player's followers are released oldest first (`UCataclysmCommand::ReleasableOldestFirst`)
  *     until it fits. When it could not fit with all of them gone, nothing is released and it does not rise; it is asked
  *     again at the next kill.
  *   - LONE REVENANT (slice B's flag, read through `UCataclysmNecromancerArmy::LoneRevenantHeld`): 400% more health and
@@ -65,7 +66,8 @@ struct FCataclysmGiantsOfAPlayer
  * BONE COLOSSUS (The First Rite, option 2): "One giant you feed remains to over a floor; it grows with each creature's
  * remains and shrinks when hurt."
  *   - IT RISES on the first remains of the player's on a floor (the vow makes remains appear, as Bone Fuse says), and
- *     consumes them; a Barrow Guard's figures to start (Q3). It reserves 20 Fervour (Q4); with no room it does not rise.
+ *     consumes them; a Barrow Guard's figures to start (Q3). It reserves 20 Fervour (Q4), through `ReserveFor` since 2026-11-27 as
+ *     the Abomination's 100 is; with no room it does not rise.
  *   - FED: every remains of the player's that lands within `ColossusFeedReachCm` of it is consumed, adding
  *     `ColossusFedStartHealthPercent` (2%) of the health the Colossus ROSE with, times the dead creature's rarity health
  *     multiple (`UCataclysmEnemyRarity::ScalingFromCommon`: a Common 1, an Elite 1.85 and so on up the steps), to its

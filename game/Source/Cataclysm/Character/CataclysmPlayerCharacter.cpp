@@ -2578,6 +2578,12 @@ void ACataclysmPlayerCharacter::Revive()
 			UCataclysmVitalAttributeSet::GetManaAttribute(),
 			AbilitySystem->GetNumericAttribute(
 				UCataclysmVitalAttributeSet::GetMaxManaAttribute()));
+		// AND MANA WHOLE LESS WHAT A HELD AURA RESERVES, as health is above. Ruled 2026-11-27.
+		if (UCataclysmAbilitySystemComponent* Holding =
+				Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+		{
+			Holding->HoldManaToUnreserved();
+		}
 
 		// AND THE CLASS RESOURCE IS EMPTIED, WHICH IS THE OPPOSITE DIRECTION.
 		// Issue #956, decided by the project owner on 2026-08-26.

@@ -3642,6 +3642,12 @@ def gold(book) -> list[dict]:
 #: how issue #155 went unnoticed while 41 enchantments scaled it.
 SLOTS_WITHOUT_A_COOLDOWN = frozenset({"Basic", "Aura"})
 
+#: The slots whose `Mana Reserved` may be above nought. A reservation is held
+#: while a skill stays on, and the Aura is the one slot that is a toggle; a
+#: figure on any other slot would be read by nothing. Ruled 2026-11-27 under the
+#: owner's choice "Reserve, don't drain".
+SLOTS_THAT_RESERVE_MANA = frozenset({"Aura"})
+
 
 def skill_slots(book) -> list[dict]:
     """What a skill in each of the seven slots is worth, waits, and costs.
@@ -3690,6 +3696,28 @@ def skill_slots(book) -> list[dict]:
                 f"Skill Slots row {index}: {slot} deals {damage}% of weapon "
                 f"damage, outside its own band of {damage_low} to {damage_high}")
 
+        mana_cost = number(_cell(raw, headers, "Mana Cost") or 0,
+                           "Mana Cost", index)
+        mana_reserved = number(_cell(raw, headers, "Mana Reserved") or 0,
+                               "Mana Reserved", index)
+        if mana_reserved < 0:
+            raise DataError(
+                f"Skill Slots row {index}: {slot} reserves {mana_reserved} "
+                "mana. A reservation below nothing would raise a character's "
+                "maximum mana for switching a skill on.")
+        if mana_reserved and slot not in SLOTS_THAT_RESERVE_MANA:
+            raise DataError(
+                f"Skill Slots row {index}: {slot} reserves {mana_reserved} "
+                f"mana. Only {sorted(SLOTS_THAT_RESERVE_MANA)} may reserve "
+                "any: a reservation is held while a skill stays on, and only "
+                "the Aura is a toggle that stays on.")
+        if mana_reserved and mana_cost:
+            raise DataError(
+                f"Skill Slots row {index}: {slot} reserves {mana_reserved} "
+                f"mana and costs {mana_cost}. Since 2026-11-27 an aura "
+                "reserves rather than pays, so switching it on is free; a "
+                "slot stating both would be charged twice.")
+
         fervour_cost = number(_cell(raw, headers, "Fervour Cost") or 0,
                               "Fervour Cost", index)
         if fervour_cost < 0:
@@ -3706,8 +3734,12 @@ def skill_slots(book) -> list[dict]:
             "Cooldown": cooldown,
             "CooldownLowest": lowest,
             "CooldownHighest": highest,
-            "ManaCost": number(_cell(raw, headers, "Mana Cost") or 0,
-                               "Mana Cost", index),
+            "ManaCost": mana_cost,
+            # MAXIMUM MANA HELD WHILE THE SKILL IS ON, at skill level 1. Ruled
+            # 2026-11-27 under the owner's choice "Reserve, don't drain": the
+            # Aura reserves 50 and costs nothing a second or to switch on.
+            # Read into `FCataclysmSkillSlotRow::ManaReserved`.
+            "ManaReserved": mana_reserved,
             "ManaOnHit": number(_cell(raw, headers, "Mana On Hit") or 0,
                                 "Mana On Hit", index),
             # WHAT ONE USE COSTS IN FERVOUR, ON TOP OF ITS MANA. Issue #1478,

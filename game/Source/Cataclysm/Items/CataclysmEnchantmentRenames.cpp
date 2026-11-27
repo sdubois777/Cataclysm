@@ -208,6 +208,19 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		// the new name too, so nothing chains.
 		{TEXT("Positive_10_20_of_bleed_damage_you_take_is_taken_from_y"),
 		 TEXT("Positive_You_take_10_20_less_damage_from_bleeding")},
+		//
+		// AND TWO ON 2026-11-27, ruled by the coordinating session under the owner's
+		// choice "Reserve, don't drain": auras reserve maximum mana while on instead
+		// of draining it a second, so the two sentences about an aura's mana per
+		// second became sentences about what it reserves. "Your aura costs 30%-50%
+		// less mana per second" became "Your auras reserve 30%-50% less mana", and
+		// "Your auras cost 100%-200% increased mana per second" became "Your auras
+		// reserve 50%-100% increased mana". Neither old name was itself renamed
+		// from an earlier one, so nothing chains.
+		{TEXT("Positive_Your_aura_costs_30_50_less_mana_per_second"),
+		 TEXT("Positive_Your_auras_reserve_30_50_less_mana")},
+		{TEXT("Negative_Your_auras_cost_100_200_increased_mana_per_sec"),
+		 TEXT("Negative_Your_auras_reserve_50_100_increased_mana")},
 	};
 	return Table;
 }

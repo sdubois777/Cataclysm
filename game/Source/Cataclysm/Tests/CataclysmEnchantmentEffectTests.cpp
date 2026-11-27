@@ -4664,7 +4664,9 @@ bool FCataclysmAuraRowTest::RunTest(const FString&)
 		ASC->StatAppliedTo(Taken, FGameplayTagContainer(), 100.0f), 100.0f, 0.01f);
 
 	// A REAL AURA, GRANTED AND SWITCHED ON, and free so the wearer's mana is not
-	// what this test measures.
+	// what this test measures. AND ROOM FOR ITS RESERVATION, since auras began to
+	// reserve 50 maximum mana on 2026-11-27: this wearer's pool is the vital set's
+	// default 50, exactly the reservation, so a pool of 1,000 is written first.
 	const FGameplayAbilitySpecHandle Handle = ASC->GiveAbilityInSlot(
 		UCataclysmAuraSkill::StaticClass(), ECataclysmAbilitySlot::Aura,
 		/*Level=*/100, Wearer.Actor);
@@ -4675,6 +4677,8 @@ bool FCataclysmAuraRowTest::RunTest(const FString&)
 		return false;
 	}
 	Ring->ManaCostOverride = 0.0f;
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
 	if (!TestTrue(TEXT("and it runs"), ASC->TryActivateAbility(Handle)))
 	{
 		return false;
@@ -8879,6 +8883,9 @@ bool FCataclysmAurasEndAtDeathRowTest::RunTest(const FString&)
 			return -1;
 		}
 		Ring->ManaCostOverride = 0.0f;
+		// AND ROOM FOR ITS RESERVATION OF 50, since 2026-11-27: the vital set's default pool is exactly 50.
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+		ASC->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetManaAttribute(), 1000.0f);
 		if (!ASC->TryActivateAbility(Handle))
 		{
 			return -1;

@@ -863,7 +863,9 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: B's 29 (`tools/reapply_death_finish_b_workbook.py`), on 899.
 #: AND TO 1003 ON 2026-11-27, the Soul Collector keystone rework (issue #2951,
 #: `tools/reapply_soul_collector_keystones_rework_workbook.py`): twenty nodes rewritten, 37 rows out and 42 in.
-AUTHORED_ROWS = 1003
+#: AND TO 1007 THE SAME DAY, THE AURA RESERVATION (`tools/apply_aura_reservation_2026_11_27.py`), on 1003: one row
+#: on each of four nodes that already had rows -- Wider Vessel, Reserve, Beacon of Despair and Aura of Pain.
+AUTHORED_ROWS = 1007
 
 #: How many of the 441 nodes have an authored effect.
 #:

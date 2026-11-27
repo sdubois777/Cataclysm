@@ -7,6 +7,8 @@
 // rather than reading a gameplay attribute that is zero by design. Issue #973.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For an aura's mana reserve, the Fervour reserve's arithmetic. Ruled 2026-11-27.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmWarFervour.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -181,6 +183,7 @@ void UCataclysmGameplayAbility::EnsureSlotNumbersLoaded() const
 	SlotManaCostAtLevel100 = Numbers.ManaCostAtLevel100;
 	SlotManaOnHitAtLevel100 = Numbers.ManaOnHitAtLevel100;
 	SlotFervourCost = Numbers.FervourCost;
+	SlotManaReserved = Numbers.ManaReserved;
 }
 
 FString UCataclysmGameplayAbility::DisplayedName() const
@@ -310,7 +313,7 @@ float UCataclysmGameplayAbility::ManaCostFor(
 	// "YOUR NEXT ABILITY COSTS NO MANA", AND NOTHING AT ALL, BEFORE ANY SHARE IS ADDED. Ruled 2026-10-17 (O8): while a
 	// worn row's kept stacks hold their cap, a use of any slot but the basic attack is free, and the use spends them in
 	// `UCataclysmSkillTemplate::CommitAndBegin`. Asked here, the one cost function, so the check, the payment and the
-	// bar agree. Not for an aura's upkeep, which is no use, nor for a free start, which spends no stack.
+	// bar agree. Not for a call that says it is no use (`bForAUse` false), nor for a free start, which spends no stack.
 	if (bForAUse && !bFreeRepeat && GetDesignedSlot() != ECataclysmAbilitySlot::BasicAttack && Cataclysm
 		&& Cataclysm->NextAbilityIsFree())
 	{
@@ -425,6 +428,22 @@ float UCataclysmGameplayAbility::FervourCostFor(
 	return Cost;
 }
 
+float UCataclysmGameplayAbility::ManaReservationFor(const UAbilitySystemComponent* AbilitySystem) const
+{
+	EnsureSlotNumbersLoaded();
+	if (SlotManaReserved <= 0.0f)
+	{
+		return 0.0f;
+	}
+	// THE SKILL'S LEVEL AND MANA WEAVER'S DOUBLING ON THE STATED FIGURE, before the holder's reductions, as the
+	// Fervour reserve takes its level's factor before `ReserveFor`. The doubling is one for every skill not designed
+	// for the Ultimate slot, which is every toggled aura (the 2026-10-25 ruling Q7 keeps a skill's designed numbers on
+	// any key).
+	const float Stated = SlotManaReserved * static_cast<float>(UCataclysmSkillLevels::CostFactorOf(this))
+		* UltimateCostDoublingFactor(AbilitySystem);
+	return UCataclysmCommand::ManaReserveFor(AbilitySystem, Stated, SkillTagsForStats());
+}
+
 bool UCataclysmGameplayAbility::FervourCovers(
 	const UAbilitySystemComponent* AbilitySystem, float Cost)
 {
@@ -533,7 +552,8 @@ bool UCataclysmGameplayAbility::PoolCovers(
 	// cost into debt, and `UCataclysmSkillTemplate::PayHealthCost` applies it to
 	// the added health costs it charges; this cost is the mana cost moved onto
 	// health and is taken whole by `ApplyCost`. So a cast this cannot cover is
-	// refused, and an aura's upkeep it cannot cover switches the aura off.
+	// refused. (An aura's upkeep was asked here too until 2026-11-27, when auras
+	// began to reserve mana rather than drain it.)
 	const float Held = AbilitySystem->GetNumericAttribute(Pool);
 	return Pool == UCataclysmVitalAttributeSet::GetHealthAttribute()
 		? Held > Cost
@@ -618,8 +638,7 @@ bool UCataclysmGameplayAbility::CheckCost(
 	}
 
 	// WHAT IT COSTS THIS CHARACTER, NOT WHAT THE SLOT STATES. Issue #1815. The
-	// same function answers the payment below, an aura's upkeep and the skill
-	// bar, so a cast this refuses is one the character really cannot pay for.
+	// same function answers the payment below and the skill bar, so a cast this refuses is one the character really cannot pay for.
 	const float Cost = ManaCostFor(AbilitySystem);
 	if (Cost <= 0.0f)
 	{
@@ -643,7 +662,7 @@ bool UCataclysmGameplayAbility::CheckCost(
 	}
 
 	// OUT OF WHICHEVER POOL THIS CHARACTER PAYS FROM, asked of the function above
-	// so that an aura's per-pulse upkeep asks exactly the same question. Issues
+	// so that every payer asks exactly the same question. Issues
 	// #1067 and #1901, and #1515 for the energy shield Cast from Ward adds.
 	return PoolPaying(AbilitySystem, Cost).IsValid();
 }

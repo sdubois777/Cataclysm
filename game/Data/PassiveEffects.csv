@@ -1002,3 +1002,7 @@ Necromancer_capstone_100#2,Necromancer_capstone_100,attack_damage,more,50.0,,sec
 Necromancer_capstone_100#3,Necromancer_capstone_100,spell_damage,more,50.0,,seconds_after_resource_full,10.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_capstone_100#4,Necromancer_capstone_100,skills_raise_husks_seconds_after_resource_full,flat,10.0,,,0.0,,0.0,1,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Necromancer_capstone_100#5,Necromancer_capstone_100,damage_taken_split_with_minions,flat,1.0,,,0.0,,0.0,2,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Ritualist_basic_d_c0#2,Ritualist_basic_d_c0,mana_reserve_percent_less,flat,3.0,Slot.Aura,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Ritualist_basic_c_c1#2,Ritualist_basic_c_c1,minion_reserve_percent_less,flat,2.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Masochist_basic_fl_b2#4,Masochist_basic_fl_b2,mana_reserve_percent_less,flat,2.0,Slot.Aura,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Bulwark_basic_tw_t3_001#3,Bulwark_basic_tw_t3_001,mana_reserve_percent_less,flat,2.0,Slot.Aura,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0

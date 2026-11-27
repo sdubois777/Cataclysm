@@ -17,6 +17,8 @@
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the aura reservation's stat names. Ruled 2026-11-27.
+#include "AbilitySystem/CataclysmCommand.h"
 // For what a blow resolved to, which is how a test can tell an evaded blow
 // from one armour stopped. Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -2723,9 +2725,17 @@ bool FCataclysmMinionAttacksTest::RunTest(const FString&)
 // --------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraDrainTest,
-	"Cataclysm.Skills.AnAuraSwitchesOffWhenTheManaRunsOut",
+	"Cataclysm.Skills.AnAuraReservesManaWhileOnAndAPulseTakesNone",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+/**
+ * A toggled aura reserves maximum mana while it is on and drains none. Ruled 2026-11-27 under the owner's choice
+ * "Reserve, don't drain"; until then this test was `AnAuraSwitchesOffWhenTheManaRunsOut`, for a drain of 20 a second.
+ *
+ * ON A POOL OF 1,000: switching on costs nothing, and the reservation of 50 (skill level 1, no row) cuts the mana held
+ * to 950 at once. A pulse burns the enemy inside and takes nothing. Switched off, the 50 is given back -- the mana is
+ * not refilled, only free to be -- and nothing is reserved.
+ */
 bool FCataclysmAuraDrainTest::RunTest(const FString&)
 {
 	using namespace CataclysmSkillTest;
@@ -2746,68 +2756,62 @@ bool FCataclysmAuraDrainTest::RunTest(const FString&)
 		return false;
 	}
 
-	// ITS OWN 10% A SECOND, as its row states it (issue #2869). An aura stating no
-	// damage deals none since issue #2875, so without a figure the pulse below
-	// would hurt nothing and "burned an enemy inside it" would read a burn whose
-	// first tick is a second away.
+	// ITS OWN 10% A SECOND, as its row states it (issue #2869), so the pulse below hurts.
 	Aura->DamagePercentOverride = 10.0f;
+
+	TestEqual(TEXT("switching the aura on costs no mana"), Aura->ManaCostFor(Caster.AbilitySystem), 0.0f, 0.001f);
+	TestEqual(TEXT("and it reserves the Aura slot's 50"), Aura->ManaReservationFor(Caster.AbilitySystem), 50.0f,
+			  0.001f);
 
 	TestTrue(TEXT("It activates"), Activate(Caster, Aura));
 	TestTrue(TEXT("And is held"), Aura->IsHeld());
+	TestEqual(TEXT("it holds 50"), Aura->ReservedNow(), 50.0f, 0.001f);
+	TestEqual(TEXT("the character's reserved mana is 50"), Caster.AbilitySystem->ManaReserved(), 50.0f, 0.001f);
+	TestEqual(TEXT("so it may hold 950"), Caster.AbilitySystem->UnreservedMaximumMana(), 950.0f, 0.001f);
+	TestEqual(TEXT("and the mana above that was lost at once"), Caster.Mana(), 950.0f, 0.01f);
+	TestEqual(TEXT("while the maximum is unchanged"),
+			  Caster.Get(UCataclysmVitalAttributeSet::GetMaxManaAttribute()), 1000.0f, 0.01f);
 
-	const float PerPulse = Aura->GetManaCost();
-	TestTrue(FString::Printf(TEXT("The aura slot drains mana (%.1f a second)"),
-		PerPulse), PerPulse > 0.0f);
-
-	const float ManaBefore = Caster.Mana();
 	const float EnemyBefore = Enemy.Health();
-
 	Aura->Pulse();
 
-	TestEqual(TEXT("One pulse drained one second's worth"),
-		Caster.Mana(), ManaBefore - PerPulse);
-	TestTrue(TEXT("And burned an enemy inside it"), Enemy.Health() < EnemyBefore);
-	TestEqual(TEXT("One pulse was counted"), Aura->Pulses, 1);
+	TestEqual(TEXT("a pulse takes no mana"), Caster.Mana(), 950.0f, 0.01f);
+	TestTrue(TEXT("and burned an enemy inside it"), Enemy.Health() < EnemyBefore);
+	TestEqual(TEXT("one pulse was counted"), Aura->Pulses, 1);
 
-	// ISSUE #36 REQUIRES THE AURA TO SWITCH OFF WHEN THE RESOURCE IS EXHAUSTED.
-	Caster.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), PerPulse * 0.5f);
-	const float TooLittle = Caster.Mana();
-	const float EnemyBeforeLast = Enemy.Health();
+	// SWITCHED OFF THROUGH THE KEY, a release and a press, as `PressingAnAuraAgainSwitchesItOff` does.
+	FGameplayAbilitySpec* Spec = Caster.AbilitySystem->FindAbilitySpecFromHandle(Aura->GetCurrentAbilitySpecHandle());
+	if (!TestNotNull(TEXT("the aura's spec"), Spec))
+	{
+		return false;
+	}
+	Caster.AbilitySystem->AbilitySpecInputReleased(*Spec);
+	Caster.AbilitySystem->AbilitySpecInputPressed(*Spec);
 
-	Aura->Pulse();
-
-	TestFalse(TEXT("It switched off"), Aura->IsHeld());
-	TestTrue(TEXT("And said why"), Aura->bEndedForLackOfMana);
-	TestEqual(TEXT("It took nothing it could not pay"), Caster.Mana(), TooLittle);
-	TestEqual(TEXT("And did nothing on the pulse it could not pay for"),
-		Enemy.Health(), EnemyBeforeLast);
-
+	TestFalse(TEXT("a second press switches it off"), Aura->IsHeld());
+	TestEqual(TEXT("and nothing is reserved"), Caster.AbilitySystem->ManaReserved(), 0.0f, 0.001f);
+	TestEqual(TEXT("so it may hold the whole 1,000 again"), Caster.AbilitySystem->UnreservedMaximumMana(), 1000.0f,
+			  0.001f);
+	TestEqual(TEXT("but the mana is not refilled by switching off"), Caster.Mana(), 950.0f, 0.01f);
+	TestFalse(TEXT("and it did not end for want of room"), Aura->bEndedForLackOfMana);
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraUpkeepPaidFromHealthTest,
-	"Cataclysm.Skills.AnAuraKeepsRunningOnHealthWhenTheManaPoolBecameHealth",
+	"Cataclysm.Skills.AnAuraReservesHealthWhenTheManaPoolBecameHealth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * An aura's per-pulse upkeep is paid from the pool the activation paid from.
- * Issue #1901.
+ * Under Water to Blood an aura reserves the same number of HEALTH. Ruled 2026-11-27 with the reservation: the option
+ * converts the pool and not the price, as every cost of the character's converts (`UCataclysmGameplayAbility::
+ * CostPool`). Until then this test was `AnAuraKeepsRunningOnHealthWhenTheManaPoolBecameHealth`, issue #1901, for the
+ * drain paid from health.
  *
- * WHAT WENT WRONG. The owner's playtest of 2026-09-15 activated Conflagration
- * eight times. Water to Blood empties the mana pool and moves every cost onto
- * health; the activation honoured that and `UCataclysmAuraSkill::Pulse` read
- * mana directly, so the first pulse found none and switched the aura off.
+ * THE FLAG IS SET AS A STAT INPUT, for the reason `FCataclysmSkillWaterToBloodCostTest` gives.
  *
- * THE FLAG IS SET AS A STAT INPUT, for the reason
- * `FCataclysmSkillWaterToBloodCostTest` gives: the option is asked through
- * `StatForSkill`, so writing the attribute would measure nothing.
- *
- * THREE PULSES, each answering a different wrong implementation. The first
- * runs with no mana, which is how the option leaves a character, and fails if
- * the pulse reads mana. The second runs with mana put back, and fails if the
- * pool is chosen by whether mana is empty rather than by the option. The third
- * leaves exactly one pulse's worth of health, and fails if paying from health
- * lost the switch-off issue #36 requires.
+ * THREE PARTS. With no mana pool, switching on holds 50 of 1,000 health and a pulse takes nothing. With mana put back
+ * the hold stays on health and the mana is not reserved: the pool is chosen by the option, not by mana being empty.
+ * And with a maximum of 50 health there is no room -- health keeps a point -- while 51 has room: the control.
  */
 bool FCataclysmAuraUpkeepPaidFromHealthTest::RunTest(const FString&)
 {
@@ -2819,21 +2823,12 @@ bool FCataclysmAuraUpkeepPaidFromHealthTest::RunTest(const FString&)
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
 
-	// Conflagration. No Duration, so it is a toggle and pays per pulse.
 	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"),
 		TEXT("Conflagration"));
 	if (!Aura)
 	{
 		AddError(TEXT("Could not grant the aura."));
-		return false;
-	}
-
-	const float PerPulse = Aura->GetManaCost();
-	if (!TestTrue(FString::Printf(TEXT("the aura costs something a pulse (%.1f)"),
-								  PerPulse),
-				  PerPulse > 0.0f))
-	{
 		return false;
 	}
 
@@ -2850,53 +2845,53 @@ bool FCataclysmAuraUpkeepPaidFromHealthTest::RunTest(const FString&)
 	Stats.Add(FName(UCataclysmSkillTemplate::ManaPoolBecomesHealthStat), Inputs);
 	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
 
-	// NO MANA POOL AT ALL, which is how `UCataclysmPlayerClassStats::ApplyTo`
-	// leaves a character holding the option: both the maximum and the mana are
-	// set to zero. A round health pool so every figure below is exact.
+	// NO MANA POOL AT ALL, which is how the option leaves a character. A round health pool.
 	Caster.Set(Vital::GetMaxManaAttribute(), 0.0f);
 	Caster.Set(Vital::GetManaAttribute(), 0.0f);
 	Caster.Set(Vital::GetMaxHealthAttribute(), 1'000.0f);
 	Caster.Set(Vital::GetHealthAttribute(), 1'000.0f);
 
-	TestTrue(TEXT("the aura switches on, paid in health"), Activate(Caster, Aura));
+	// 1. HEALTH HELD, NOTHING DRAINED.
+	TestTrue(TEXT("the aura switches on with no mana pool"), Activate(Caster, Aura));
 	TestTrue(TEXT("and is held"), Aura->IsHeld());
-
-	// 1. THE PULSE THAT SWITCHED IT OFF.
-	const float BeforeFirst = Caster.Health();
+	TestEqual(TEXT("it holds 50 of health"), Caster.AbilitySystem->HealthReservedByAuras(), 50.0f, 0.001f);
+	TestEqual(TEXT("so health may reach 950"), Caster.AbilitySystem->UnreservedMaximumHealth(), 950.0f, 0.001f);
+	TestEqual(TEXT("and the health above that was lost at once"), Caster.Health(), 950.0f, 0.01f);
+	TestEqual(TEXT("and no mana is reserved"), Caster.AbilitySystem->ManaReserved(), 0.0f, 0.001f);
 	Aura->Pulse();
+	TestTrue(TEXT("it is still running after a pulse"), Aura->IsHeld());
+	TestEqual(TEXT("and the pulse took no health"), Caster.Health(), 950.0f, 0.01f);
 
-	TestTrue(TEXT("it is still running after a pulse with no mana"), Aura->IsHeld());
-	TestFalse(TEXT("and did not end for want of its upkeep"),
-			  Aura->bEndedForLackOfMana);
-	TestEqual(TEXT("the pulse's upkeep came out of health"), Caster.Health(),
-			  BeforeFirst - PerPulse, 0.01f);
-	TestEqual(TEXT("and the pulse was counted"), Aura->Pulses, 1);
-
-	// 2. THE POOL IS CHOSEN BY THE OPTION, NOT BY THE MANA BEING EMPTY. With mana
-	// put back -- the same deliberate state `FCataclysmSkillWaterToBloodCostTest`
-	// uses -- the pulse still pays in health and leaves the mana alone.
+	// 2. THE POOL IS CHOSEN BY THE OPTION, NOT BY THE MANA BEING EMPTY.
 	Caster.Set(Vital::GetMaxManaAttribute(), 500.0f);
 	Caster.Set(Vital::GetManaAttribute(), 500.0f);
-	const float BeforeSecond = Caster.Health();
 	Aura->Pulse();
-
-	TestTrue(TEXT("it is still running with mana to hand"), Aura->IsHeld());
-	TestEqual(TEXT("that pulse came out of health too"), Caster.Health(),
-			  BeforeSecond - PerPulse, 0.01f);
+	TestEqual(TEXT("with mana put back the hold is still on health"), Caster.AbilitySystem->HealthReservedByAuras(),
+			  50.0f, 0.001f);
+	TestEqual(TEXT("and none of the mana is reserved"), Caster.AbilitySystem->ManaReserved(), 0.0f, 0.001f);
 	TestEqual(TEXT("and the mana was left alone"), Caster.Mana(), 500.0f, 0.01f);
+	Caster.Set(Vital::GetMaxManaAttribute(), 0.0f);
+	Caster.Set(Vital::GetManaAttribute(), 0.0f);
 
-	// 3. AND IT STILL SWITCHES OFF WHEN HEALTH CANNOT COVER A PULSE, strictly
-	// more than, as a health-paid activation asks. Issue #36 requires the
-	// switch-off; a fix that paid from health and lost it would kill instead.
-	Caster.Set(Vital::GetHealthAttribute(), PerPulse);
-	Aura->Pulse();
+	// 3. ROOM: HEALTH KEEPS A POINT. Switched off first, through the key.
+	FGameplayAbilitySpec* Spec = Caster.AbilitySystem->FindAbilitySpecFromHandle(Aura->GetCurrentAbilitySpecHandle());
+	if (!TestNotNull(TEXT("the aura's spec"), Spec))
+	{
+		return false;
+	}
+	Caster.AbilitySystem->AbilitySpecInputReleased(*Spec);
+	Caster.AbilitySystem->AbilitySpecInputPressed(*Spec);
+	TestFalse(TEXT("switched off"), Aura->IsHeld());
+	TestEqual(TEXT("and the health is given back"), Caster.AbilitySystem->HealthReservedByAuras(), 0.0f, 0.001f);
 
-	TestFalse(TEXT("it switches off when health cannot cover a pulse"),
-			  Aura->IsHeld());
-	TestTrue(TEXT("and says why"), Aura->bEndedForLackOfMana);
-	TestEqual(TEXT("and takes nothing it could not pay"), Caster.Health(),
-			  PerPulse, 0.01f);
+	Caster.Set(Vital::GetMaxHealthAttribute(), 50.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 50.0f);
+	TestFalse(TEXT("with a maximum of 50 health there is no room for 50"), Activate(Caster, Aura));
+	TestFalse(TEXT("so it is not on"), Aura->IsHeld());
 
+	Caster.Set(Vital::GetMaxHealthAttribute(), 51.0f);
+	TestTrue(TEXT("control: with 51 there is, and it switches on"), Activate(Caster, Aura));
+	TestEqual(TEXT("leaving one point"), Caster.AbilitySystem->UnreservedMaximumHealth(), 1.0f, 0.001f);
 	return true;
 }
 
@@ -16102,14 +16097,17 @@ bool FCataclysmManaCostWhileStationaryTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaCostAuraUpkeepTest,
-	"Cataclysm.Skills.AnAurasUpkeepPaysWhatTheStatSaysRatherThanTheSlotsFigure",
+	"Cataclysm.Skills.AnAurasReservationReadsTheReserveRowsAndNotTheManaCostRows",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * "Your aura costs 30%-50% less mana per second" is a row on this stat, and an
- * aura's upkeep is a fourth reader of the cost. An upkeep left on the slot's
- * figure would drain the full amount every second while the cast that switched
- * the aura on paid the reduced one.
+ * An aura's reservation is lowered by the reservation stats and by no `mana_cost` row. Ruled 2026-11-27: "Your auras
+ * reserve 30%-50% less mana" is `mana_reserve`, a "more" row, and the general cost rows such as "Skills cost 50%-75%
+ * more mana" no longer reach an aura, which has no cost. Until then this test was
+ * `AnAurasUpkeepPaysWhatTheStatSaysRatherThanTheSlotsFigure`, for the drain.
+ *
+ * THE CONTROL IS THE SAME CASTER WITH NO ROW: 50. A `mana_cost` row halving costs leaves it 50; a `mana_reserve` row
+ * of 50 less makes it 25, and switching on under it holds 25.
  */
 bool FCataclysmManaCostAuraUpkeepTest::RunTest(const FString&)
 {
@@ -16129,32 +16127,27 @@ bool FCataclysmManaCostAuraUpkeepTest::RunTest(const FString&)
 		return false;
 	}
 
-	const float PerPulse = Aura->GetManaCost();
-	if (!TestTrue(FString::Printf(TEXT("the aura slot drains mana: %.1f a second"),
-								  PerPulse),
-				  PerPulse > 0.0f))
-	{
-		return false;
-	}
-
-	if (!TestTrue(TEXT("it activates"), Activate(Caster, Aura)))
-	{
-		return false;
-	}
-
-	// THE CONTROL: one pulse with no row drains the slot's figure.
-	const float BeforePlain = Caster.Mana();
-	Aura->Pulse();
-	TestEqual(TEXT("one pulse with no row drains a second's worth"),
-		Caster.Mana(), BeforePlain - PerPulse, 0.01f);
+	TestEqual(TEXT("control: with no row the aura reserves 50"), Aura->ManaReservationFor(Caster.AbilitySystem),
+			  50.0f, 0.001f);
 
 	GiveManaCostRow(Caster, ECataclysmStatBucket::More, -50.0f);
+	TestEqual(TEXT("a row halving mana costs leaves it 50"), Aura->ManaReservationFor(Caster.AbilitySystem), 50.0f,
+			  0.001f);
 
-	const float BeforeHalved = Caster.Mana();
-	Aura->Pulse();
-	TestEqual(TEXT("and under a row halving the cost it drains half of it"),
-		Caster.Mana(), BeforeHalved - PerPulse * 0.5f, 0.01f);
+	FCataclysmStatModifier Less;
+	Less.Bucket = ECataclysmStatBucket::More;
+	Less.Source = ECataclysmModifierSource::Enchantment;
+	Less.Value = -50.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmCommand::ManaReserveStat));
+	Line.Base = 0.0f;
+	Line.Modifiers = {Less};
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
 
+	TestEqual(TEXT("a row reserving 50% less makes it 25"), Aura->ManaReservationFor(Caster.AbilitySystem), 25.0f,
+			  0.001f);
+	TestTrue(TEXT("it activates"), Activate(Caster, Aura));
+	TestEqual(TEXT("and holds 25"), Caster.AbilitySystem->ManaReserved(), 25.0f, 0.001f);
 	return true;
 }
 
@@ -16936,12 +16929,11 @@ bool FCataclysmDesperateMeasuresBasicAttackTest::RunTest(const FString&)
 	return true;
 }
 
-// AN AURA'S UPKEEP IS NOT A CAST. Switching the aura on is a cast and pays in
-// health below 10%; each second of upkeep after that still drains mana, or a
-// toggled aura would run for ever at low mana. A judgement under the owner's
-// delegation: the row says "to cast".
+// SWITCHING AN AURA ON IS FREE SINCE 2026-11-27, so under Desperate Measures it takes no health even below 10% mana:
+// the row moves a mana cost onto health, and there is none. Its reservation is no cast either. Until then this test was
+// `BelowTenPercentManaAnAurasUpkeepStillDrainsMana`, for the per-second drain.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresAuraTest,
-	"Cataclysm.Skills.BelowTenPercentManaAnAurasUpkeepStillDrainsMana",
+	"Cataclysm.Skills.BelowTenPercentManaSwitchingAnAuraOnTakesNoHealth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmDesperateMeasuresAuraTest::RunTest(const FString&)
@@ -16955,7 +16947,6 @@ bool FCataclysmDesperateMeasuresAuraTest::RunTest(const FString&)
 	OnAFloor(Caster, true);
 	Holding(Caster, 50.0f);
 
-	// Conflagration. No Duration, so it is a toggle and pays per pulse.
 	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"),
 		TEXT("Conflagration"));
@@ -16964,24 +16955,17 @@ bool FCataclysmDesperateMeasuresAuraTest::RunTest(const FString&)
 		AddError(TEXT("Could not grant the aura."));
 		return false;
 	}
-	const float PerPulse = Aura->ManaCostFor(Caster.AbilitySystem);
-	if (!TestTrue(FString::Printf(TEXT("the aura costs mana a pulse: %.1f"), PerPulse),
-				  PerPulse > 0.0f && PerPulse < 50.0f))
-	{
-		return false;
-	}
+	TestEqual(TEXT("set-up: switching the aura on costs no mana"), Aura->ManaCostFor(Caster.AbilitySystem), 0.0f,
+			  0.001f);
 
 	TestTrue(TEXT("the aura switches on at 5% mana"), Activate(Caster, Aura));
 	TestEqual(TEXT("and switching it on took no mana"), Caster.Mana(), 50.0f, 0.01f);
-	TestEqual(TEXT("and 5% of current health"), Caster.Health(), DesperateMaxHealth * 0.95f,
-			  0.01f);
+	TestEqual(TEXT("and no health"), Caster.Health(), DesperateMaxHealth, 0.01f);
 
-	const float HealthBeforePulse = Caster.Health();
 	Aura->Pulse();
 	TestTrue(TEXT("a pulse later it is still running"), Aura->IsHeld());
-	TestEqual(TEXT("and the pulse drained its mana"), Caster.Mana(), 50.0f - PerPulse,
-			  0.01f);
-	TestEqual(TEXT("and took no health"), Caster.Health(), HealthBeforePulse, 0.01f);
+	TestEqual(TEXT("and the pulse took no mana"), Caster.Mana(), 50.0f, 0.01f);
+	TestEqual(TEXT("and no health"), Caster.Health(), DesperateMaxHealth, 0.01f);
 	return true;
 }
 
@@ -17591,7 +17575,7 @@ bool FCataclysmAurasHeldCountTest::RunTest(const FString&)
 		return false;
 	}
 
-	// FREE, so the three activations are not a test of the fighter's 50 mana.
+	// FREE, so the three activations are not a test of the fighter's mana.
 	// An Ultimate costs 150 at its slot's own figure.
 	for (UCataclysmGameplayAbility* Skill : { static_cast<UCataclysmGameplayAbility*>(Ring),
 			static_cast<UCataclysmGameplayAbility*>(Pyre),
@@ -17859,15 +17843,14 @@ bool FCataclysmSkillCastFromWardSkillBarTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillCastFromWardAuraTest,
-	"Cataclysm.Skills.CastFromWardAnAurasUpkeepIsPaidFromTheShieldWhenManaIsShort",
+	"Cataclysm.Skills.CastFromWardAnAurasReservationTakesNothingFromTheShield",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Ruled 2026-09-24: an aura's per-pulse upkeep is a skill's cost, so it may be
- * paid from the shield. With half a pulse's mana and a shield of 500, the pulse
- * is paid from the shield, the mana is untouched, and the aura stays on; the
- * test beside it, `AnAuraSwitchesOffWhenTheManaRunsOut`, is the same pulse
- * without the option.
+ * Cast from Ward does not reach an aura's reservation, ruled 2026-11-27 with it: a reservation is a standing claim on
+ * the maximum, not a payment that runs short. With 10 mana in hand and a shield of 500 the aura switches on -- its room
+ * is measured against the maximum -- and neither switching on nor a pulse takes anything from the shield or the mana.
+ * Until then this test was `CastFromWardAnAurasUpkeepIsPaidFromTheShieldWhenManaIsShort`, ruled 2026-09-24 for the drain.
  */
 bool FCataclysmSkillCastFromWardAuraTest::RunTest(const FString&)
 {
@@ -17878,7 +17861,6 @@ bool FCataclysmSkillCastFromWardAuraTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
-	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
 	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
 		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1; Burn=1"),
 		TEXT("Conflagration"));
@@ -17888,25 +17870,17 @@ bool FCataclysmSkillCastFromWardAuraTest::RunTest(const FString&)
 		return false;
 	}
 	HoldCastFromWard(Caster, /*bAndTheWard=*/false);
-	if (!TestTrue(TEXT("it activates"), Activate(Caster, Aura)))
-	{
-		return false;
-	}
-	const float PerPulse = Aura->GetManaCost();
-	if (!TestTrue(TEXT("the aura slot drains something"), PerPulse > 0.0f))
-	{
-		return false;
-	}
+	SetPools(Caster, 10.0f, 500.0f);
 
-	SetPools(Caster, PerPulse * 0.5f, 500.0f);
-	const float TooLittle = Caster.Mana();
+	TestTrue(TEXT("with 10 mana in hand it switches on: its room is against the maximum"), Activate(Caster, Aura));
+	TestEqual(TEXT("and holds 50 of the maximum"), Caster.AbilitySystem->ManaReserved(), 50.0f, 0.001f);
+	TestEqual(TEXT("taking nothing from the shield"), ShieldOf(Caster), 500.0f, 0.01f);
+	TestEqual(TEXT("or the mana"), Caster.Mana(), 10.0f, 0.01f);
 
 	Aura->Pulse();
-
-	TestTrue(TEXT("with half a pulse's mana the aura stays on"), Aura->IsHeld());
-	TestFalse(TEXT("and did not end for lack of mana"), Aura->bEndedForLackOfMana);
-	TestEqual(TEXT("the shield paid the pulse"), ShieldOf(Caster), 500.0f - PerPulse, 0.01f);
-	TestEqual(TEXT("and the mana was left alone"), Caster.Mana(), TooLittle, 0.01f);
+	TestTrue(TEXT("a pulse later it is still on"), Aura->IsHeld());
+	TestEqual(TEXT("and the pulse took nothing from the shield"), ShieldOf(Caster), 500.0f, 0.01f);
+	TestEqual(TEXT("or the mana"), Caster.Mana(), 10.0f, 0.01f);
 	return true;
 }
 
@@ -34721,13 +34695,14 @@ bool FCataclysmAuraEffectLivingPyreTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraEffectRadiusAndUpkeepTest,
-	"Cataclysm.AuraEffect.ARowLeavesAnAurasRadiusAndItsUpkeepAsTheyWere",
+	"Cataclysm.AuraEffect.ARowLeavesAnAurasRadiusAndItsReservationAsTheyWere",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * TWO OF THE THINGS RULED OUT: the radius and the upkeep. The control is a caster with no row: its Conflagration
- * has a radius, and a pulse takes mana from it. A wearer of a `more` row of 50 has the same radius and pays the
- * same mana for a pulse; its pulse reaches an enemy 9 m away and not one 12 m away, the ring being 10 m.
+ * TWO OF THE THINGS RULED OUT: the radius and what the aura costs to hold. The control is a caster with no row: its
+ * Conflagration has a radius, and holds a reservation. A wearer of a `more` row of 50 has the same radius and the same
+ * reservation; its pulse reaches an enemy 9 m away and not one 12 m away, the ring being 10 m. Until 2026-11-27 the
+ * second half was the mana a pulse took, and the test was `ARowLeavesAnAurasRadiusAndItsUpkeepAsTheyWere`.
  *
  * STANDING: the caster with no row at the origin. The wearer 100 m along X, one enemy 9 m further along X and one
  * 12 m along Y from the wearer.
@@ -34756,11 +34731,9 @@ bool FCataclysmAuraEffectRadiusAndUpkeepTest::RunTest(const FString&)
 
 	// THE CONTROL: NO ROW.
 	const float PlainRadius = PlainAura->ScaledRadiusCm();
-	const float PlainManaBefore = Plain.Mana();
-	PlainAura->Pulse();
-	const float PlainUpkeep = PlainManaBefore - Plain.Mana();
+	const float PlainHold = Plain.AbilitySystem->ManaReserved();
 	if (!TestTrue(TEXT("control: with no row the aura has a radius"), PlainRadius > 0.0f)
-		|| !TestTrue(TEXT("control: and a pulse takes mana from its caster"), PlainUpkeep > 0.0f))
+		|| !TestTrue(TEXT("control: and holds a reservation"), PlainHold > 0.0f))
 	{
 		return false;
 	}
@@ -34768,12 +34741,11 @@ bool FCataclysmAuraEffectRadiusAndUpkeepTest::RunTest(const FString&)
 	// THE ROW.
 	TestEqual(TEXT("with a more row of 50 the radius is what it is with no row"),
 			  WornAura->ScaledRadiusCm(), PlainRadius, 0.001f);
+	TestEqual(TEXT("and the reservation is what it is with no row"), Wearer.AbilitySystem->ManaReserved(), PlainHold,
+			  0.001f);
 	const float NearBefore = Near.Health();
 	const float FarBefore = Far.Health();
-	const float WornManaBefore = Wearer.Mana();
 	WornAura->Pulse();
-	TestEqual(TEXT("and a pulse takes the mana it takes with no row"),
-			  WornManaBefore - Wearer.Mana(), PlainUpkeep, 0.001f);
 	TestTrue(TEXT("the pulse reaches the enemy 9 m away"), NearBefore - Near.Health() > 0.0f);
 	TestEqual(TEXT("and takes nothing from the enemy 12 m away"), FarBefore - Far.Health(), 0.0f, 0.001f);
 	return true;
@@ -35450,9 +35422,9 @@ bool FCataclysmAbstinenceTakesAShareTest::RunTest(const FString&)
 }
 
 // NOTHING MORE FOR A CAST THAT TOOK NO MANA FROM THE MANA POOL: a cost paid from health or from the energy shield, a
-// free cast, the basic attack, and an aura's upkeep.
+// free cast, the basic attack, and an aura (an aura's upkeep until 2026-11-27, when auras began to reserve mana).
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAbstinenceOnlyManaTakenTest,
-	"Cataclysm.Skills.UnderTheEdictOfAbstinenceACostPaidFromHealthOrShieldAFreeCastTheBasicAttackAndAnAurasUpkeepPayNoHealth",
+	"Cataclysm.Skills.UnderTheEdictOfAbstinenceACostPaidFromHealthOrShieldAFreeCastTheBasicAttackAndAnAuraPayNoHealth",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmAbstinenceOnlyManaTakenTest::RunTest(const FString&)
@@ -35532,7 +35504,8 @@ bool FCataclysmAbstinenceOnlyManaTakenTest::RunTest(const FString&)
 	TestTrue(TEXT("it swings"), UCataclysmBasicAttack::Swing(Swinger.AbilitySystem));
 	TestEqual(TEXT("and takes no health"), Swinger.Health(), 100000.0f, 0.01f);
 
-	// AN AURA'S UPKEEP: switching the aura on is a cast; each pulse after it drains mana and takes no health.
+	// AN AURA: switching it on is free since 2026-11-27, and a pulse takes nothing; it reserves mana instead, which is
+	// no mana taken from the pool. So neither pays health. (Until then a pulse drained mana and took no health.)
 	FScopedFighter Auraist(World, FVector(120 * M, 0, 0));
 	UnderAbstinence(Auraist, true);
 	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
@@ -35542,18 +35515,18 @@ bool FCataclysmAbstinenceOnlyManaTakenTest::RunTest(const FString&)
 		AddError(TEXT("Could not grant the aura."));
 		return false;
 	}
-	const float PerPulse = Aura->ManaCostFor(Auraist.AbilitySystem, /*bForAUse=*/false);
-	if (!TestTrue(FString::Printf(TEXT("set-up: the aura costs mana a pulse: %.1f"), PerPulse), PerPulse > 0.0f)
-		|| !TestTrue(TEXT("set-up: the aura switches on"), Activate(Auraist, Aura)))
+	const float HealthBeforeSwitch = Auraist.Health();
+	if (!TestTrue(TEXT("set-up: the aura switches on"), Activate(Auraist, Aura)))
 	{
 		return false;
 	}
+	TestEqual(TEXT("switching it on took no health"), Auraist.Health(), HealthBeforeSwitch, 0.01f);
+	TestEqual(TEXT("and owes nothing"), Aura->ManaAlsoTakenAsHealthThisCast(), 0.0f, 0.001f);
 	const float ManaBeforePulse = Auraist.Mana();
-	const float HealthBeforePulse = Auraist.Health();
 	Aura->Pulse();
 	TestTrue(TEXT("a pulse later it is still running"), Aura->IsHeld());
-	TestEqual(TEXT("and the pulse drained its mana"), Auraist.Mana(), ManaBeforePulse - PerPulse, 0.01f);
-	TestEqual(TEXT("and took no health"), Auraist.Health(), HealthBeforePulse, 0.01f);
+	TestEqual(TEXT("and the pulse took no mana"), Auraist.Mana(), ManaBeforePulse, 0.01f);
+	TestEqual(TEXT("and no health"), Auraist.Health(), HealthBeforeSwitch, 0.01f);
 	return true;
 }
 

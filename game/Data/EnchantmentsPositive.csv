@@ -233,7 +233,7 @@ Positive_Your_special_ability_deals_20_40_increased_dam,Your special ability dea
 Positive_Your_support_ability_duration_is_increased_by_50,Your support ability duration is increased by 50%-100%,Generic,4.0,Slot.Support,False,,0
 Positive_Your_support_ability_cooldown_is_reduced_by_20,Your support ability cooldown is reduced by 20%-40%,Generic,4.0,Slot.Support,False,,0
 Positive_Your_aura_affects_a_30_60_larger_area,Your aura affects a 30%-60% larger area,Generic,4.0,"Slot.Aura, Type.AOE.Aura",False,,0
-Positive_Your_aura_costs_30_50_less_mana_per_second,Your aura costs 30%-50% less mana per second,Generic,4.0,"Slot.Aura, Stat.Resource.Mana",False,,0
+Positive_Your_auras_reserve_30_50_less_mana,Your auras reserve 30%-50% less mana,Generic,4.0,"Slot.Aura, Stat.Resource.Mana",False,,0
 Positive_After_using_your_movement_ability_your_next_atta,After using your movement ability your next attack deals 30%-60% increased damage,Generic,4.0,"Slot.Movement, Stat.Offense.Global",False,,0
 Positive_Blocking_an_attack_has_a_20_40_chance_to_reset,Blocking an attack has a 20%-40% chance to reset your heavy attack cooldown,Generic,4.0,"Trigger.OnBlock, Slot.Heavy",False,,0
 Positive_Blocking_an_attack_grants_10_20_increased_dama,Blocking an attack grants 10%-20% increased damage for 3 seconds,Generic,4.0,"Trigger.OnBlock, Stat.Offense.Global",False,,0
@@ -378,3 +378,6 @@ Positive_Warlord_s_Will_10_Piece_Bonus_Every_30_second,"Warlord's Will (10-Piece
 Positive_Reaper_s_Embrace_2_Piece_Bonus_You_gain_10_m,Reaper's Embrace (2-Piece Bonus): You gain 10% more life from all sources,Set,1.0,Stat.Defense.Life,False,,18
 Positive_Reaper_s_Embrace_6_Piece_Bonus_When_a_minion,"Reaper's Embrace (6-Piece Bonus): When a minion or pet dies, it leaves behind a ""Soul"" that can be picked up. Picking up a Soul grants a stack of Soul Strike that increases your damage by 10% for 5 seconds. Max 10 stacks.",Set,1.0,Type.Minion,False,,18
 Positive_Reaper_s_Embrace_10_Piece_Bonus_For_each_stac,"Reaper's Embrace (10-Piece Bonus): For each stack of Soul Strike you gain 5% cull on hit. Killing an enemy instanly spawns one of your minions, up to your max",Set,1.0,Type.Minion,False,,18
+Positive_Your_auras_reserve_15_30_reduced_mana,Your auras reserve 15%-30% reduced mana,Generic,2.0,"Slot.Aura, Stat.Resource.Mana",False,,0
+Positive_Each_aura_you_hold_reserves_5_15_less_mana,Each aura you hold reserves 5-15 less mana,Generic,2.0,"Slot.Aura, Stat.Resource.Mana",False,,0
+Positive_Your_gadgets_reserve_15_30_reduced_Fervour,Your gadgets reserve 15%-30% reduced Fervour,Generic,2.0,Type.Gadget,False,,0

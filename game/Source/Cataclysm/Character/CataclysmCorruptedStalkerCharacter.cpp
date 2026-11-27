@@ -2,7 +2,10 @@
 
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For an aura's mana reserve, which decides whether its aura fits. Ruled 2026-11-27.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -437,6 +440,11 @@ TArray<FCataclysmEnemyAbility> ACataclysmCorruptedStalkerCharacter::EnemyAbiliti
 	};
 	const float Mana = Read(Vital::GetManaAttribute());
 	const float MaxMana = Read(Vital::GetMaxManaAttribute());
+	const auto UnreservedMana = [Abilities, MaxMana]()
+	{
+		const UCataclysmAbilitySystemComponent* Reserving = Cast<const UCataclysmAbilitySystemComponent>(Abilities);
+		return Reserving ? Reserving->UnreservedMaximumMana() : MaxMana;
+	};
 	const float Health = Read(Vital::GetHealthAttribute());
 	const float MaxHealth = Read(Vital::GetMaxHealthAttribute());
 	const float Fervour = Read(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
@@ -468,7 +476,11 @@ TArray<FCataclysmEnemyAbility> ACataclysmCorruptedStalkerCharacter::EnemyAbiliti
 		switch (Slot)
 		{
 		case ECataclysmAbilitySlot::Aura:
-			bMay = bMay && MaxMana > 0.0f && Mana >= Effects::CorruptedStalkerAuraOffBelowManaShare * MaxMana;
+			// WHEN ITS AURA FITS, AS THE PLAYER'S DOES, since 2026-11-27: the reserve, after this creature's own rows,
+			// against what its auras leave unreserved. Until then it waited for 30% of its mana, a rule removed with the
+			// drain ("Its aura reserves like the player's").
+			bMay = bMay && MaxMana > 0.0f
+				&& UnreservedMana() >= UCataclysmCommand::ManaReserveFor(Abilities, Numbers.ManaReserved, Skill->Tags);
 			break;
 		case ECataclysmAbilitySlot::Support:
 			bMay = bMay && MaxHealth > 0.0f && Health < Effects::CorruptedStalkerSupportBelowHealthShare * MaxHealth;
@@ -539,25 +551,9 @@ void ACataclysmCorruptedStalkerCharacter::AfterRegenerationStep()
 		return;
 	}
 
-	// ITS AURA OFF BELOW THE RULED SHARE OF ITS MANA.
-	const float MaxMana = Abilities->GetNumericAttribute(Vital::GetMaxManaAttribute());
-	if (MaxMana > 0.0f
-		&& Abilities->GetNumericAttribute(Vital::GetManaAttribute()) < Effects::CorruptedStalkerAuraOffBelowManaShare * MaxMana)
-	{
-		TArray<FGameplayAbilitySpecHandle> Auras;
-		for (const FGameplayAbilitySpec& Spec : Abilities->GetActivatableAbilities())
-		{
-			const UCataclysmGameplayAbility* Running = Cast<UCataclysmGameplayAbility>(Spec.GetPrimaryInstance());
-			if (Spec.IsActive() && Running && Running->GetDesignedSlot() == ECataclysmAbilitySlot::Aura)
-			{
-				Auras.Add(Spec.Handle);
-			}
-		}
-		for (const FGameplayAbilitySpecHandle& Handle : Auras)
-		{
-			Abilities->CancelAbilityHandle(Handle);
-		}
-	}
+	// NO AURA RULE OF ITS OWN SINCE 2026-11-27. Its aura reserves mana as the player's does and drains nothing, so the
+	// rule that switched it off below 30% of its mana was removed, ruled by the coordinating session: "Its aura reserves
+	// like the player's."
 
 	// A POTION BELOW THE RULED SHARE OF ITS HEALTH, THE FIRST SLOT THAT CAN POUR ONE, under the player's rules:
 	// `UCataclysmPotions::Drink` refuses while a heal runs and when a slot holds too few charges.

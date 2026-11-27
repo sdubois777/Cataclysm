@@ -57,7 +57,11 @@ namespace CataclysmEnchantmentRollTest
 	 */
 	// 391 SINCE 2026-10-07: the owner's reword of "DoTs last 2x-4x as long on
 	// you" to "DoTs on you have 100%-300% more duration" states one more.
-	constexpr int32 StatedRanges = 391;
+	// 394 SINCE 2026-11-27: the auras' mana reservation added three
+	// enchantments stating one range each ("Your auras reserve 15%-30% reduced
+	// mana", "Each aura you hold reserves 5-15 less mana", "Your gadgets
+	// reserve 15%-30% reduced Fervour").
+	constexpr int32 StatedRanges = 394;
 
 	/** Loads a generated table so tests read the real data, not a fixture. */
 	template <typename RowType>

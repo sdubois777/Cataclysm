@@ -166,8 +166,8 @@ public:
 	/**
 	 * Its skills, one entry a slot in `ChoiceOrder`, ALWAYS ALL SIX AND IN THAT ORDER, because the controller keys each
 	 * skill's last use by its index. One that may not be used now is given a range nothing satisfies (a minimum of 1 cm
-	 * and a maximum of 0) instead of being left out: the aura when one runs or mana is below
-	 * `CorruptedStalkerAuraOffBelowManaShare`; the support skill at `CorruptedStalkerSupportBelowHealthShare` health or
+	 * and a maximum of 0) instead of being left out: the aura when one runs or its mana reserve does not fit what its
+	 * auras leave unreserved (since 2026-11-27, as the player's); the support skill at `CorruptedStalkerSupportBelowHealthShare` health or
 	 * above, or while its buff runs; the ultimate while it channels or without its Fervour; any without its mana.
 	 * The movement skill reaches only beyond `CorruptedStalkerMovementBeyondCm`; the others reach as far as their
 	 * shapes. Each cooldown is its slot's, after the Stalker's cooldown reduction, and the support skill's is at least
@@ -182,7 +182,7 @@ public:
 	virtual float DesignedSecondsBetweenAttacks() const override;
 
 	/**
-	 * Every quarter second: turns its aura off below `CorruptedStalkerAuraOffBelowManaShare` mana, drinks a health
+	 * Every quarter second: drinks a health
 	 * potion below `CorruptedStalkerPotionBelowHealthShare` health under the player's rules, and runs a drink's heal.
 	 */
 	virtual void AfterRegenerationStep() override;

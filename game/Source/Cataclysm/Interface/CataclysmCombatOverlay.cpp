@@ -74,6 +74,7 @@ const TCHAR* UCataclysmCombatOverlay::HealthReservedHex = TEXT("4A1712");
 const TCHAR* UCataclysmCombatOverlay::ShieldFillHex = TEXT("4FA3E3");
 const TCHAR* UCataclysmCombatOverlay::TemporaryAbsorbFillHex = TEXT("E8D9A0");
 const TCHAR* UCataclysmCombatOverlay::ManaFillHex = TEXT("2E4FC0");
+const TCHAR* UCataclysmCombatOverlay::ManaReservedHex = TEXT("141F4A");
 const TCHAR* UCataclysmCombatOverlay::FervourFillHex = TEXT("C7398D");
 const TCHAR* UCataclysmCombatOverlay::ReservedFervourHex = TEXT("5E1C43");
 const TCHAR* UCataclysmCombatOverlay::ReachedHealthHex = TEXT("F5F0EA");
@@ -1273,6 +1274,13 @@ float UCataclysmCombatOverlay::HealthReservedOf(const AActor* Actor)
 	const UCataclysmAbilitySystemComponent* Reserving =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
 	return Reserving ? Reserving->HealthReserved() : 0.0f;
+}
+
+float UCataclysmCombatOverlay::ManaReservedOf(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* Reserving =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Actor));
+	return Reserving ? Reserving->ManaReserved() : 0.0f;
 }
 
 float UCataclysmCombatOverlay::TemporaryAbsorbOf(const AActor* Actor)

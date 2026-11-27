@@ -1088,6 +1088,7 @@ void ACataclysmPlayerState::SetSkillExperience(FName SkillRow, double Experience
 
 void ACataclysmPlayerState::RepriceReservesForLevelsGained(const TMap<FName, int32>& Before) const
 {
+	bool bAnyGained = false;
 	for (const TPair<FName, double>& Each : SkillExperience)
 	{
 		const int32* Was = Before.Find(Each.Key);
@@ -1095,7 +1096,14 @@ void ACataclysmPlayerState::RepriceReservesForLevelsGained(const TMap<FName, int
 		if (UCataclysmSkillLevels::LevelFor(Each.Value, GetCharacterLevel()) > From)
 		{
 			UCataclysmSkillLevels::RepriceReservesOf(this, Each.Key);
+			bAnyGained = true;
 		}
+	}
+	// AND THE MANA A HELD AURA RESERVES, AT ONCE, ruled 2026-11-27: "A skill level gained while the aura is on lowers
+	// its reservation at once." Every held aura is asked again; one whose skill did not level answers what it did.
+	if (bAnyGained && AbilitySystemComponent)
+	{
+		AbilitySystemComponent->RepriceAuraReservations();
 	}
 }
 

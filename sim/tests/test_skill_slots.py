@@ -250,18 +250,28 @@ def test_only_the_automatic_slot_and_the_toggle_have_no_cooldown():
 
 
 def test_every_slot_a_player_chooses_is_limited_by_something():
-    """A skill with no cooldown and no cost can be held down."""
+    """A skill with no cooldown, no cost and no reservation can be held down."""
     for name in ch.CHOSEN_SKILL_SLOTS:
         slot = ch.SKILL_SLOTS[name]
-        assert slot.typical_cooldown > 0 or slot.mana_cost > 0, (
-            f"{name} costs nothing and waits for nothing")
+        assert (slot.typical_cooldown > 0 or slot.mana_cost > 0
+                or slot.mana_reserved > 0), (
+            f"{name} costs nothing, reserves nothing and waits for nothing")
 
 
 def test_the_basic_attack_is_the_only_free_slot():
-    """The design calls it automatic and free. Everything else is paid for."""
-    assert ch.SKILL_SLOTS[ch.BASIC_ATTACK_SLOT].mana_cost == 0.0
+    """The design calls it automatic and free. Everything else is paid for: the
+    Aura by reserving mana, since 2026-11-27, and every other slot per use."""
+    basic = ch.SKILL_SLOTS[ch.BASIC_ATTACK_SLOT]
+    assert basic.mana_cost == 0.0 and basic.mana_reserved == 0.0
     for name in ch.CHOSEN_SKILL_SLOTS:
-        assert ch.SKILL_SLOTS[name].mana_cost > 0.0, name
+        slot = ch.SKILL_SLOTS[name]
+        if name == "Aura":
+            assert slot.mana_cost == 0.0, "switching an aura on costs nothing"
+            assert slot.mana_reserved > 0.0
+        else:
+            assert slot.mana_cost > 0.0, name
+            assert slot.mana_reserved == 0.0, (
+                f"{name} reserves mana; only the Aura does")
 
 
 def test_a_cooldown_band_that_does_not_contain_its_typical_is_rejected():
@@ -269,6 +279,13 @@ def test_a_cooldown_band_that_does_not_contain_its_typical_is_rejected():
         ch.SkillSlot("Bad", 100.0, 100.0, 100.0, "impossible",
                      typical_cooldown=30.0, cooldown_lowest=1.0,
                      cooldown_highest=5.0, mana_cost=1.0)
+
+
+def test_a_negative_mana_reservation_is_rejected():
+    with pytest.raises(ValueError, match="mana reserved .* is negative"):
+        ch.SkillSlot("Bad", 100.0, 100.0, 100.0, "impossible",
+                     typical_cooldown=1.0, cooldown_lowest=1.0,
+                     cooldown_highest=1.0, mana_reserved=-5.0)
 
 
 def test_a_negative_mana_cost_is_rejected():
@@ -510,27 +527,109 @@ def test_using_every_skill_on_cooldown_outruns_income():
             "never constrains it")
 
 
-def test_the_aura_runs_out_for_the_two_classes_on_default_regeneration():
-    """Issue #36 requires the aura to switch off when the resource is
-    exhausted, so that has to be reachable for someone.
+# --------------------------------------------------------------------------
+# An aura reserves mana rather than draining it. Ruled 2026-11-27 under the
+# owner's choice "Reserve, don't drain"; until then it drained 20 mana a second
+# and no class but the Ritualist could keep one on at level 100.
+# --------------------------------------------------------------------------
 
-    The Ritualist is exempt on purpose: its regeneration exceeds the drain, so
-    it can hold an aura indefinitely. That is what "largest mana pool, the only
-    meaningful mana regeneration" is supposed to buy."""
-    from cataclysm_sim.classes import DEMONIC_CLASSES
+#: How many auras fit with no gear and no attribute points, at skill level 1,
+#: keeping one Ultimate and one Special's worth of mana unreserved, at character
+#: levels 1, 20, 50 and 100. The Default line is every class without its own
+#: mana line (the Masochist among them). Worked by hand from the class lines
+#: before the model existed, so this is a second source and not a copy of it.
+AURAS_THAT_FIT = {
+    "Default line": (0, 2, 4, 9),
+    "Ravager": (0, 1, 2, 4),
+    "Necromancer": (1, 3, 8, 15),
+    "Ritualist": (1, 5, 11, 21),
+}
+AURA_LEVELS = (1, 20, 50, 100)
 
-    for name in ("Ravager", "Masochist"):
-        seconds = ch.Character(DEMONIC_CLASSES[name], level=100).seconds_of_aura()
-        assert seconds != float("inf"), (
-            f"the {name} aura never runs out, so it can never switch itself off")
-        assert 20.0 <= seconds <= 90.0, (
-            f"the {name} aura lasts {seconds:.0f}s standing still, outside the "
-            "20 to 90 seconds a toggled commitment should last")
 
-    ritualist = ch.Character(DEMONIC_CLASSES["Ritualist"], level=100)
-    assert ritualist.seconds_of_aura() == float("inf"), (
-        "the Ritualist is meant to sustain an aura from regeneration alone; if "
-        "that has stopped being true, the class's defining stat has moved")
+def class_line(name: str):
+    from cataclysm_sim.classes import CLASSES
+
+    return ch.GENERIC if name == "Default line" else CLASSES[name]
+
+
+@pytest.mark.parametrize("name", sorted(AURAS_THAT_FIT))
+def test_how_many_auras_fit_as_a_character_grows(name):
+    """The owner: "It should be difficult to maintain them at low levels, but
+    get easier. Players will likely be running more than one at a time"."""
+    got = tuple(ch.Character(class_line(name), level=level).auras_that_fit()
+                for level in AURA_LEVELS)
+    assert got == AURAS_THAT_FIT[name], (
+        f"the {name} holds {got} auras at levels {AURA_LEVELS}")
+
+
+def test_the_masochist_is_on_the_default_line():
+    from cataclysm_sim.classes import CLASSES
+
+    for level in AURA_LEVELS:
+        assert (ch.Character(CLASSES["Masochist"], level=level).auras_that_fit()
+                == ch.Character(ch.GENERIC, level=level).auras_that_fit())
+
+
+def test_more_than_one_aura_fits_for_every_class_by_level_one_hundred():
+    from cataclysm_sim.classes import CLASSES
+
+    for name, definition in CLASSES.items():
+        assert ch.Character(definition, level=100).auras_that_fit() >= 2, name
+
+
+def test_the_reservation_is_flat_across_character_levels():
+    """The control the whole design rests on: if the reservation scaled with
+    character level as every per-use cost does, a level 1 character and a
+    level 100 one would hold the same share of their pools in auras."""
+    low = ch.Character(ch.GENERIC, level=1).aura_reservation()
+    high = ch.Character(ch.GENERIC, level=100).aura_reservation()
+    assert low == high == ch.SKILL_SLOTS["Aura"].mana_reserved == 50.0
+    # And the per-use costs still do scale, so the flatness is the
+    # reservation's own rule rather than every cost having stopped moving.
+    assert (ch.Character(ch.GENERIC, level=1).mana_cost_of("Ultimate")
+            < ch.Character(ch.GENERIC, level=100).mana_cost_of("Ultimate"))
+
+
+def test_the_aura_skills_own_level_halves_the_reservation_by_level_twenty():
+    character = ch.Character(ch.GENERIC, level=100)
+    at_twenty = character.aura_reservation(skill_level=20)
+    assert at_twenty == pytest.approx(50.0 * 0.9642 ** 19)
+    assert at_twenty == pytest.approx(25.0, abs=0.1)
+    # More auras fit at skill level 20 than at 1.
+    assert (character.auras_that_fit(skill_level=20)
+            > character.auras_that_fit(skill_level=1))
+
+
+def test_switching_an_aura_on_costs_nothing():
+    assert ch.Character(ch.GENERIC, level=100).mana_cost_of("Aura") == 0.0
+
+
+def test_the_summed_percent_reduction_stops_at_seventy_five():
+    assert ch.reserved_mana(50.0, percent_less=75.0) == pytest.approx(12.5)
+    assert ch.reserved_mana(50.0, percent_less=200.0) == pytest.approx(12.5)
+    # A negative sum raises it, uncapped.
+    assert ch.reserved_mana(50.0, percent_less=-50.0) == pytest.approx(75.0)
+
+
+def test_the_reductions_apply_flat_then_percent_then_more():
+    got = ch.reserved_mana(50.0, flat_reduction=10.0, percent_less=25.0,
+                           more=(-20.0,))
+    assert got == pytest.approx((50.0 - 10.0) * 0.75 * 0.8)
+
+
+def test_no_reservation_falls_below_one():
+    assert ch.reserved_mana(50.0, flat_reduction=100.0) == 1.0
+    assert ch.reserved_mana(50.0, more=(-100.0,)) == 1.0
+    # A slot that reserves nothing is not raised to the floor.
+    assert ch.reserved_mana(0.0) == 0.0
+
+
+def test_room_kept_unreserved_lowers_the_count():
+    character = ch.Character(ch.GENERIC, level=100)
+    assert character.auras_that_fit(room=0.0) == 12   # 644 / 50
+    assert character.auras_that_fit(room=644.0) == 0
+    assert character.default_aura_room() == pytest.approx(190.0)
 
 
 def test_the_design_document_cost_table_matches_the_code():
@@ -563,6 +662,12 @@ def test_the_design_document_cost_table_matches_the_code():
         if name == ch.BASIC_ATTACK_SLOT:
             assert cost.startswith(f"restores {ch.BASIC_ATTACK_MANA_ON_HIT:g}"), (
                 f"the Basic Attack cost cell reads {cost!r}")
+        elif slot.mana_reserved > 0.0:
+            assert cost.startswith(
+                f"reserves {slot.mana_reserved:g} while on"), (
+                f"{label} cost cell reads {cost!r}")
+            assert "per second" not in cost, (
+                f"{label} still reads as a drain: {cost!r}")
         else:
             assert cost.startswith(f"{slot.mana_cost:g}"), (
                 f"{label} cost cell reads {cost!r}")
