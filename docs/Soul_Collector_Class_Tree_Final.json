@@ -23,7 +23,7 @@
       "data": {
         "kind": "basic",
         "name": "Fervour",
-        "description": "Kills generate Fervour, taken from the dead: 1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss. You deal 1% more damage for every 2 Fervour you hold. While you have this, Fervour decays at 5 per second once 4 seconds have passed since your last kill, until you kill again, so a pause between kills is what empties it. Killing an Elite or stronger creature holds off the decay for 8 seconds rather than 4.",
+        "description": "Kills generate Fervour, taken from the dead: 1 for each enemy you kill, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss. You deal 1% more damage for every 2 Fervour you hold. While you have this, Fervour decays at 5 per second once 4 seconds have passed since your last kill, until you kill again, so a pause between kills is what empties it. Killing an Elite or stronger creature holds off the decay for 8 seconds rather than 4. Enemies your minions, gadgets and traps kill count as your kills.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -45,7 +45,7 @@
       "data": {
         "kind": "basic",
         "name": "Tithe of the Dead",
-        "description": "+2% increased Fervour gained from kills per point.",
+        "description": "+1% increased damage per point against enemies within 6 metres of you.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -111,7 +111,7 @@
       "data": {
         "kind": "basic",
         "name": "Grave Patience",
-        "description": "Your Fervour begins to decay 1 second later after a kill for every 5 points.",
+        "description": "Every 5 Fervour you lose to decay restores 0.2% of your maximum health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -177,7 +177,7 @@
       "data": {
         "kind": "basic",
         "name": "Claimed",
-        "description": "An enemy you hit gives you its Fervour if it dies within 1 second for every 2 points of that hit, whatever kills it.",
+        "description": "+1% increased damage per point for 4 seconds after you kill an enemy.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -264,8 +264,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Death's Toll",
-        "description": "Enemies your minions, gadgets and traps kill give you their Fervour, and count as your kills for everything this tree asks.",
+        "name": "Gathered Souls",
+        "description": "Each enemy that dies within 6 metres of you, whoever kills it, gives you a stack of Gathered Souls. Each stack gives 2% increased Attack Speed and 2% increased Movement Speed, up to 10 stacks. Gathered Souls lasts 6 seconds, restarted by each new stack.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -286,8 +286,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Reclaimed",
-        "description": "A kill made after your Fervour has begun to decay gives back the Fervour that decay took from you in the 3 seconds before it.",
+        "name": "Unquiet Souls",
+        "description": "Every 5 Fervour you lose to decay strikes the strongest enemy within 10 metres for 40% of your weapon damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -308,8 +308,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Soulbound",
-        "description": "Your Fervour no longer decays with time. Instead you lose 1 Fervour for every 2% of your maximum health that you lose to damage.",
+        "name": "Death Made Flesh",
+        "description": "The Fervour you hold no longer adds to your damage. Instead you take 1% less damage for every 4 Fervour you hold, up to 25%.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -485,7 +485,7 @@
       "data": {
         "kind": "basic",
         "name": "Miser's Grip",
-        "description": "Your Fervour never decays below 3% of your maximum Fervour per point.",
+        "description": "+2% increased damage per point while you hold 50 or more Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -507,7 +507,7 @@
       "data": {
         "kind": "basic",
         "name": "Cold Storage",
-        "description": "Your Fervour decays 5% slower per point.",
+        "description": "You take 1% reduced damage per point while you hold 50 or more Fervour.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -594,8 +594,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Hoarder",
-        "description": "You lose 50% less Fervour to decay.",
+        "name": "Heavy Urn",
+        "description": "You deal 0.5% more damage for each Fervour you hold above 50.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -616,8 +616,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Long Shadow",
-        "description": "Each Fervour threshold you reach stays in effect for 5 seconds after you fall below it.",
+        "name": "Tolling Count",
+        "description": "Each time your Fervour rises to a threshold you have opened, you release a blast dealing 100% of your weapon damage to every enemy within 5 metres. Each threshold can do this once every 5 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -639,7 +639,7 @@
       "data": {
         "kind": "basic",
         "name": "Gleaning",
-        "description": "Each enemy you kill has a 5% chance per point to give 1 extra Fervour.",
+        "description": "Each kill has a 5% chance per point to strike the strongest enemy within 10 metres for 50% of your weapon damage.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -683,7 +683,7 @@
       "data": {
         "kind": "basic",
         "name": "Thinning the Herd",
-        "description": "Each kill gives +1% increased Fervour per point for every other enemy within 8 metres of you, up to 10 enemies.",
+        "description": "+1% increased damage per point for every 2 enemies within 8 metres of you, up to 10 enemies.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -793,7 +793,7 @@
       "data": {
         "kind": "basic",
         "name": "Tear Loose",
-        "description": "Your hits on an Elite or stronger creature have a 2% chance per point to give you 1 Fervour, torn from it.",
+        "description": "Killing an Elite or stronger creature restores 1% of your maximum health per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -815,7 +815,7 @@
       "data": {
         "kind": "basic",
         "name": "Vigil Over the Strong",
-        "description": "While an Elite or stronger creature is within 15 metres of you, your Fervour decays 5% slower per point.",
+        "description": "+1% increased Attack Speed per point while an Elite or stronger creature is within 15 metres of you.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -836,8 +836,8 @@
       "type": "basic",
       "data": {
         "kind": "basic",
-        "name": "Any Fuel",
-        "description": "+2% increased Fervour gained from sources other than kills per point, so another class's way of filling the bar fills it faster.",
+        "name": "Gathering Pace",
+        "description": "+0.5% increased Attack Speed per point for each kill in your current chain of kills, up to 10 kills.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -859,7 +859,7 @@
       "data": {
         "kind": "basic",
         "name": "Borrowed Time",
-        "description": "Each time you gain Fervour from a source other than a kill, the time before your Fervour begins to decay is extended by 1 second for every 3 points, never past its full length.",
+        "description": "You take 0.5% reduced damage per point for every 2 kills in your current chain, up to 10 kills.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -902,8 +902,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Hungry for the Strong",
-        "description": "Elite and stronger creatures give 100% more Fervour.",
+        "name": "Trophy of the Strong",
+        "description": "Killing an Elite or stronger creature gives you 20% more damage for 10 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -924,8 +924,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Kindred Fires",
-        "description": "Fervour you gain from any source, not only a kill, holds off decay as a kill does: the time before your Fervour begins to decay starts again.",
+        "name": "Reaper's Rhythm",
+        "description": "While your current chain of kills has 5 or more kills, you deal 15% more damage and take 10% less damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1188,8 +1188,8 @@
       "type": "keystone",
       "data": {
         "kind": "keystone",
-        "name": "Living Harvest",
-        "description": "Each enemy in your Siphon gives you 1 Fervour every 2 seconds, up to 4 Fervour a second. This Fervour does not come from kills, so on its own it does not hold off decay.",
+        "name": "Hungering Siphon",
+        "description": "Your Siphon deals damage over time to every enemy in it: 0.5% of your weapon damage each second for every 5 Fervour you hold, as Death damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

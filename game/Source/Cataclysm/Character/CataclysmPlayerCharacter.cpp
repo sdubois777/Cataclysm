@@ -1582,13 +1582,9 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			// C). Asked after it, `seconds_after_kill` on a kill's own stat read nought at every kill and always held;
 			// asked before it, it reads the time since the PREVIOUS kill, which "kills within 2 seconds of each
 			// other" needs. The grace is asked inside the stamp before the clock moves, so it reads the same.
-			//
-			// AND RECLAIMED'S GIVE-BACK BEFORE BOTH: what decay took in the seconds before this kill comes back as part of
-			// it. The Death trees' slice C4b2 (2026-11-25).
 			// MARKED AS AN EXECUTE'S KILL, OR NOT, FOR THE PAYMENT AND THE ROWS BELOW: Reaper's Edge's
 			// `kill_was_an_execute` reads it. Cleared after the rows. The Death trees' slice C4d1 (2026-11-25).
 			Acting->SetActingOnAKillByAnExecute(Notice.bByAnExecute);
-			UCataclysmFervour::GiveBackDecayOnKill(Acting);
 			UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);
 			UCataclysmFervour::NoteOwnKill(Acting, Notice.Victim);
 			// AND GRIM WAKE'S MARK on the enemies near the body, the Death trees' slice C4c2 (2026-11-25).
@@ -1719,14 +1715,13 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				this, Notice.Victim, Notice.Location, Notice.KillingTags);
 		}
 
-		// THE SOUL COLLECTOR ON A DEATH THIS CHARACTER DID NOT MAKE, the Death trees' slice C4b2 (2026-11-25). Death's
-		// Toll first: a follower's kill made this character's for everything the Soul Collector tree asks. Otherwise
-		// Claimed: an enemy this character hit shortly before gives its Fervour whatever killed it. Never both, as
-		// ruled, and neither for a kill this character made, which the block above has paid.
-		if (Notice.Killer != this && Notice.Victim
-			&& !UCataclysmFervour::CreditAFollowersKill(Acting, this, Notice))
+		// THE SOUL COLLECTOR ON A DEATH THIS CHARACTER DID NOT MAKE, the Death trees' slice C4b2 (2026-11-25): a
+		// follower's kill made this character's for everything the Soul Collector tree asks, which the starting node
+		// grants since the keystone rework (issue #2951). Never for a kill this character made, which the block above
+		// has paid.
+		if (Notice.Killer != this && Notice.Victim)
 		{
-			UCataclysmFervour::ClaimOnDeath(Acting, Notice.Victim);
+			UCataclysmFervour::CreditAFollowersKill(Acting, this, Notice);
 		}
 
 		// AND THE SWARM: A MINION WHERE AN ENEMY THIS CHARACTER OR ONE OF ITS MINIONS KILLED FELL. The demonic tree
@@ -1799,11 +1794,16 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		//
 		// THE TEAM TEST IS `IsAnEnemysDeath` AT THE TOP OF THIS FILE, since
 		// 2026-09-17, because Fed by the Fallen below asks the same question.
+		//
+		// OUT TO THE FARTHEST A ROW MAY ASK, CARRYING HOW FAR. Issue #2951: Gathered Souls reaches 6 metres and every
+		// earlier row 3. `UCataclysmAbilitySystemComponent::EventThresholdCrossed` holds each row to its own radius.
+		static_assert(NearbyDeathRadiusCm == UCataclysmAbilitySystemComponent::NearbyDeathDefaultMetres * 100.0f,
+					  "a nearby_death row stating no radius reaches the 3 metres every such row reached before");
+		const float DeathMetres = FVector::Dist(GetActorLocation(), Notice.Location) / 100.0f;
 		if (IsAnEnemysDeath(this, Notice) && !Notice.bWhileTheKillersRowsActed
-			&& FVector::Dist(GetActorLocation(), Notice.Location)
-				<= NearbyDeathRadiusCm)
+			&& DeathMetres <= UCataclysmAbilitySystemComponent::NearbyDeathFarthestMetres)
 		{
-			Acting->ActOnEvent(FName(TEXT("nearby_death")));
+			Acting->ActOnEvent(FName(TEXT("nearby_death")), nullptr, DeathMetres);
 		}
 
 		// AND FED BY THE FALLEN, ON THE SAME KIND OF DEATH. Issue #1515.

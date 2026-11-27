@@ -20,7 +20,7 @@
 
 /**
  * How Fervour is lost, and what fills past the bar (the Death trees' slice C6c, 2026-11-25, as ruled): Miser's Grip's
- * floor stops only the decay; Soulbound takes Fervour for health lost, keeping the remainder; Overflow turns whole
+ * floor stops only the decay; Overflow turns whole
  * Fervour above the bar into attack speed stacks sharing one window; Unbroken Chain lengthens a passive row's kill
  * stack and Soul Tide's window, and not an enchantment's kill stack.
  */
@@ -110,13 +110,13 @@ namespace CataclysmFervourLossAndChainTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourLossFloorTest,
-	"Cataclysm.FervourLossAndChain.MisersGripStopsOnlyTheDecayAtItsFloor",
+	"Cataclysm.FervourLossAndChain.TheDecayStopsAtItsFloor",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * A holder that has never killed, holding 50 of 100, decaying 10 a second, with Miser's Grip at 8 points (24%): a 10
- * second decay step stops at 24. THE CONTROL, AS RULED: Soulbound's loss is not held by the floor, so 10% of health lost
- * at 2% a Fervour takes 24 to 19.
+ * A holder that has never killed, holding 50 of 100, decaying 10 a second, with a decay floor of 24% (the stat Miser's
+ * Grip gave before issue #2951, which the War Fervour's decay still reads): a 10 second decay step stops at 24. THE
+ * CONTROL: with no floor, a 1 second step first takes 50 to 40, so the decay runs.
  */
 bool FCataclysmFervourLossFloorTest::RunTest(const FString&)
 {
@@ -125,49 +125,24 @@ bool FCataclysmFervourLossFloorTest::RunTest(const FString&)
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 	const FLossHolder Holder(World, 50.0f);
-	TMap<FName, FCataclysmStatInputs> Lines;
-	AddLine(Lines, UCataclysmFervour::KillDecayPerSecondStat, 0.0f, LossRow(ECataclysmStatBucket::Flat, 10.0f));
-	AddLine(Lines, UCataclysmFervour::DecayFloorPercentStat, 0.0f, LossRow(ECataclysmStatBucket::Flat, 24.0f));
-	AddLine(Lines, UCataclysmFervour::HealthPercentLostPerFervourLostStat, 0.0f,
-			LossRow(ECataclysmStatBucket::Flat, 2.0f));
-	Holder.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	const auto Lines = [](bool bWithFloor)
+	{
+		TMap<FName, FCataclysmStatInputs> Made;
+		AddLine(Made, UCataclysmFervour::KillDecayPerSecondStat, 0.0f, LossRow(ECataclysmStatBucket::Flat, 10.0f));
+		if (bWithFloor)
+		{
+			AddLine(Made, UCataclysmFervour::DecayFloorPercentStat, 0.0f, LossRow(ECataclysmStatBucket::Flat, 24.0f));
+		}
+		return Made;
+	};
 
+	Holder.AbilitySystem->SetStatInputs(Lines(false));
+	UCataclysmFervour::KillDecayStep(Holder.AbilitySystem, 1.0f);
+	TestEqual(TEXT("control: with no floor a 1 second step takes 50 to 40"), Holder.Fervour(), 40.0f, 0.001f);
+
+	Holder.AbilitySystem->SetStatInputs(Lines(true));
 	UCataclysmFervour::KillDecayStep(Holder.AbilitySystem, 10.0f);
 	TestEqual(TEXT("the decay stops at the floor, 24"), Holder.Fervour(), 24.0f, 0.001f);
-	UCataclysmFervour::LoseFromDamage(Holder.AbilitySystem, 100.0f);
-	TestEqual(TEXT("control: Soulbound's loss goes below it, 19"), Holder.Fervour(), 19.0f, 0.001f);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourLossSoulboundTest,
-	"Cataclysm.FervourLossAndChain.SoulboundTakesAFervourForEachTwoPercentAndKeepsTheRest",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * Soulbound at 2% a Fervour, 1,000 maximum health, holding 50: 30 health lost (3%) takes 1 and keeps 1%; 10 more (1%)
- * makes 2% and takes 1 more. THE CONTROL: 5 health lost (0.5%) takes nothing, and at 0 held nothing goes below 0.
- */
-bool FCataclysmFervourLossSoulboundTest::RunTest(const FString&)
-{
-	using namespace CataclysmFervourLossAndChainTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	const FLossHolder Holder(World, 50.0f);
-	TMap<FName, FCataclysmStatInputs> Lines;
-	AddLine(Lines, UCataclysmFervour::HealthPercentLostPerFervourLostStat, 0.0f,
-			LossRow(ECataclysmStatBucket::Flat, 2.0f));
-	Holder.AbilitySystem->SetStatInputs(MoveTemp(Lines));
-
-	UCataclysmFervour::LoseFromDamage(Holder.AbilitySystem, 30.0f);
-	TestEqual(TEXT("3% lost: 1 taken"), Holder.Fervour(), 49.0f, 0.001f);
-	UCataclysmFervour::LoseFromDamage(Holder.AbilitySystem, 10.0f);
-	TestEqual(TEXT("1% more, the 1% kept makes 2%: 1 more taken"), Holder.Fervour(), 48.0f, 0.001f);
-	UCataclysmFervour::LoseFromDamage(Holder.AbilitySystem, 5.0f);
-	TestEqual(TEXT("control: 0.5% takes nothing"), Holder.Fervour(), 48.0f, 0.001f);
-	Holder.SetFervour(0.0f);
-	UCataclysmFervour::LoseFromDamage(Holder.AbilitySystem, 100.0f);
-	TestEqual(TEXT("control: at 0 held, nothing below 0"), Holder.Fervour(), 0.0f, 0.001f);
 	return true;
 }
 
@@ -295,9 +270,8 @@ bool FCataclysmFervourLossRealRowsTest::RunTest(const FString&)
 		int32 Count;
 	};
 	const FExpected Expected[] = {
-		{TEXT("SoulCollector_basic_a_b1"), 0, TEXT("fervour_decay_floor_percent"), TEXT("flat"), 3.0f, 1},
-		{TEXT("SoulCollector_keystone_spine_003"), 0, TEXT("fervour_kill_decay_per_second"), TEXT("removed"), 1.0f, 1},
-		{TEXT("SoulCollector_keystone_spine_003"), 0, TEXT("health_percent_lost_per_fervour_lost"), TEXT("flat"), 2.0f, 1},
+		// MISER'S GRIP AND SOULBOUND LEFT THIS LIST WITH THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951): their new rows
+		// are read by `Cataclysm.SoulCollectorRework.TheTwentyNodesRowsAreTheirSentences`.
 		{TEXT("SoulCollector_keystone_a_kA"), 0, TEXT("fervour_overflow_attack_speed_seconds"), TEXT("flat"), 5.0f, 1},
 		{TEXT("SoulCollector_keystone_a_kA"), 0, TEXT("attack_speed"), TEXT("increased"), 1.0f, 1},
 		{TEXT("SoulCollector_basic_b_a1"), 0, TEXT("kill_chain_seconds"), TEXT("flat"), 1.0f, 2},

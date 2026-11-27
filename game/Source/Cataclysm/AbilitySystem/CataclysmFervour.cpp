@@ -59,14 +59,10 @@ const TCHAR* UCataclysmFervour::OnEnemyDeathNearbyStat =
 const TCHAR* UCataclysmFervour::PerKillStat = TEXT("fervour_per_kill");
 const TCHAR* UCataclysmFervour::KillDecayPerSecondStat = TEXT("fervour_kill_decay_per_second");
 const TCHAR* UCataclysmFervour::KillDecayGraceSecondsStat = TEXT("fervour_kill_decay_grace_seconds");
-const TCHAR* UCataclysmFervour::HoldRestartedByAnyGainStat = TEXT("fervour_hold_restarted_by_any_gain");
-const TCHAR* UCataclysmFervour::HoldExtendedOnGainSecondsStat = TEXT("fervour_hold_extended_on_gain_seconds");
 const TCHAR* UCataclysmFervour::DecayFloorPercentStat = TEXT("fervour_decay_floor_percent");
-const TCHAR* UCataclysmFervour::HealthPercentLostPerFervourLostStat = TEXT("health_percent_lost_per_fervour_lost");
 const TCHAR* UCataclysmFervour::OverflowAttackSpeedSecondsStat = TEXT("fervour_overflow_attack_speed_seconds");
 const TCHAR* UCataclysmFervour::KillChainSecondsStat = TEXT("kill_chain_seconds");
-const TCHAR* UCataclysmFervour::DecayGivenBackOnKillSecondsStat = TEXT("decay_given_back_on_kill_seconds");
-const TCHAR* UCataclysmFervour::ClaimedWithinSecondsStat = TEXT("fervour_claimed_within_seconds");
+const TCHAR* UCataclysmFervour::FervourHeldAddsNoDamageStat = TEXT("fervour_held_adds_no_damage");
 const TCHAR* UCataclysmFervour::FollowerKillsCountAsYoursStat = TEXT("follower_kills_count_as_yours");
 const TCHAR* UCataclysmFervour::PerCriticalStrikeStat = TEXT("fervour_per_critical_strike");
 const TCHAR* UCataclysmFervour::BossTicksPayAKillEverySecondsStat = TEXT("boss_ticks_pay_a_kill_every_seconds");
@@ -77,56 +73,6 @@ FString UCataclysmFervour::SoulCollectorRowKeyPrefix()
 	// THE NAME A PASSIVE ROW'S ENCHANTMENT IS GIVEN, FOR A NODE NAMED ONLY BY ITS TREE, so the prefix follows the one
 	// place that names passive rows.
 	return UCataclysmPassiveTree::EnchantmentNameFor(FName(TEXT("SoulCollector_")), 0);
-}
-
-float UCataclysmFervour::GiveBackDecayOnKill(UAbilitySystemComponent* AbilitySystem)
-{
-	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
-	if (!Cataclysm)
-	{
-		return 0.0f;
-	}
-	const float Seconds = Cataclysm->StatForSkill(FName(DecayGivenBackOnKillSecondsStat), FGameplayTagContainer(), 0.0f);
-	if (Seconds <= 0.0f)
-	{
-		return 0.0f;
-	}
-	const float Taken = Cataclysm->TakeFervourDecayedWithin(Seconds);
-	if (Taken <= 0.0f)
-	{
-		return 0.0f;
-	}
-	// A KILL'S PAYMENT, UNSCALED, as ruled: what decay took comes back as it was taken, and Kindred Fires and Borrowed
-	// Time leave the hold to the kill's own stamp.
-	Cataclysm->BeginKillPayment();
-	ON_SCOPE_EXIT
-	{
-		Cataclysm->EndKillPayment();
-	};
-	return RaisePool(AbilitySystem, Taken);
-}
-
-float UCataclysmFervour::ClaimOnDeath(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
-{
-	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
-	if (!Cataclysm || !Slain)
-	{
-		return 0.0f;
-	}
-	const float Within = Cataclysm->StatForSkill(FName(ClaimedWithinSecondsStat), FGameplayTagContainer(), 0.0f);
-	if (Within <= 0.0f)
-	{
-		return 0.0f;
-	}
-	// THE RECORD IS KEPT ON THE STRUCK, keyed by the striker: `NoteStruckBy`. -1 is never struck by this character.
-	const UCataclysmAbilitySystemComponent* Theirs =
-		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Slain));
-	const float Since = Theirs ? Theirs->SecondsSinceStruckBy(AbilitySystem) : -1.0f;
-	if (Since < 0.0f || Since > Within)
-	{
-		return 0.0f;
-	}
-	return GainOnOwnKill(AbilitySystem, Slain);
 }
 
 void UCataclysmFervour::BurstTheSlain(AActor* Killer, const AActor* Slain, const FVector& At, float SlainMaximum,
@@ -192,8 +138,7 @@ bool UCataclysmFervour::CreditAFollowersKill(UAbilitySystemComponent* AbilitySys
 		return false;
 	}
 
-	// IN THE ORDER THE CHARACTER'S OWN KILL TAKES: what decay took given back, the payment, then the stamp.
-	GiveBackDecayOnKill(AbilitySystem);
+	// IN THE ORDER THE CHARACTER'S OWN KILL TAKES: the payment, then the stamp.
 	GainOnOwnKill(AbilitySystem, Notice.Victim);
 	NoteOwnKill(AbilitySystem, Notice.Victim);
 	// AND GRIM WAKE'S MARK on the enemies near the body (the Death trees' slice C4c2), as for an own kill.
@@ -256,12 +201,7 @@ float UCataclysmFervour::RaisePool(UAbilitySystemComponent* AbilitySystem, float
 		return 0.0f;
 	}
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Added);
-	const float Rise = AbilitySystem->GetNumericAttribute(Pool) - Before;
-	if (Rise > 0.0f)
-	{
-		AfterPoolRose(AbilitySystem, Rise);
-	}
-	return Rise;
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
 float UCataclysmFervour::KillDecayHoldFullSeconds(const UAbilitySystemComponent* AbilitySystem)
@@ -278,39 +218,6 @@ float UCataclysmFervour::KillDecayHoldFullSeconds(const UAbilitySystemComponent*
 	// BEFORE ANY KILL, A COMMON KILL'S GRACE, as ruled: the grace rows are written against the slain creature's rung,
 	// and a common creature is rung 0.
 	return FMath::Max(0.0f, Cataclysm->StatAsIfAgainstRarity(FName(KillDecayGraceSecondsStat), 0, 0.0f));
-}
-
-void UCataclysmFervour::AfterPoolRose(UAbilitySystemComponent* AbilitySystem, float Rise)
-{
-	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
-	if (!Cataclysm || Rise <= 0.0f)
-	{
-		return;
-	}
-
-	// A KILL'S PAYMENT SETS THE HOLD ONLY THROUGH THE KILL'S OWN STAMP, which follows it: ruled by the coordinating
-	// session on 2026-11-25. Kindred Fires' "holds off decay as a kill does" is about Fervour from other sources; a kill
-	// already holds off decay by its own grace, and a restart here would give a common kill inside an Elite kill's hold
-	// the Elite's 8 seconds.
-	if (Cataclysm->IsPayingForAKill())
-	{
-		return;
-	}
-
-	// KINDRED FIRES: ANY OTHER RISE restarts the hold at its full length.
-	if (Cataclysm->StatForSkill(FName(HoldRestartedByAnyGainStat), FGameplayTagContainer(), 0.0f) > 0.0f)
-	{
-		Cataclysm->RestartKillDecayHold(KillDecayHoldFullSeconds(AbilitySystem));
-		return;
-	}
-
-	// BORROWED TIME: otherwise a rise lengthens a hold still running, capped at its full length.
-	const float Extension =
-		Cataclysm->StatForSkill(FName(HoldExtendedOnGainSecondsStat), FGameplayTagContainer(), 0.0f);
-	if (Extension > 0.0f)
-	{
-		Cataclysm->ExtendKillDecayHold(Extension, KillDecayHoldFullSeconds(AbilitySystem));
-	}
 }
 
 FGameplayTag UCataclysmFervour::LeechTag()
@@ -394,34 +301,6 @@ float UCataclysmFervour::GainFromDamage(UAbilitySystemComponent* AbilitySystem,
 {
 	return Move(AbilitySystem, FName(FromDamageStat), HealthLost, HitTags,
 				/*Sign=*/1.0f);
-}
-
-float UCataclysmFervour::LoseFromDamage(UAbilitySystemComponent* AbilitySystem, float HealthLost)
-{
-	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
-	if (!Cataclysm || HealthLost <= 0.0f || !Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>())
-	{
-		return 0.0f;
-	}
-	const float PerFervour =
-		Cataclysm->StatForSkill(FName(HealthPercentLostPerFervourLostStat), FGameplayTagContainer(), 0.0f);
-	const float MaximumHealth = Cataclysm->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
-	if (PerFervour <= 0.0f || MaximumHealth <= 0.0f)
-	{
-		return 0.0f;
-	}
-	const int32 Whole =
-		Cataclysm->AccumulateHealthLostForFervour(HealthLost / MaximumHealth * 100.0f, PerFervour);
-	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
-	const float Before = Cataclysm->GetNumericAttribute(Pool);
-	// NEVER BELOW NOUGHT, AND NOT STOPPED BY MISER'S GRIP'S FLOOR, which is about decay, as ruled.
-	const float Taken = FMath::Min(static_cast<float>(Whole), FMath::Max(0.0f, Before));
-	if (Taken <= 0.0f)
-	{
-		return 0.0f;
-	}
-	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
-	return Before - Cataclysm->GetNumericAttribute(Pool);
 }
 
 float UCataclysmFervour::GainFromHealthCost(
@@ -1416,9 +1295,9 @@ float UCataclysmFervour::GainStated(UAbilitySystemComponent* AbilitySystem, floa
 		return 0.0f;
 	}
 
-	// A KILL'S PAYMENT, MARKED FOR ITS WHOLE LENGTH, as `GainOnOwnKill` marks its own: opened before the rate is asked,
-	// so Any Fuel's condition refuses on it, and held through `RaisePool`, so Kindred Fires and Borrowed Time leave the
-	// hold to the kill. The Death skills merge, obligation 4 (the coordinating session's ruling on slice C4b1).
+	// A KILL'S PAYMENT, MARKED FOR ITS WHOLE LENGTH, as `GainOnOwnKill` marks its own: opened before the rate is asked
+	// and held through `RaisePool`. The Death skills merge, obligation 4 (the coordinating session's ruling on slice
+	// C4b1). Its readers, Any Fuel's condition and Kindred Fires and Borrowed Time, were retired by issue #2951.
 	UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
 	const bool bMarked = bForAKill && Paying;
 	if (bMarked)
@@ -1527,16 +1406,6 @@ void UCataclysmFervour::NoteOwnKill(UAbilitySystemComponent* AbilitySystem, cons
 	Cataclysm->NoteOwnKill(Grace);
 }
 
-const TCHAR* UCataclysmFervour::PerKillExtraChanceStat = TEXT("fervour_per_kill_extra_chance");
-
-/**
- * Pins the roll `GainOnOwnKill` makes against Gleaning's chance, 0 to 100, for tests. Negative, the default, rolls. The
- * same shape as `Cataclysm.CooldownResetRoll`. The Death trees' slice C4a (2026-11-25).
- */
-static TAutoConsoleVariable<float> CVarKillFervourExtraRoll(
-	TEXT("Cataclysm.KillFervourExtraRoll"), -1.0f,
-	TEXT("Pins the roll a kill makes against its chance of 1 extra Fervour (0-100); negative rolls."));
-
 float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, const AActor* Slain)
 {
 	if (!AbilitySystem)
@@ -1554,8 +1423,8 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 		return 0.0f;
 	}
 
-	// A KILL'S PAYMENT, MARKED FOR ITS WHOLE LENGTH (the Death trees' slice C4b1, 2026-11-25), so Any Fuel's condition
-	// refuses on the rate asked below and Borrowed Time leaves the hold to this kill's own stamp.
+	// A KILL'S PAYMENT, MARKED FOR ITS WHOLE LENGTH (the Death trees' slice C4b1, 2026-11-25), so
+	// `UCataclysmAbilitySystemComponent::IsPayingForAKill` answers true while the rate below is asked.
 	UCataclysmAbilitySystemComponent* Paying = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
 	Paying->BeginKillPayment();
 	ON_SCOPE_EXIT
@@ -1565,28 +1434,13 @@ float UCataclysmFervour::GainOnOwnKill(UAbilitySystemComponent* AbilitySystem, c
 
 	// ASKED AGAINST THE SLAIN CREATURE, so its rarity rung can pick the row. NO TAGS: the generator pays for the kill,
 	// not for the skill that made it. NO FALLBACK BUT NOUGHT: the stat has no gameplay attribute.
-	float PerKill = Cataclysm->StatForSkill(
+	const float PerKill = Cataclysm->StatForSkill(
 		FName(PerKillStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain);
 	if (PerKill <= 0.0f)
 	{
 		// EVERY CHARACTER IN THE GAME WITHOUT A DEATH STARTING NODE OR THE BULWARK'S (which pays 1 a kill since the final
 		// bundle, 2026-11-26).
 		return 0.0f;
-	}
-
-	// AND GLEANING'S CHANCE OF ONE MORE, rolled on each kill (the Death trees' slice C4a). A chance of 100 or more is
-	// always, compared rather than rolled, as a cooldown reset's is.
-	const float ExtraChance = Cataclysm->StatForSkill(
-		FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f,
-		false, Slain);
-	if (ExtraChance > 0.0f)
-	{
-		const float Pinned = CVarKillFervourExtraRoll.GetValueOnAnyThread();
-		const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
-		if (ExtraChance >= 100.0f || Roll < ExtraChance)
-		{
-			PerKill += 1.0f;
-		}
 	}
 
 	const FGameplayAttribute Pool =
@@ -1811,8 +1665,7 @@ void UCataclysmFervour::CreditAKillWithoutADeath(UAbilitySystemComponent* Abilit
 	{
 		return;
 	}
-	// IN THE KILL HANDLER'S ORDER: what decay took given back, the payment, then the stamp, then the marks.
-	GiveBackDecayOnKill(AbilitySystem);
+	// IN THE KILL HANDLER'S ORDER: the payment, then the stamp, then the marks.
 	GainOnOwnKill(AbilitySystem, Slain);
 	NoteOwnKill(AbilitySystem, Slain);
 	MarkNearAKill(AbilitySystem, Slain, Slain->GetActorLocation());

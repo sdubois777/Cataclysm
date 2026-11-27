@@ -295,7 +295,7 @@ bool FCataclysmClassKillFervourDecayTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassKillFervourSlowerDecayTest,
-	"Cataclysm.ClassKillFervour.HoarderAndColdStorageSlowTheDecayAndMomentumDelaysTheDrain",
+	"Cataclysm.ClassKillFervour.MomentumDelaysTheShadowsDrain",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmClassKillFervourSlowerDecayTest::RunTest(const FString&)
@@ -305,27 +305,8 @@ bool FCataclysmClassKillFervourSlowerDecayTest::RunTest(const FString&)
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	// HOARDER, "You lose 50% less Fervour to decay": 2.5 a second.
-	FCataclysmPassiveAllocation Hoarding;
-	Hoarding.Add(FName(TEXT("SoulCollector_basic_spine_000")), 1);
-	Hoarding.Add(FName(TEXT("SoulCollector_keystone_a_kB")), 1);
-	{
-		const FKillFervourHolder Holder(World);
-		Holder.AbilitySystem->SetStatInputs(RealLinesFor(Hoarding, {DeathTypeName()}));
-		Holder.SetFervour(50.0f);
-		TestEqual(TEXT("with Hoarder the decay takes 2.5 a second"),
-				  UCataclysmFervour::KillDecayStep(Holder.AbilitySystem, 1.0f), -2.5f, 0.001f);
-	}
-
-	// AND COLD STORAGE, EIGHT POINTS, "5% slower per point": 5 x 0.6 x 0.5 = 1.5 a second.
-	Hoarding.Add(FName(TEXT("SoulCollector_basic_a_b2")), 8);
-	{
-		const FKillFervourHolder Holder(World);
-		Holder.AbilitySystem->SetStatInputs(RealLinesFor(Hoarding, {DeathTypeName()}));
-		Holder.SetFervour(50.0f);
-		TestEqual(TEXT("with Cold Storage too it takes 1.5 a second"),
-				  UCataclysmFervour::KillDecayStep(Holder.AbilitySystem, 1.0f), -1.5f, 0.001f);
-	}
+	// HOARDER AND COLD STORAGE, WHICH SLOWED THE SOUL COLLECTOR'S DECAY, were here until the Soul Collector keystone rework
+	// (issue #2951) gave both nodes other rows. Their new rows are read by `Cataclysm.SoulCollectorRework.`.
 
 	// MOMENTUM, "2 seconds later after your last kill: 6 seconds rather than 4", on the Shadow.
 	FCataclysmPassiveAllocation Pacing;
