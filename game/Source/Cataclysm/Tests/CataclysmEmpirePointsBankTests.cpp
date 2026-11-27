@@ -29,6 +29,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Banking what a defeated dungeon earns into the account, saving the bank, and showing it. Issue #52, the first slice.
@@ -126,6 +127,7 @@ namespace CataclysmEmpirePointsBankTest
 
 		// THE GAME INSTANCE'S RUN, which `ACataclysmDungeonGameMode::EmpireRun` reads before its test seam.
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(1);
 		Out.Instance->EmpireRun = Out.Run;
 		return Out;
@@ -270,6 +272,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankFullTest,
 
 bool FCataclysmEmpirePointsBankFullTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 
 	FBankScene Scene = MakeScene();
@@ -324,6 +327,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankBossTest,
 
 bool FCataclysmEmpirePointsBankBossTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 
 	FBankScene Scene = MakeScene(/*bSoloSelfFound=*/false, /*bWriting=*/true);
@@ -339,6 +343,7 @@ bool FCataclysmEmpirePointsBankBossTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* WonRun = Scene.Instance->BeginACharactersEmpireRun(
 		/* Seed */ 11, Scene.State->GetCataclysmOrderSeed(), ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
 		/* DifficultyTier */ 1);
@@ -395,6 +400,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankHalfTest,
 
 bool FCataclysmEmpirePointsBankHalfTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 
 	FBankScene Scene = MakeScene();
@@ -437,6 +443,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankThirdsTest,
 
 bool FCataclysmEmpirePointsBankThirdsTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 
 	FBankScene Scene = MakeScene();
@@ -491,6 +498,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankDeathTest,
 
 bool FCataclysmEmpirePointsBankDeathTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 
 	FBankScene Scene = MakeScene();
@@ -544,6 +552,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankSoloTest,
 
 bool FCataclysmEmpirePointsBankSoloTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 
 	FBankScene Scene = MakeScene(/*bSoloSelfFound=*/true);
@@ -593,6 +602,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankRefusedTest,
 
 bool FCataclysmEmpirePointsBankRefusedTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 
 	FBankScene Scene = MakeScene(/*bSoloSelfFound=*/false, /*bWriting=*/true);
@@ -672,6 +682,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsBankRoundTripTest,
 
 bool FCataclysmEmpirePointsBankRoundTripTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 
 	FBankScene Scene = MakeScene(/*bSoloSelfFound=*/false, /*bWriting=*/true);
@@ -749,6 +760,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsAccountV1MigratesTest,
 
 bool FCataclysmEmpirePointsAccountV1MigratesTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	FString Text;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Account_v1.json"), Text, Reason))
@@ -826,6 +838,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsAccountV2ReadsTest,
 
 bool FCataclysmEmpirePointsAccountV2ReadsTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	FString Text;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Account_v8.json"), Text, Reason))
@@ -873,6 +886,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsMapLineTest,
 
 bool FCataclysmEmpirePointsMapLineTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmEmpirePointsBankTest;
 	using Layout = UCataclysmEmpireMapLayout;
 

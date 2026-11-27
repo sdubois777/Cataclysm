@@ -25,6 +25,7 @@
 #include "Empire/CataclysmRoster.h"
 #include "Tests/CataclysmSaveExampleRecord.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The clock, the triggers and the death write. Issue #750.
@@ -714,6 +715,7 @@ bool FCataclysmSaveWriterGathersTheClock::RunTest(const FString&)
 	TestEqual(TEXT("and the part of a day too"), Record->PartialDay, 0.5f,
 			  0.0001f);
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 
 	TestTrue(TEXT("a run that has begun reads"),
@@ -795,6 +797,7 @@ bool FCataclysmSaveWriterWritesTheEmpiresDay::RunTest(const FString&)
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
 	World->SetGameInstance(Instance);
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
 	if (!TestNotNull(TEXT("a run was begun"), Run))
 	{
@@ -965,6 +968,7 @@ bool FCataclysmSaveWriterGathersTheCities::RunTest(const FString&)
 			  Record->Cities.Num(), 1);
 	TestEqual(TEXT("and the slot count too"), Record->CityUpgradeSlots, 2);
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 
 	if (!TestTrue(TEXT("a run that has begun reads"),
@@ -1082,6 +1086,7 @@ bool FCataclysmSaveWriterGathersVoidStacks::RunTest(const FString&)
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 
 	UCataclysmEmpireMap* Map = Run->Map;
@@ -1153,6 +1158,7 @@ bool FCataclysmSaveWriterGathersHollowFrom::RunTest(const FString&)
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 
@@ -1253,6 +1259,7 @@ bool FCataclysmSaveWriterWritesTheCities::RunTest(const FString&)
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
 	World->SetGameInstance(Instance);
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten6; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
 	if (!TestNotNull(TEXT("a run was begun"), Run))
 	{
@@ -1358,6 +1365,7 @@ bool FCataclysmSaveWriterRefusesAMismatchedPair::RunTest(const FString&)
 	// proves nothing about the failure this guards against, so the mismatched
 	// states below are built deliberately, one of each kind.
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten7; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 
@@ -1394,6 +1402,7 @@ bool FCataclysmSaveWriterRefusesAMismatchedPair::RunTest(const FString&)
 	// NOW A TIMER SIMPLY MISSING, which leaves the two lists different lengths.
 	{
 		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten8; // Issue #2928: the Cataclysms this run faces are named.
 		Broken->Begin(1);
 		Broken->AdvanceDay();
 		Broken->Clock->Timers.RemoveAt(0);
@@ -1420,6 +1429,7 @@ bool FCataclysmSaveWriterRefusesAMismatchedPair::RunTest(const FString&)
 	// AND A TIMER WITH NO DUNGEON. It would bite a city on behalf of nothing.
 	{
 		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten9; // Issue #2928: the Cataclysms this run faces are named.
 		Broken->Begin(1);
 		Broken->AdvanceDay();
 		Broken->Dungeons.RemoveAt(0);
@@ -1439,6 +1449,7 @@ bool FCataclysmSaveWriterRefusesAMismatchedPair::RunTest(const FString&)
 	// both lists are still the same length.
 	{
 		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten10; // Issue #2928: the Cataclysms this run faces are named.
 		Broken->Begin(1);
 		Broken->AdvanceDay();
 
@@ -1462,6 +1473,7 @@ bool FCataclysmSaveWriterRefusesAMismatchedPair::RunTest(const FString&)
 	// that only compared lengths, or only looked each dungeon up, would pass.
 	{
 		UCataclysmEmpireRun* Broken = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten11; // Issue #2928: the Cataclysms this run faces are named.
 		Broken->Begin(1);
 		Broken->AdvanceDay();
 
@@ -1507,6 +1519,7 @@ bool FCataclysmSaveWriterWritesTheDungeons::RunTest(const FString&)
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
 	World->SetGameInstance(Instance);
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten12; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
 	if (!TestNotNull(TEXT("a run was begun"), Run))
 	{
@@ -1645,6 +1658,7 @@ bool FCataclysmSaveWriterKeepsUpgradeFloorsTest::RunTest(const FString&)
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
 	World->SetGameInstance(Instance);
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten13; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
 	if (!TestNotNull(TEXT("a run was begun"), Run))
 	{
@@ -1759,6 +1773,7 @@ bool FCataclysmSaveWriterScheduleRollsTheSameWave::RunTest(const FString&)
 	constexpr int32 StartingSeed = 4242;
 
 	UCataclysmEmpireRun* Live = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten14; // Issue #2928: the Cataclysms this run faces are named.
 	Live->Begin(StartingSeed, ECataclysmSurgeMode::Both, /*LethalityRung=*/2);
 
 	if (!TestNotNull(TEXT("the run has a scheduler"), Live->Surges.Get())
@@ -2010,6 +2025,7 @@ bool FCataclysmSaveWriterWritesTheSchedule::RunTest(const FString&)
 	// NOT THE DEFAULT MODE OR THE DEFAULT RUNG, so that a writer which never
 	// asked for the schedule would leave the record's defaults in place and be
 	// caught, rather than writing the right answer by accident.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten15; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(
 		StartingSeed, ECataclysmSurgeMode::Both, /*LethalityRung=*/2);
 
@@ -2117,6 +2133,7 @@ bool FCataclysmSaveWriterGathersLeftEdict::RunTest(const FString&)
 {
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 	UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten16; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 
 	const FName Silence(TEXT("Celestial_Edict_of_Silence"));
@@ -2374,7 +2391,9 @@ bool FCataclysmSaveWriterProgressRoundTripTest::RunTest(const FString&)
 	// the values set here in every field, so the comparison can tell a gathered value from a default.
 	UCataclysmEmpireRun* Fresh = NewObject<UCataclysmEmpireRun>();
 	UCataclysmEmpireRun* Played = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten17; // Issue #2928: the Cataclysms this run faces are named.
 	Fresh->Begin(1);
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten18; // Issue #2928: the Cataclysms this run faces are named.
 	Played->Begin(1);
 	const ECataclysmType Faced = Achieve(*Played);
 
@@ -2450,6 +2469,7 @@ bool FCataclysmSaveWriterWritesTheProgressTest::RunTest(const FString&)
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
 	World->SetGameInstance(Instance);
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten19; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1);
 	if (!TestNotNull(TEXT("a run was begun"), Run))
 	{
@@ -2527,7 +2547,9 @@ bool FCataclysmSaveWriterIdentityRoundTripTest::RunTest(const FString&)
 	// begun at tier 1 gathers tier 1 and a list of a different length, so the test can tell the two tiers apart.
 	UCataclysmEmpireRun* AtFour = NewObject<UCataclysmEmpireRun>();
 	UCataclysmEmpireRun* AtOne = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten20; // Issue #2928: the Cataclysms this run faces are named.
 	AtFour->Begin(1, ECataclysmSurgeMode::Static, 0, 4);
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten21; // Issue #2928: the Cataclysms this run faces are named.
 	AtOne->Begin(1, ECataclysmSurgeMode::Static, 0, 1);
 
 	UCataclysmRunSave* FromFour = NewObject<UCataclysmRunSave>();
@@ -2596,6 +2618,7 @@ bool FCataclysmSaveWriterWritesTheIdentityTest::RunTest(const FString&)
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
 	World->SetGameInstance(Instance);
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten22; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0, 4);
 	if (!TestNotNull(TEXT("a run was begun"), Run))
 	{

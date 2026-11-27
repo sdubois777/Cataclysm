@@ -14,6 +14,7 @@
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmEmpireTree.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's slice 6a: the gold a kill drops and a city upgrade's price. Issue #2741, the coordinating
@@ -80,6 +81,7 @@ namespace CataclysmEmpireTreeGoldTest
 	UCataclysmEmpireRun* QuietGoldRun(int32 Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();

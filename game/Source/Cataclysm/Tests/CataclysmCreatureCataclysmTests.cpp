@@ -37,6 +37,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Every creature belongs to the Cataclysm that sent its dungeon. Slice B3 of the Death and War plan, 2026-11-25.
@@ -113,6 +114,7 @@ namespace CataclysmCreatureCataclysmTest
 		{
 			Out.Mode->StartPlay();
 		}
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/*InSeed=*/1);
 		Out.Run->AdvanceDay();
 		if (Out.Run->Clock)

@@ -32,6 +32,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's city nodes act on the empire. Issue #2741 slice 3a: the 31 nodes and options the
@@ -108,6 +109,7 @@ namespace CataclysmEmpireTreeCityTest
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 		Run->SetTreeBonuses(Bonuses);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();
@@ -472,6 +474,7 @@ bool FCataclysmEmpireTreeCityBegunTest::RunTest(const FString&)
 	Tree.Add(FortifiedGates, 8);
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 	Run->SetTreeBonuses(BonusesOf(Tree));
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(2741);
 	const FCataclysmCity* Outpost = FirstOf(*Run, ECataclysmCityTier::Outpost);
 	const FCataclysmCity* Pillar = FirstOf(*Run, ECataclysmCityTier::Pillar);
@@ -865,6 +868,7 @@ bool FCataclysmEmpireTreeCityKeptThroughTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	Scene.Instance->BeginEmpireRun(/*Seed*/ 2741, ECataclysmSurgeMode::Static, /*LethalityRung*/ 0, /*DifficultyTier*/ 1);
 	UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(Scene.World, false);
 	FCataclysmCity* Pillar = Run != nullptr && Run->Map != nullptr ? Run->Map->FindMutable(Run->Map->PillarId) : nullptr;
@@ -1371,6 +1375,7 @@ bool FCataclysmEmpireTreeCityThroughTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	Scene.Instance->BeginEmpireRun(/*Seed*/ 2741, ECataclysmSurgeMode::Static, /*LethalityRung*/ 0, /*DifficultyTier*/ 1);
 	UCataclysmEmpireRun* Run = UCataclysmGameInstance::EmpireRunFor(Scene.World, false);
 	const FCataclysmCity* Outpost = Run != nullptr ? FirstOf(*Run, ECataclysmCityTier::Outpost) : nullptr;
@@ -1397,6 +1402,7 @@ bool FCataclysmEmpireTreeCityThroughTest::RunTest(const FString&)
 	Account->EmpireTree.Add(Foundation, 10);
 	UCataclysmEmpireRun* Fresh = NewObject<UCataclysmEmpireRun>();
 	Fresh->SetTreeBonuses(UCataclysmGameInstance::EmpireTreeBonusesFor(Scene.World));
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 	Fresh->Begin(2741);
 	const FCataclysmCity* FreshOutpost = FirstOf(*Fresh, ECataclysmCityTier::Outpost);
 

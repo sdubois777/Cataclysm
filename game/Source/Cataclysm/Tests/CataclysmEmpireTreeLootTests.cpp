@@ -22,6 +22,7 @@
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmEmpireTree.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's player nodes. Issue #2741 slice 5a: the fifteen the coordinating session's D1 to D4 of
@@ -75,6 +76,7 @@ namespace CataclysmEmpireTreeLootTest
 	UCataclysmEmpireRun* QuietLootRun(int32 Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();

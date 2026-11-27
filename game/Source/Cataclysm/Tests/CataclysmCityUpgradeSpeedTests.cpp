@@ -27,6 +27,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's three build nodes, issue #2832, ruled by the coordinating session on 2026-11-21:
@@ -116,6 +117,7 @@ namespace CataclysmCityUpgradeSpeedTest
 		}
 
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2832, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		Out.Instance->BankGold(Out.Partition, Gold);
@@ -156,6 +158,7 @@ bool FCataclysmCityUpgradeSpeedScaffoldingTest::RunTest(const FString&)
 	using namespace CataclysmCityUpgradeSpeedTest;
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* InSeed */ 2832, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 	if (!TestTrue(TEXT("set-up: a run with a map"), Run->Map != nullptr && Run->Map->Cities.Num() > 1))
 	{

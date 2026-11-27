@@ -11,6 +11,7 @@
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmGameMode.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Whether the game tells an empire run which difficulty tier it is. Issue #1444.
@@ -178,6 +179,7 @@ CATACLYSM_TEST(FCataclysmBegunRunTakesTheGamesTierTest,
 	// THE OTHER DOOR. `Cataclysm.EmpireBegin` with a seed, an escalation and a
 	// lethality rung and no fourth argument arrives here, and used to arrive
 	// with a hard 1 behind it.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Instance->BeginEmpireRun(
 		/*Seed*/ 42, ECataclysmSurgeMode::Static, /*LethalityRung*/ 0);
 
@@ -193,6 +195,7 @@ CATACLYSM_TEST(FCataclysmBegunRunTakesTheGamesTierTest,
 
 	// A NAMED TIER STILL WINS, so `Cataclysm.EmpireBegin 1 static 0 8` keeps
 	// doing what it did. The console variable says 5 and this asks for 8.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Named = Instance->BeginEmpireRun(
 		/*Seed*/ 42, ECataclysmSurgeMode::Static, /*LethalityRung*/ 0,
 		ACataclysmGameMode::HighestDifficultyTier);
@@ -256,6 +259,7 @@ CATACLYSM_TEST(FCataclysmRunKeepsItsTierTest,
 
 	// THE NEXT RUN PICKS THE NEW TIER UP, which is what makes the paragraph
 	// above a rule about a run rather than a value nobody can change.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Next = Instance->BeginEmpireRun(/*Seed*/ 3);
 	TestEqual(TEXT("a fresh run takes the tier now set"),
 			  Next->DifficultyTier, 7);
@@ -480,6 +484,7 @@ CATACLYSM_TEST(FCataclysmEmpireAdvanceNamesHitCitiesTest,
 	World->SetGameInstance(Instance);
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>(Instance);
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Run->Dungeons.Empty();

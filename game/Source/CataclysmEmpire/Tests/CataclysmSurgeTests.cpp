@@ -9,6 +9,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for the surge scheduler, issue #1083.
@@ -2398,6 +2399,7 @@ bool FCataclysmSurgePlainIsAnExceptionTest::RunTest(const FString& Parameters)
 	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 
 		if (!TestNotNull(TEXT("the run has a map"), Run->Map.Get()))
@@ -3003,6 +3005,7 @@ bool FCataclysmSurgeQuestCampaignTest::RunTest(const FString& Parameters)
 	for (int32 Seed = 1; Seed <= Campaigns; ++Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 
 		if (!TestNotNull(TEXT("the run has a map"), Run->Map.Get()))
@@ -4438,6 +4441,7 @@ bool FCataclysmSurgeQuestSubTypeRunTest::RunTest(const FString& Parameters)
 	for (int32 Seed = 1; Seed <= MostCampaigns && !Enough(); ++Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
 				   /* InDifficultyTier */ 8);
 		++Campaigns;

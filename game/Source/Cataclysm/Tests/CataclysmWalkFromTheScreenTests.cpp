@@ -19,6 +19,7 @@
 #include "Interface/CataclysmWalkFromTheScreen.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Walking a dungeon from the empire screens. Issue #2715, 2026-11-03.
@@ -46,6 +47,7 @@ namespace CataclysmWalkFromTheScreenTest
 	UCataclysmEmpireRun* MakeWalkRun()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 4242, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		return Run;
 	}
@@ -74,6 +76,7 @@ namespace CataclysmWalkFromTheScreenTest
 	UCataclysmEmpireRun* MakeWalkRunWithItsBossOpen()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 11, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* InDifficultyTier */ 1);
 		Run->AdvanceDays(4);
 

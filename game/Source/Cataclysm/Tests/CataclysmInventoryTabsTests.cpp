@@ -31,6 +31,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * THE INVENTORY'S THREE TABS. Issue #2849, the owner's request of 2026-11-22 -- "I think we need to add tabs to the
@@ -113,6 +114,7 @@ namespace CataclysmInventoryTabsTest
 			State->SetOwnGold(1000000);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2849, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		if (Out.Character && Out.Character->GetInventory() && Out.Character->GetEquipment())

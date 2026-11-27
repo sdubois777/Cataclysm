@@ -30,6 +30,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The Cataclysmic Forge's upgrade and combine: the owner's ruling of 2026-11-19, "build it next", and the coordinating
@@ -125,6 +126,7 @@ namespace CataclysmForgeTest
 		}
 
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2766, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 
