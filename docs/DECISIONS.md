@@ -86,6 +86,22 @@ clock at nought. The test gave both the same extra beat, so the Horde's echo had
 The test now gives the Horde no extra beat. The game is unchanged. EHS's and EHN's registrations above were corrected
 with it, before any proof was run. The next window registers the same: 6106, all succeeding.
 
+### Window eh-w2, the narrowed re-run at `2c05e73a1`
+
+Asked for by the coordinating session on 2026-11-27, since only the test file had changed after a whole suite that
+otherwise passed: the build, the changed test alone by its full name, ruff, and the three proofs.
+
+- **Build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.53.cpp".
+- **The changed test alone**: "Tests: 1 tests performed, 1 succeeded, 0 failed".
+- **ruff**: "All checks passed!".
+- **EHS PROVED**: with the break in, the test failed on "A HORDE FLOOR'S ECHO IS RAISED WITH THE FLOOR'S MULTIPLIER"
+  (1 where 30 was expected), "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY"
+  and "and at ten it is gone", as registered; restored, "1 tests performed, 1 succeeded, 0 failed".
+- **EHN PROVED**: with the break in, it failed on "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN
+  NOTICE DISTANCE AWAY" and "and at ten it is gone", as registered; restored, it passed.
+- **EHC PROVED**: with the break in, it failed on "AND IS STILL STANDING WHEN IT REACHES ITS KIND'S NOTICE DISTANCE",
+  "its clock starts there" and "and at ten it is gone", as registered; restored, it passed.
+
 ---
 
 ## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
