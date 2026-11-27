@@ -161,7 +161,10 @@ def the_built_list_as_written(request, monkeypatch):
 
     def held(cfg, seed):
         if cfg.BUILT_CATACLYSMS is default:
-            cfg = dataclasses.replace(cfg, BUILT_CATACLYSMS=BUILT_ON_2026_11_26)
+            cfg = dataclasses.replace(cfg, BUILT_CATACLYSMS=held.built_list)
         return real(cfg, seed)
 
+    # ON THE FUNCTION, so a test reaches the held list through `engine.cataclysm_order_for.built_list` and never has
+    # to import this file: `import conftest` can find `sim/tests/conftest.py` first, depending on the import path.
+    held.built_list = BUILT_ON_2026_11_26
     monkeypatch.setattr(engine, "cataclysm_order_for", held)
