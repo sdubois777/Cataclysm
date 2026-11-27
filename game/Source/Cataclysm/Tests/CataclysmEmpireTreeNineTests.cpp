@@ -1037,62 +1037,34 @@ bool FCataclysmEmpireTreeScoutsLeftTest::RunTest(const FString&)
 // ---------------------------------------------------------------------------
 
 /**
- * The files from before slice 9 migrate to nothing spent, saved or bribed, and the committed files read the figures
- * they state. `Account_v6.json` migrates with 0 spent, keeping its 1234567 gold and its 2500 owed; `Character_v13.json`
- * with 0 spent, keeping its 1500 owed; `Run_v14.json` with no city bailed out, no dungeon a bonus one, no bonus clear
- * and no bribe, keeping its 3 clears since the last surge. `Account_v8.json` (`Account_v7.json` until #47 slice F6a) reads 75000.5 spent, `Character_v18.json`
- * (`Character_v17.json` until #47 slice F6a, `Character_v16.json` until issue #837 slice 1, `Character_v15.json` until issue #2849 and `Character_v14.json` before it, which hold the same) 50000.25 (unrounded doubles, V20), and the committed run file its first city bailed out and its second
- * not, 2 bonus clears and the bribe spent, each read
- * rather than migrated. The run file is `Run_v22.json` since issue #51 slice B5 (`Run_v21.json` from issue #51 slice B4, `Run_v20.json` from issue #2864, `Run_v19.json` from issue #51, `Run_v18.json` from issue #2848, `Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json`, which holds the same, from
- * slice 9). Prints "NINE FILES".
+ * The committed files read the slice 9 figures they state: `Account_v8.json` 75000.5 spent, `Character_v18.json`
+ * 50000.25 (unrounded doubles, V20), and `Run_v22.json` its first city bailed out and its second not, 2 bonus clears and
+ * the bribe spent. Its half on the files from before slice 9 (`Account_v6.json`, `Character_v13.json`, `Run_v14.json`)
+ * went with the save migrations on 2026-11-27 (issue #2928 slice 12), and the test's name lost "ThePreviousFilesMigrate".
+ * Prints "NINE FILES".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeNineSavesFilesTest,
-	"Cataclysm.EmpireTreeNineSaves.ThePreviousFilesMigrateAndTheCommittedOnesReadTheirFigures",
+	"Cataclysm.EmpireTreeNineSaves.TheCommittedFilesReadTheirFigures",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEmpireTreeNineSavesFilesTest::RunTest(const FString&)
 {
 	using namespace CataclysmEmpireTreeNineTest;
 
-	ECataclysmSaveLoadResult OldAccountResult = ECataclysmSaveLoadResult::NotValidJson;
-	ECataclysmSaveLoadResult OldCharacterResult = ECataclysmSaveLoadResult::NotValidJson;
-	ECataclysmSaveLoadResult OldRunResult = ECataclysmSaveLoadResult::NotValidJson;
 	ECataclysmSaveLoadResult AccountResult = ECataclysmSaveLoadResult::NotValidJson;
 	ECataclysmSaveLoadResult CharacterResult = ECataclysmSaveLoadResult::NotValidJson;
 	ECataclysmSaveLoadResult RunResult = ECataclysmSaveLoadResult::NotValidJson;
-	const UCataclysmAccountSave* OldAccount =
-		ReadFixture<UCataclysmAccountSave>(*this, TEXT("Account_v6.json"), OldAccountResult);
-	const UCataclysmCharacterSave* OldCharacter =
-		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v13.json"), OldCharacterResult);
-	const UCataclysmRunSave* OldRun = ReadFixture<UCataclysmRunSave>(*this, TEXT("Run_v14.json"), OldRunResult);
 	const UCataclysmAccountSave* Account =
 		ReadFixture<UCataclysmAccountSave>(*this, TEXT("Account_v8.json"), AccountResult);
 	const UCataclysmCharacterSave* Character =
 		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v18.json"), CharacterResult);
 	const UCataclysmRunSave* Run = ReadFixture<UCataclysmRunSave>(*this, TEXT("Run_v22.json"), RunResult);
-	if (!OldAccount || !OldCharacter || !OldRun || !Account || !Character || !Run)
+	if (!Account || !Character || !Run)
 	{
 		return false;
 	}
-	bool bNoneBailedOut = OldRun->Cities.Num() > 0;
-	for (const FCataclysmCity& City : OldRun->Cities)
-	{
-		bNoneBailedOut &= !City.bBailedOut;
-	}
-	bool bNoBonus = OldRun->Dungeons.Num() > 0;
-	for (const FCataclysmDungeon& Dungeon : OldRun->Dungeons)
-	{
-		bNoBonus &= !Dungeon.bBonus;
-	}
-	AddInfo(FString::Printf(TEXT("NINE FILES: account v6 %s, %.2f spent, %lld gold, %lld owed; character v13 %s, %.2f "
-								 "spent, %lld owed; run v14 %s, bailed out none %d, bonus none %d, %d bonus clears, bribed "
-								 "%d, %d since the surge; account v7 %s %.2f; character v16 %s %.2f; run v18 %s, %d cities "
-								 "first %d second %d, %d, %d"),
-							FCataclysmSaveStorage::Describe(OldAccountResult), OldAccount->GoldSpentOnCityUpgrades,
-							OldAccount->Gold, OldAccount->GoldOwed, FCataclysmSaveStorage::Describe(OldCharacterResult),
-							OldCharacter->GoldSpentOnCityUpgrades, OldCharacter->GoldOwed,
-							FCataclysmSaveStorage::Describe(OldRunResult), bNoneBailedOut ? 1 : 0, bNoBonus ? 1 : 0,
-							OldRun->BonusDungeonsCleared, OldRun->bBribedThisSurge ? 1 : 0, OldRun->ClearsSinceLastSurge,
+	AddInfo(FString::Printf(TEXT("NINE FILES: account v8 %s %.2f; character v18 %s %.2f; run v22 %s, %d cities first %d "
+								 "second %d, %d, %d"),
 							FCataclysmSaveStorage::Describe(AccountResult), Account->GoldSpentOnCityUpgrades,
 							FCataclysmSaveStorage::Describe(CharacterResult), Character->GoldSpentOnCityUpgrades,
 							FCataclysmSaveStorage::Describe(RunResult), Run->Cities.Num(),
@@ -1100,20 +1072,7 @@ bool FCataclysmEmpireTreeNineSavesFilesTest::RunTest(const FString&)
 							Run->Cities.Num() > 1 && Run->Cities[1].bBailedOut ? 1 : 0, Run->BonusDungeonsCleared,
 							Run->bBribedThisSurge ? 1 : 0));
 
-	const int32 Migrated = static_cast<int32>(ECataclysmSaveLoadResult::Migrated);
 	const int32 Loaded = static_cast<int32>(ECataclysmSaveLoadResult::Loaded);
-	TestEqual(TEXT("Account_v6.json is migrated"), static_cast<int32>(OldAccountResult), Migrated);
-	TestEqual(TEXT("to nothing spent"), OldAccount->GoldSpentOnCityUpgrades, 0.0);
-	TestTrue(TEXT("keeping its gold and its debt"), OldAccount->Gold == 1234567 && OldAccount->GoldOwed == 2500);
-	TestEqual(TEXT("Character_v13.json is migrated"), static_cast<int32>(OldCharacterResult), Migrated);
-	TestEqual(TEXT("to nothing spent"), OldCharacter->GoldSpentOnCityUpgrades, 0.0);
-	TestEqual(TEXT("keeping its debt"), OldCharacter->GoldOwed, static_cast<int64>(1500));
-	TestEqual(TEXT("Run_v14.json is migrated"), static_cast<int32>(OldRunResult), Migrated);
-	TestTrue(TEXT("to no city bailed out"), bNoneBailedOut);
-	TestTrue(TEXT("no dungeon a bonus one"), bNoBonus);
-	TestEqual(TEXT("no bonus clear"), OldRun->BonusDungeonsCleared, 0);
-	TestFalse(TEXT("and no bribe"), OldRun->bBribedThisSurge);
-	TestEqual(TEXT("keeping its clears since the last surge"), OldRun->ClearsSinceLastSurge, 3);
 	TestEqual(TEXT("Account_v8.json is read"), static_cast<int32>(AccountResult), Loaded);
 	TestEqual(TEXT("with 75000.5 spent, the fraction kept"), Account->GoldSpentOnCityUpgrades, 75000.5);
 	TestEqual(TEXT("Character_v18.json is read"), static_cast<int32>(CharacterResult), Loaded);

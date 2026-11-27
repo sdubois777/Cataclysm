@@ -19,7 +19,6 @@
 #include "Player/CataclysmEmpireTree.h"
 #include "Save/CataclysmSaveApply.h"
 #include "Save/CataclysmSaveGather.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
@@ -96,21 +95,6 @@ namespace CataclysmEmpireTreeDropsTest
 		State.WalkDays = WalkDays;
 		State.FloorsAdded = FloorsAdded;
 		return State;
-	}
-
-	/** A run file read from the committed fixtures, or null after saying why. */
-	UCataclysmRunSave* ReadDropsRunFixture(FAutomationTestBase& Test, const FString& Text, const TCHAR* Name)
-	{
-		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-		FString Message;
-		UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
-			Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
-		if (Read == nullptr)
-		{
-			Test.AddError(FString::Printf(TEXT("%s would not load: %s -- %s"), Name,
-										  FCataclysmSaveStorage::Describe(Result), *Message));
-		}
-		return Read;
 	}
 
 	/** The drops lying in a world: gear items, crafting material drops, and the material drops' quantities by tier. */
@@ -440,94 +424,6 @@ bool FCataclysmEmpireTreeDropsSavedTest::RunTest(const FString&)
 	TestTrue(TEXT("set-up: it loaded"), bLoaded);
 	TestTrue(TEXT("the file holds the count"), Json.Contains(TEXT("\"ClearsSinceLastDeath\": 4")));
 	TestEqual(TEXT("4 clears since the last death"), Loaded->ClearsSinceLastDeath, 4);
-	return true;
-}
-
-/**
- * `Run_v10.json`, written before the count, migrates to the clears it can prove: it records a death, on day 103, so 0;
- * the same file with no death recorded gets its 14 clears, every one made without dying. Every other field is kept.
- * CONTROL: the committed run file, `Run_v22.json` since issue #51 slice B5 (`Run_v21.json` from issue #51 slice B4, `Run_v20.json` from issue #2864, `Run_v19.json` from issue #51, `Run_v18.json` from issue #2848, `Run_v17.json` from issue #2840, `Run_v16.json` from issue #2838, `Run_v15.json` from issue #2741 slice 9, `Run_v14.json` from issue #46, `Run_v13.json` from issue #2825, `Run_v12.json` from slice 6b), reads 5. Prints "CLEAN CLEARS MIGRATED".
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeDropsMigrationTest,
-	"Cataclysm.EmpireTreeDrops.ARunFileFromVersion10MigratesWithTheClearsItCanProve",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmEmpireTreeDropsMigrationTest::RunTest(const FString&)
-{
-	using namespace CataclysmEmpireTreeDropsTest;
-
-	FString Text;
-	FString CurrentText;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v10.json"), Text, Reason)
-		|| !CataclysmSaveFixtures::Read(TEXT("Run_v22.json"), CurrentText, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-	const FString DeathLine = TEXT("\"LastDeathDungeonName\": \"the Siege dungeon on Outpost (-3,0)\"");
-	if (!TestTrue(TEXT("set-up: Run_v10.json records the death on day 103"), Text.Contains(DeathLine)))
-	{
-		return false;
-	}
-	const FString NoDeathText = Text.Replace(*DeathLine, TEXT("\"LastDeathDungeonName\": \"\""));
-
-	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Run_v10.json is a JSON object with no clean clear count"),
-				  Stepped.IsValid() && !Stepped->HasField(TEXT("ClearsSinceLastDeath"))))
-	{
-		return false;
-	}
-	FString StepMessage;
-	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
-		GetDefault<UCataclysmRunSave>()->MigrationSteps(), UCataclysmRunSave::SchemaVersionNow, Stepped.ToSharedRef(),
-		StepMessage);
-	double Written = -1.0;
-	const bool bWritten = Stepped->TryGetNumberField(TEXT("ClearsSinceLastDeath"), Written);
-
-	const UCataclysmRunSave* Died = ReadDropsRunFixture(*this, Text, TEXT("Run_v10.json"));
-	const UCataclysmRunSave* NoDeath = ReadDropsRunFixture(*this, NoDeathText, TEXT("Run_v10.json with no death"));
-	const UCataclysmRunSave* Current = ReadDropsRunFixture(*this, CurrentText, TEXT("Run_v22.json"));
-	if (!Died || !NoDeath || !Current)
-	{
-		return false;
-	}
-
-	// EVERY OTHER FIELD KEPT: the version 10 file at the current version with what the step writes, compared with what
-	// the record writes back.
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
-	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
-	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
-	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
-	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
-	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
-	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
-	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
-	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
-	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
-	FString Rewritten;
-	FString Error;
-	FString Where;
-	const bool bSame = FCataclysmSaveStorage::ToJson(Died, Rewritten, Error)
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	AddInfo(FString::Printf(TEXT("CLEAN CLEARS MIGRATED: the step %d (%s); written %s %.0f; with the death %d at version "
-								 "%d; with none %d of %d clears; Run_v22.json %d; the rest %s"),
-							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"), Written,
-							Died->ClearsSinceLastDeath, Died->SchemaVersion, NoDeath->ClearsSinceLastDeath,
-							NoDeath->DungeonsCleared, Current->ClearsSinceLastDeath, bSame ? TEXT("kept") : *Where));
-	TestEqual(TEXT("the chain migrates the version 10 file"), static_cast<int32>(Stepping),
-			  static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("the step writes a count of 0 for a run that records a death"), bWritten && Written == 0.0);
-	TestEqual(TEXT("it arrives at the current version"), Died->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
-	TestEqual(TEXT("with the death: 0"), Died->ClearsSinceLastDeath, 0);
-	TestEqual(TEXT("with no death: every one of the run's 14 clears"), NoDeath->ClearsSinceLastDeath, 14);
-	TestTrue(TEXT("and every other field is kept"), bSame);
-	TestEqual(TEXT("CONTROL: Run_v22.json reads 5"), Current->ClearsSinceLastDeath, 5);
 	return true;
 }
 

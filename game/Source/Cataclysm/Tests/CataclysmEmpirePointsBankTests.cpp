@@ -21,7 +21,6 @@
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerState.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
@@ -736,81 +735,6 @@ bool FCataclysmEmpirePointsBankRoundTripTest::RunTest(const FString&)
 			  static_cast<int32>(ECataclysmPopulation::Offline));
 	TestTrue(TEXT("and a new game instance reads the same bank"),
 			 Reread != nullptr && Reread->EmpireUpgradePoints == 0.5);
-	return true;
-}
-
-/**
- * `Account_v1.json`, written when the bank was a whole number, migrates to the current version holding the same 37
- * points, and every other field is kept. Prints "ACCOUNT MIGRATED".
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpirePointsAccountV1MigratesTest,
-	"Cataclysm.EmpirePoints.AnAccountFileFromBeforeFractionsMigratesKeepingItsPoints",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmEmpirePointsAccountV1MigratesTest::RunTest(const FString&)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Account_v1.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-
-	// THE STEP, ON THE FILE.
-	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Account_v1.json is a JSON object"), Stepped.IsValid()))
-	{
-		return false;
-	}
-	FString StepMessage;
-	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
-		GetDefault<UCataclysmAccountSave>()->MigrationSteps(), UCataclysmAccountSave::SchemaVersionNow,
-		Stepped.ToSharedRef(), StepMessage);
-	double SteppedPoints = -1.0;
-	const bool bWritten = Stepped->TryGetNumberField(TEXT("EmpireUpgradePoints"), SteppedPoints);
-
-	// THE RECORD.
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	UCataclysmAccountSave* Read = Cast<UCataclysmAccountSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmAccountSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Account_v1.json would not load: %s -- %s"),
-			FCataclysmSaveStorage::Describe(Result), *Message));
-		return false;
-	}
-
-	// AND NOTHING ELSE MOVED: the file as it was, at the current version, is what the record writes back.
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmAccountSave::SchemaVersionNow);
-	// AND THE BALANCE OF 0 `Migrate_2_to_3` WRITES, because the chain runs on to version 3 since 2026-11-18 (issue #2742).
-	Expected->SetNumberField(TEXT("Gold"), 0);
-	// AND THE EMPTY TREE `Migrate_3_to_4` WRITES, because it runs on to version 4 since the same day (issue #2741).
-	CataclysmSaveFixtures::AddTheAccountsVersion4Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheAccountsVersion5Defaults(*Expected); // And 5, #2741 slice 6e: no debt.
-	CataclysmSaveFixtures::AddTheAccountsVersion6Defaults(*Expected); // And 6, #2741 slice 8: no extra option.
-	CataclysmSaveFixtures::AddTheAccountsVersion7Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheAccountsVersion8Defaults(*Expected); // And #47 slice F6a's: the forge count.
-	FString Rewritten;
-	FString Error;
-	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
-	FString Where;
-	const bool bSame = bWroteBack
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	AddInfo(FString::Printf(TEXT("ACCOUNT MIGRATED: the step %d (%s), wrote the points %s at %g; the record at version "
-								 "%d holding %g; the rest %s"),
-							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"),
-							SteppedPoints, Read->SchemaVersion, Read->EmpireUpgradePoints, bSame ? TEXT("kept") : *Where));
-
-	TestEqual(TEXT("the chain migrates the version 1 file"), static_cast<int32>(Stepping),
-		static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("the step writes the same 37 points into the file"), bWritten && SteppedPoints == 37.0);
-	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmAccountSave::SchemaVersionNow);
-	TestTrue(TEXT("an account from before fractions keeps its 37 points"), Read->EmpireUpgradePoints == 37.0);
-	TestTrue(TEXT("and every other field is kept"), bSame);
 	return true;
 }
 

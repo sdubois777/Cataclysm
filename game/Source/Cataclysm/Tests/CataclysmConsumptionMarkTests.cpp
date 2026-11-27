@@ -18,7 +18,6 @@
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Save/CataclysmSaveWriter.h"
@@ -336,85 +335,6 @@ bool FCataclysmConsumptionMarkSavedAndLoaded::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 // A record from before the mark
 // ---------------------------------------------------------------------------
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumptionMarkMigration,
-	"Cataclysm.ConsumptionMark.ACharacterFileFromBeforeTheMarkMigratesUnmarked",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmConsumptionMarkMigration::RunTest(const FString& Parameters)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v4.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-
-	// THE STEP, ON THE FILE.
-	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Character_v4.json is a JSON object"), Stepped.IsValid()))
-	{
-		return false;
-	}
-	TestFalse(TEXT("set-up: the version 4 file has no mark key"), Stepped->HasField(TEXT("bMarkedByConsumption")));
-	FString StepMessage;
-	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
-		GetDefault<UCataclysmCharacterSave>()->MigrationSteps(), UCataclysmCharacterSave::SchemaVersionNow,
-		Stepped.ToSharedRef(), StepMessage);
-	bool bSteppedMark = true;
-	const bool bWritten = Stepped->TryGetBoolField(TEXT("bMarkedByConsumption"), bSteppedMark);
-
-	// THE RECORD.
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Character_v4.json would not load: %s -- %s"),
-			FCataclysmSaveStorage::Describe(Result), *Message));
-		return false;
-	}
-
-	// AND NOTHING ELSE MOVED.
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
-	Expected->SetBoolField(TEXT("bMarkedByConsumption"), false);
-	Expected->SetObjectField(TEXT("ConsumptionBuild"), CataclysmSaveFixtures::EmptyPlayerBuild()); // Since 2b: on to 6.
-	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed); // #1324: 7.
-	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
-	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
-	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
-	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
-	CataclysmSaveFixtures::AddTheCharactersVersion12Defaults(*Expected); // And 12, #2741 slice 8: no extra option.
-	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
-	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
-	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
-	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
-	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
-	CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(*Expected); // And 18, #47 slice F6a: nothing spent at the forge.
-	FString Rewritten;
-	FString Error;
-	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
-	FString Where;
-	const bool bSame = bWroteBack
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	AddInfo(FString::Printf(TEXT("MARK MIGRATED: the step %d (%s), wrote the key %s as %s; the record at version %d, "
-								 "marked %s; the rest %s"),
-							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"),
-							bSteppedMark ? TEXT("true") : TEXT("false"), Read->SchemaVersion,
-							Read->bMarkedByConsumption ? TEXT("yes") : TEXT("no"), bSame ? TEXT("kept") : *Where));
-
-	TestEqual(TEXT("the chain migrates the version 4 file"), static_cast<int32>(Stepping),
-		static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("the step writes 'not marked' into the file"), bWritten && !bSteppedMark);
-	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
-	TestFalse(TEXT("a character from before the mark is not marked"), Read->bMarkedByConsumption);
-	TestTrue(TEXT("and every other field is kept"), bSame);
-	return true;
-}
 
 // ---------------------------------------------------------------------------
 // The sheet

@@ -733,69 +733,6 @@ bool FCataclysmSkillDefaultsChoiceLoadedTest::RunTest(const FString&)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// SD14. A character file from before the remembered defaults migrates with none.
-// ---------------------------------------------------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsMigrationTest,
-	"Cataclysm.SaveRecords.ACharacterFileFromBeforeRememberedDefaultsMigratesWithNone",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * `Character_v16.json` is migrated to the current version with an empty `RememberedDefaults` (`Migrate_16_to_17`), and
- * its choice kept. CONTROL: the committed `Character_v18.json` (`Character_v17.json` until #47 slice F6a) is read, not
- * migrated, and holds the one remembered
- * default it states, War_Greatsword_Special on the Special key.
- */
-bool FCataclysmSkillDefaultsMigrationTest::RunTest(const FString&)
-{
-	using namespace CataclysmSkillDefaultsTest;
-
-	const auto ReadFile = [this](const TCHAR* FileName, ECataclysmSaveLoadResult& OutResult)
-		-> const UCataclysmCharacterSave*
-	{
-		FString Text;
-		FString Reason;
-		if (!CataclysmSaveFixtures::Read(FileName, Text, Reason))
-		{
-			AddError(Reason);
-			return nullptr;
-		}
-		FString Message;
-		const UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
-			Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), OutResult, Message));
-		if (!Read)
-		{
-			AddError(FString::Printf(TEXT("%s would not load: %s"), FileName, *Message));
-		}
-		return Read;
-	};
-	ECataclysmSaveLoadResult OldResult = ECataclysmSaveLoadResult::Loaded;
-	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::Migrated;
-	const UCataclysmCharacterSave* Old = ReadFile(TEXT("Character_v16.json"), OldResult);
-	const UCataclysmCharacterSave* Committed = ReadFile(TEXT("Character_v18.json"), NewResult);
-	if (!TestNotNull(TEXT("Character_v16.json loads"), Old) || !TestNotNull(TEXT("Character_v18.json loads"), Committed))
-	{
-		return false;
-	}
-	TestEqual(TEXT("Character_v16.json is migrated"), static_cast<int32>(OldResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestEqual(TEXT("**with nothing remembered**"), Old->RememberedDefaults.Num(), 0);
-	TestEqual(TEXT("and nothing remembered in its held build"), Old->ConsumptionBuild.RememberedDefaults.Num(), 0);
-	TestTrue(TEXT("and its choice kept"),
-			 Lists(Old->SkillAssignment, ECataclysmAbilitySlot::Ultimate, FName(TEXT("War_Greatsword_Heavy"))));
-	TestEqual(TEXT("CONTROL: Character_v18.json is read, not migrated"), static_cast<int32>(NewResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
-	TestTrue(TEXT("CONTROL: and holds War_Greatsword_Special remembered on the Special key"),
-			 Committed->RememberedDefaults.Num() == 1
-				 && Lists(Committed->RememberedDefaults, ECataclysmAbilitySlot::Special,
-						  FName(TEXT("War_Greatsword_Special"))));
-	TestTrue(TEXT("CONTROL: and its held build War_Greatsword_Support on the Support key"),
-			 Committed->ConsumptionBuild.RememberedDefaults.Num() == 1
-				 && Lists(Committed->ConsumptionBuild.RememberedDefaults, ECataclysmAbilitySlot::Support,
-						  FName(TEXT("War_Greatsword_Support"))));
-	return true;
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
 // SD15. A double holds the keys the player had.
 // ---------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsDoubleTest,

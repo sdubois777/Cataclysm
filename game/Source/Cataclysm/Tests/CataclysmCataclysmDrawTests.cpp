@@ -8,7 +8,6 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
 #include "Player/CataclysmGameInstance.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
@@ -165,101 +164,6 @@ bool FCataclysmDrawTwoCharactersTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the character of seed 7 faces its own draw"), Seven == NamesOf(UCataclysmRoster::ActiveFor(7, 4)));
 	TestTrue(TEXT("the character of seed 8 faces its own draw"), Eight == NamesOf(UCataclysmRoster::ActiveFor(8, 4)));
 	TestTrue(TEXT("the two characters face different Cataclysms"), Seven != Eight);
-	return true;
-}
-
-/**
- * A character file written at version 6, before the seed was saved, migrates to version 7 holding the seed its
- * identifier gives, the same seed on every load, and every other field is kept. Prints "DRAW MIGRATED".
- *
- * THE FIGURE IS WORKED OUT APART FROM THE STEP: `CataclysmSaveFixtures::FixtureIdentifiersOrderSeed`, 1412640493,
- * computed in Python by `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDrawMigrationTest,
-	"Cataclysm.CataclysmDraw.ACharacterFileFromBeforeTheDrawMigratesWithItsIdentifiersSeed",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmDrawMigrationTest::RunTest(const FString& Parameters)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v6.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-
-	// THE STEP, ON THE FILE.
-	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Character_v6.json is a JSON object"), Stepped.IsValid()))
-	{
-		return false;
-	}
-	TestFalse(TEXT("set-up: the version 6 file has no seed key"), Stepped->HasField(TEXT("CataclysmOrderSeed")));
-	FString StepMessage;
-	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
-		GetDefault<UCataclysmCharacterSave>()->MigrationSteps(), UCataclysmCharacterSave::SchemaVersionNow,
-		Stepped.ToSharedRef(), StepMessage);
-	double SteppedSeed = -1.0;
-	const bool bWritten = Stepped->TryGetNumberField(TEXT("CataclysmOrderSeed"), SteppedSeed);
-
-	// THE RECORD, LOADED TWICE.
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
-	ECataclysmSaveLoadResult AgainResult = ECataclysmSaveLoadResult::NotValidJson;
-	FString AgainMessage;
-	const UCataclysmCharacterSave* Again = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), AgainResult, AgainMessage));
-	if (Read == nullptr || Again == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Character_v6.json would not load: %s -- %s"),
-			FCataclysmSaveStorage::Describe(Result), *Message));
-		return false;
-	}
-
-	// AND NOTHING ELSE MOVED.
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
-	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed);
-	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
-	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
-	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
-	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
-	CataclysmSaveFixtures::AddTheCharactersVersion12Defaults(*Expected); // And 12, #2741 slice 8: no extra option.
-	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
-	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
-	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
-	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
-	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
-	CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(*Expected); // And 18, #47 slice F6a: nothing spent at the forge.
-	FString Rewritten;
-	FString Error;
-	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
-	FString Where;
-	const bool bSame = bWroteBack
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	AddInfo(FString::Printf(TEXT("DRAW MIGRATED: the step %d (%s), wrote the seed %s as %.0f; the record at version %d, "
-								 "seed %d, again %d, the identifier's %d; the rest %s"),
-							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"), SteppedSeed,
-							Read->SchemaVersion, Read->CataclysmOrderSeed, Again->CataclysmOrderSeed,
-							UCataclysmCharacterSave::CataclysmOrderSeedFor(Read->CharacterId),
-							bSame ? TEXT("kept") : *Where));
-
-	TestEqual(TEXT("the chain migrates the version 6 file"), static_cast<int32>(Stepping),
-		static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("the step writes the seed the identifier gives into the file"),
-			 bWritten && SteppedSeed == static_cast<double>(CataclysmSaveFixtures::FixtureIdentifiersOrderSeed));
-	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
-	TestEqual(TEXT("a character from before the draw holds the seed its identifier gives"), Read->CataclysmOrderSeed,
-			  CataclysmSaveFixtures::FixtureIdentifiersOrderSeed);
-	TestEqual(TEXT("which is what CataclysmOrderSeedFor gives the identifier it read"), Read->CataclysmOrderSeed,
-			  UCataclysmCharacterSave::CataclysmOrderSeedFor(Read->CharacterId));
-	TestEqual(TEXT("a second load gives the same seed"), Again->CataclysmOrderSeed, Read->CataclysmOrderSeed);
-	TestTrue(TEXT("CONTROL: and it is not 0, the field's default"), Read->CataclysmOrderSeed != 0);
-	TestTrue(TEXT("and every other field is kept"), bSame);
 	return true;
 }
 

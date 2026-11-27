@@ -32,7 +32,6 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
 #include "Save/CataclysmSaveGather.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
@@ -1189,118 +1188,6 @@ bool FCataclysmWinningTheRunSavedTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the restored run shows the same line"), RestoredLine, LiveLine);
 	TestEqual(TEXT("CONTROL: a run carrying no line comes back with none"), RestoredNone->LastRunWonDay, 0);
 	TestTrue(TEXT("CONTROL: and shows none"), UCataclysmEmpireMapLayout::LastRunWonLine(RestoredNone).IsEmpty());
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunMigrationTest,
-	"Cataclysm.WinningTheRun.ARunFileFromBeforeTheWinLineMigratesWithNone",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * `Run_v4.json`, written before a run carried the win of the run before it, through the chain: `Migrate_4_to_5` writes
- * the four fields with their defaults, one assertion each; the record arrives at the current version with no win line;
- * and every other field is kept. Prints "WIN MIGRATED".
- */
-bool FCataclysmWinningTheRunMigrationTest::RunTest(const FString& Parameters)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v4.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Run_v4.json is a JSON object"), Stepped.IsValid())
-		|| !TestFalse(TEXT("set-up: and holds no win line"), Stepped->HasField(TEXT("LastRunWonDay"))))
-	{
-		return false;
-	}
-	FString StepMessage;
-	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
-		GetDefault<UCataclysmRunSave>()->MigrationSteps(), UCataclysmRunSave::SchemaVersionNow, Stepped.ToSharedRef(),
-		StepMessage);
-
-	double Day = -1.0;
-	double Tier = -1.0;
-	FString Against;
-	double Points = -1.0;
-	const bool bWroteDay = Stepped->TryGetNumberField(TEXT("LastRunWonDay"), Day) && Day == 0.0;
-	const bool bWroteTier = Stepped->TryGetNumberField(TEXT("LastRunWonTier"), Tier) && Tier == 0.0;
-	const bool bWroteCataclysm = Stepped->TryGetStringField(TEXT("LastRunWonCataclysm"), Against)
-		&& Against == TEXT("None");
-	const bool bWrotePoints = Stepped->TryGetNumberField(TEXT("LastRunWonPassivePoints"), Points) && Points == 0.0;
-
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Run_v4.json would not load: %s -- %s"),
-			FCataclysmSaveStorage::Describe(Result), *Message));
-		return false;
-	}
-
-	// AND NOTHING ELSE MOVED: the version 4 file with the version and the four keys, compared with what the record
-	// writes back.
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
-	Expected->SetNumberField(TEXT("LastRunWonDay"), 0);
-	Expected->SetNumberField(TEXT("LastRunWonTier"), 0);
-	Expected->SetStringField(TEXT("LastRunWonCataclysm"), TEXT("None"));
-	Expected->SetNumberField(TEXT("LastRunWonPassivePoints"), 0);
-	// AND WHAT `Migrate_5_to_6` WRITES, because the chain runs on to version 6 since 2026-11-17 (issue #2733 slice 3).
-	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
-	// AND THE GOLD OF 0 `Migrate_6_to_7` WRITES ON EVERY GROUND ITEM, because the chain runs on to version 7 since
-	// 2026-11-18 (issue #2742).
-	CataclysmSaveFixtures::AddTheRunsVersion7Defaults(*Expected);
-	// AND THE WALK SEED MASK OF 0 `Migrate_7_to_8` WRITES, because the chain runs on to version 8 since 2026-11-18
-	// (issue #2749, B10).
-	CataclysmSaveFixtures::AddTheRunsVersion8Defaults(*Expected);
-	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
-	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
-	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
-	// AND A `bIsVengefulWraith` OF FALSE ON EVERY SAVED CREATURE, which `Migrate_9_to_10` writes, because
-	// the chain runs on to run record version 10 since 2026-11-19 (issue #2725).
-	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
-	// AND THE CLEARS SINCE THE LAST DEATH `Migrate_10_to_11` WRITES, because the chain runs on to run record
-	// version 11 since 2026-11-20 (issue #2741 slice 5b).
-	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
-	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
-	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
-	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
-	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
-	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
-	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
-	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
-	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
-	FString Rewritten;
-	FString Error;
-	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
-	FString Where;
-	const bool bSame = bWroteBack
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	AddInfo(FString::Printf(TEXT("WIN MIGRATED: the step %d (%s); wrote day %s, tier %s, Cataclysm %s, points %s; the "
-								 "record at version %d, line day %d; the rest %s"),
-							static_cast<int32>(Stepping), *StepMessage, bWroteDay ? TEXT("yes") : TEXT("NO"),
-							bWroteTier ? TEXT("yes") : TEXT("NO"), bWroteCataclysm ? TEXT("yes") : TEXT("NO"),
-							bWrotePoints ? TEXT("yes") : TEXT("NO"), Read->SchemaVersion, Read->LastRunWonDay,
-							bSame ? TEXT("kept") : *Where));
-
-	TestEqual(TEXT("the chain migrates the version 4 file"), static_cast<int32>(Stepping),
-		static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("the step writes day 0"), bWroteDay);
-	TestTrue(TEXT("the step writes tier 0"), bWroteTier);
-	TestTrue(TEXT("the step writes no Cataclysm"), bWroteCataclysm);
-	TestTrue(TEXT("the step writes no points"), bWrotePoints);
-	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
-	TestEqual(TEXT("with no win line"), Read->LastRunWonDay, 0);
-	TestTrue(TEXT("and every other field is kept"), bSame);
 	return true;
 }
 

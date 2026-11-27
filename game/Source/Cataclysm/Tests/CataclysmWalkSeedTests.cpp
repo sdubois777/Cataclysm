@@ -12,7 +12,6 @@
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
@@ -26,7 +25,7 @@
  * BEFORE IT, a dungeon's walk seed was `max(1, DungeonId + 1)`, identifiers start at 0 in every run, and the owner's
  * log of 2026-11-18 shows dungeon 0's floor 1 roll for roll the same as the free-play floor a dungeon level builds on
  * load, whose seed is 1. `FCataclysmDungeon::WalkSeed` now XORs the identifier plus one with the run's
- * `UCataclysmEmpireRun::WalkSeedMask`; a mask of 0 is the old seed, and `Migrate_7_to_8` gives a run saved before the
+ * `UCataclysmEmpireRun::WalkSeedMask`; a mask of 0 is the old seed, and the upgrade step to version 8 (removed 2026-11-27) gave a run saved before the
  * change exactly that.
  */
 namespace CataclysmWalkSeedTest
@@ -40,26 +39,6 @@ namespace CataclysmWalkSeedTest
 		return Run;
 	}
 
-	/** The run record `Name` reads into, or null with the reason added as an error. */
-	UCataclysmRunSave* ReadWalkSeedFixture(FAutomationTestBase& Test, const TCHAR* Name, FString& OutText)
-	{
-		FString Reason;
-		if (!CataclysmSaveFixtures::Read(Name, OutText, Reason))
-		{
-			Test.AddError(Reason);
-			return nullptr;
-		}
-		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-		FString Message;
-		UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
-			OutText, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
-		if (Read == nullptr)
-		{
-			Test.AddError(FString::Printf(TEXT("%s would not load: %s -- %s"), Name,
-										  FCataclysmSaveStorage::Describe(Result), *Message));
-		}
-		return Read;
-	}
 }
 
 #define CATACLYSM_WALK_SEED_TEST(TestClass, TestName) \
@@ -123,107 +102,6 @@ CATACLYSM_WALK_SEED_TEST(FCataclysmWalkSeedTwoRunsTest,
 	TestNotEqual(TEXT("so the two runs' dungeon 0 walk different seeds"), DungeonZero.WalkSeed(First->WalkSeedMask),
 				 DungeonZero.WalkSeed(Second->WalkSeedMask));
 	TestEqual(TEXT("CONTROL: one seed, one mask"), FirstAgain->WalkSeedMask, First->WalkSeedMask);
-	return true;
-}
-
-/**
- * `Run_v7.json`, written before the mask, migrates to a mask of 0 with every other field kept, and each of its
- * dungeons keeps the walk seed it had: its identifier plus one. So a walk saved at version 7 loads the floors it was on.
- * CONTROL: the committed run file's mask, 12345 -- `Run_v22.json`'s since the run record went to version 22 (issue #51 slice B5; `Run_v21.json`'s from version 21, issue #51 slice B4; `Run_v20.json`'s from version 20, issue #2864; `Run_v19.json`'s from version 19, issue
- * #51), `Run_v18.json`'s from version 18 (issue #2848), `Run_v17.json`'s from version 17 (issue #2840), `Run_v16.json`'s from version 16 (issue #2838), `Run_v15.json`'s from version 15 (issue #2741 slice 9), `Run_v14.json`'s from version 14 (issue #46), `Run_v13.json`'s from version 13 (issue #2825), `Run_v12.json`'s from version 12 (issue #2741 slice 6b), `Run_v11.json`'s from version 11 (issue #2741 slice 5b), `Run_v10.json`'s from version 10 (issue #2725), `Run_v9.json`'s from version 9 (issue #2741 slice
- * 3b), `Run_v8.json`'s before -- gives the same dungeons other seeds. Prints "WALK SEED MIGRATED".
- */
-CATACLYSM_WALK_SEED_TEST(FCataclysmWalkSeedMigrationTest,
-	"Cataclysm.WalkSeed.ARunFileFromVersion7MigratesToMaskZeroAndKeepsItsWalkSeeds")
-{
-	using namespace CataclysmWalkSeedTest;
-
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v7.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Run_v7.json is a JSON object with no mask"),
-				  Stepped.IsValid() && !Stepped->HasField(TEXT("WalkSeedMask"))))
-	{
-		return false;
-	}
-	FString StepMessage;
-	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
-		GetDefault<UCataclysmRunSave>()->MigrationSteps(), UCataclysmRunSave::SchemaVersionNow, Stepped.ToSharedRef(),
-		StepMessage);
-	double Written = -1.0;
-	const bool bWritten = Stepped->TryGetNumberField(TEXT("WalkSeedMask"), Written);
-
-	FString ReadText;
-	const UCataclysmRunSave* Read = ReadWalkSeedFixture(*this, TEXT("Run_v7.json"), ReadText);
-	FString CurrentText;
-	const UCataclysmRunSave* Current = ReadWalkSeedFixture(*this, TEXT("Run_v22.json"), CurrentText);
-	if (Read == nullptr || Current == nullptr)
-	{
-		return false;
-	}
-
-	// EVERY OTHER FIELD KEPT: the version 7 file, at the current version with what the step writes, is what the record
-	// writes back.
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
-	CataclysmSaveFixtures::AddTheRunsVersion8Defaults(*Expected);
-	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
-	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
-	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
-	// AND A `bIsVengefulWraith` OF FALSE ON EVERY SAVED CREATURE, which `Migrate_9_to_10` writes, because
-	// the chain runs on to run record version 10 since 2026-11-19 (issue #2725).
-	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
-	// AND THE CLEARS SINCE THE LAST DEATH `Migrate_10_to_11` WRITES, because the chain runs on to run record
-	// version 11 since 2026-11-20 (issue #2741 slice 5b).
-	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
-	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
-	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
-	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
-	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
-	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
-	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
-	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
-	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
-	FString Rewritten;
-	FString Error;
-	FString Where;
-	const bool bSame = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error)
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	int32 Kept = 0;
-	int32 MovedByTheCurrentFilesMask = 0;
-	for (const FCataclysmDungeon& Dungeon : Read->Dungeons)
-	{
-		Kept += Dungeon.WalkSeed(Read->WalkSeedMask) == Dungeon.DungeonId + 1 ? 1 : 0;
-		MovedByTheCurrentFilesMask += Dungeon.WalkSeed(Current->WalkSeedMask) != Dungeon.DungeonId + 1 ? 1 : 0;
-	}
-
-	AddInfo(FString::Printf(TEXT("WALK SEED MIGRATED: the step %d (%s); mask written %s %.0f; the record at version %d with "
-								 "mask %d; %d of %d dungeons keep their seed; Run_v22.json's mask %d moves %d; the rest %s"),
-							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"), Written,
-							Read->SchemaVersion, Read->WalkSeedMask, Kept, Read->Dungeons.Num(), Current->WalkSeedMask,
-							MovedByTheCurrentFilesMask, bSame ? TEXT("kept") : *Where));
-
-	TestEqual(TEXT("the chain migrates the version 7 file"), static_cast<int32>(Stepping),
-			  static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("the step writes a mask of 0"), bWritten && Written == 0.0);
-	TestEqual(TEXT("the record reads a mask of 0"), Read->WalkSeedMask, 0);
-	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
-	TestTrue(TEXT("and every other field is kept"), bSame);
-	if (TestTrue(TEXT("set-up: the file holds a dungeon"), Read->Dungeons.Num() > 0))
-	{
-		TestEqual(TEXT("every dungeon keeps its version 7 seed, its identifier plus one"), Kept, Read->Dungeons.Num());
-		TestEqual(TEXT("CONTROL: the committed run file's mask moves every one"), MovedByTheCurrentFilesMask,
-				  Read->Dungeons.Num());
-	}
 	return true;
 }
 

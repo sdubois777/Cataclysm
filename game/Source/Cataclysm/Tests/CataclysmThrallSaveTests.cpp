@@ -63,15 +63,6 @@ namespace CataclysmThrallSaveTest
 		return Read;
 	}
 
-	/** The saved creature of `Archetype` on the run file's floor, or null. */
-	const FCataclysmSavedCreature* CreatureOf(const UCataclysmRunSave* Run, const TCHAR* Archetype)
-	{
-		const FName Row(Archetype);
-		return Run ? Run->Floor.Creatures.FindByPredicate(
-						 [&Row](const FCataclysmSavedCreature& One) { return One.ArchetypeRow == Row; })
-				   : nullptr;
-	}
-
 	FString Described(const FCataclysmSavedCreature* Creature)
 	{
 		return Creature ? FString::Printf(TEXT("%s commanded %d row %s factor %.2f"), *Creature->ArchetypeRow.ToString(),
@@ -149,57 +140,6 @@ namespace CataclysmThrallSaveTest
 		Saved.TakenLevelFactorOnCreatures = 1.0f;
 		return Saved;
 	}
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-// TS2. A thrall in an earlier run file is given Subjugate at level 1; the newest file is read as it states.
-// --------------------------------------------------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThrallSaveMigrationTest,
-	"Cataclysm.ThrallSave.AThrallInAnEarlierRunFileIsGivenSubjugateAtLevelOne",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * `Run_v16.json`, written before the two fields, migrates: its thrall, the Abyssal Warden the player commands, is given
- * Subjugate's row and a factor of 1 (the ruling's Q1), and the Brute beside it, which no one commands, None and 1.
- * CONTROL: `Run_v22.json` is read, not migrated, and states its thrall's row and a factor of 1.5, not the defaults, so
- * the fields are read from the file. Prints "THRALL FILES".
- */
-bool FCataclysmThrallSaveMigrationTest::RunTest(const FString&)
-{
-	using namespace CataclysmThrallSaveTest;
-	ECataclysmSaveLoadResult OldResult = ECataclysmSaveLoadResult::NotValidJson;
-	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::NotValidJson;
-	const UCataclysmRunSave* Old = ReadRunFixture(*this, TEXT("Run_v16.json"), OldResult);
-	const UCataclysmRunSave* Committed = ReadRunFixture(*this, TEXT("Run_v22.json"), NewResult);
-	const FCataclysmSavedCreature* OldThrall = CreatureOf(Old, TEXT("AbyssalWarden"));
-	const FCataclysmSavedCreature* OldBrute = CreatureOf(Old, TEXT("Brute"));
-	const FCataclysmSavedCreature* NewThrall = CreatureOf(Committed, TEXT("AbyssalWarden"));
-	const FCataclysmSavedCreature* NewBrute = CreatureOf(Committed, TEXT("Brute"));
-	AddInfo(FString::Printf(TEXT("THRALL FILES: Run_v16.json %s: %s | %s; Run_v22.json %s: %s | %s"),
-							FCataclysmSaveStorage::Describe(OldResult), *Described(OldThrall), *Described(OldBrute),
-							FCataclysmSaveStorage::Describe(NewResult), *Described(NewThrall), *Described(NewBrute)));
-
-	if (!TestNotNull(TEXT("Run_v16.json loads"), Old) || !TestNotNull(TEXT("Run_v22.json loads"), Committed)
-		|| !TestNotNull(TEXT("set-up: Run_v16.json holds its thrall"), OldThrall)
-		|| !TestNotNull(TEXT("set-up: and its Brute"), OldBrute) || !TestNotNull(TEXT("set-up: Run_v22.json its thrall"), NewThrall)
-		|| !TestNotNull(TEXT("set-up: and its Brute"), NewBrute))
-	{
-		return false;
-	}
-	TestEqual(TEXT("Run_v16.json is migrated"), static_cast<int32>(OldResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestTrue(TEXT("set-up: its thrall is the player's"), OldThrall->bCommandedByThePlayer);
-	TestEqual(TEXT("**its thrall is given Subjugate's row**"), OldThrall->TakenBySkillRow, Subjugate);
-	TestEqual(TEXT("**and Subjugate's factor at level 1**"), OldThrall->TakenLevelFactorOnCreatures, 1.0f);
-	TestTrue(TEXT("the Brute no one commands is given no skill"), OldBrute->TakenBySkillRow.IsNone());
-	TestEqual(TEXT("and a factor of 1"), OldBrute->TakenLevelFactorOnCreatures, 1.0f);
-	TestEqual(TEXT("CONTROL: Run_v22.json is read, not migrated"), static_cast<int32>(NewResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
-	TestEqual(TEXT("CONTROL: its thrall's row as it states"), NewThrall->TakenBySkillRow, Subjugate);
-	TestEqual(TEXT("CONTROL: and its factor as it states, 1.5, not the default"), NewThrall->TakenLevelFactorOnCreatures,
-			  1.5f);
-	TestTrue(TEXT("CONTROL: its Brute names no skill"), NewBrute->TakenBySkillRow.IsNone());
-	return true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -67,15 +67,15 @@ namespace CataclysmCityCleanseSaveTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityCleanseSaveTest,
-	"Cataclysm.CityCleanseSave.WhetherTheCleanseWasBoughtIsSavedAndAnOlderRunHasNotBoughtIt",
+	"Cataclysm.CityCleanseSave.WhetherTheCleanseWasBoughtIsSaved",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * A run at difficulty tier 3 that bought the cleanse on the Pillar, two days into its build, is saved and loaded: the
  * loaded run has bought it, and refuses it on another city. CONTROL: a run that bought nothing loads as not having
- * bought it. `Run_v15.json`, written before the flag, migrates to not bought; `Run_v22.json` (the committed run file since issue #51 slice B5, `Run_v21.json` from issue #51 slice B4, `Run_v20.json` from issue #2864, `Run_v19.json` from issue #51; `Run_v18.json` from issue #2848, `Run_v17.json`
- * from issue #2840 and `Run_v16.json` until then) reads bought, the figure
- * it states. Prints "CLEANSE SAVED".
+ * bought it. `Run_v22.json`, the committed run file, reads bought, the figure it states. Its half on `Run_v15.json`,
+ * written before the flag, went with the save migrations on 2026-11-27 (issue #2928 slice 12), and the test's name
+ * lost "AndAnOlderRunHasNotBoughtIt". Prints "CLEANSE SAVED".
  */
 bool FCataclysmCityCleanseSaveTest::RunTest(const FString&)
 {
@@ -112,25 +112,22 @@ bool FCataclysmCityCleanseSaveTest::RunTest(const FString&)
 		? Loaded->WouldBuyCityUpgrade(OtherCity, Cleanse, 0, 0)
 		: ECataclysmCityUpgradeResult::RunHasNotBegun;
 
-	ECataclysmSaveLoadResult OldResult = ECataclysmSaveLoadResult::NotValidJson;
 	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::NotValidJson;
-	const UCataclysmRunSave* Old = ReadRunFixture(*this, TEXT("Run_v15.json"), OldResult);
 	const UCataclysmRunSave* Committed = ReadRunFixture(*this, TEXT("Run_v22.json"), NewResult);
 
 	AddInfo(FString::Printf(TEXT("CLEANSE SAVED: bought \"%s\"; loaded %s, bought %d, another city \"%s\"; untouched "
-								 "loaded %s, bought %d; Run_v15.json %s, bought %d; Run_v22.json %s, bought %d"),
+								 "loaded %s, bought %d; Run_v22.json %s, bought %d"),
 							*UCataclysmCityUpgradeRules::ResultText(Bought), Loaded ? TEXT("yes") : *Why,
 							Loaded && Loaded->bCleanseBoughtThisRun ? 1 : 0,
 							*UCataclysmCityUpgradeRules::ResultText(AfterTheLoad),
 							LoadedUntouched ? TEXT("yes") : *UntouchedWhy,
 							LoadedUntouched && LoadedUntouched->bCleanseBoughtThisRun ? 1 : 0,
-							FCataclysmSaveStorage::Describe(OldResult), Old && Old->bCleanseBoughtThisRun ? 1 : 0,
 							FCataclysmSaveStorage::Describe(NewResult), Committed && Committed->bCleanseBoughtThisRun ? 1 : 0));
 
 	TestEqual(TEXT("set-up: the cleanse is bought at difficulty tier 3"), Bought, ECataclysmCityUpgradeResult::Bought);
 	if (!TestNotNull(TEXT("the run is saved and loaded"), Loaded)
 		|| !TestNotNull(TEXT("and so is the run that bought nothing"), LoadedUntouched)
-		|| !TestNotNull(TEXT("Run_v15.json loads"), Old) || !TestNotNull(TEXT("Run_v22.json loads"), Committed))
+		|| !TestNotNull(TEXT("Run_v22.json loads"), Committed))
 	{
 		return false;
 	}
@@ -138,10 +135,7 @@ bool FCataclysmCityCleanseSaveTest::RunTest(const FString&)
 	TestEqual(TEXT("and refuses it on another city"), AfterTheLoad, ECataclysmCityUpgradeResult::AlreadyBoughtThisRun);
 	TestFalse(TEXT("CONTROL: a run that bought nothing loads as not having bought it"),
 			  LoadedUntouched->bCleanseBoughtThisRun);
-	TestEqual(TEXT("Run_v15.json is migrated"), static_cast<int32>(OldResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestFalse(TEXT("to not having bought it"), Old->bCleanseBoughtThisRun);
-	TestEqual(TEXT("Run_v22.json is read, not migrated"), static_cast<int32>(NewResult),
+	TestEqual(TEXT("Run_v22.json is read"), static_cast<int32>(NewResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestTrue(TEXT("and states the cleanse bought"), Committed->bCleanseBoughtThisRun);
 	return true;

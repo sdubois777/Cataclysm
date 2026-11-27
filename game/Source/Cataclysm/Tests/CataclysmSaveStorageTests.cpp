@@ -42,12 +42,21 @@ namespace CataclysmSaveStorageTest
 		return FString(SlotPrefix) + Suffix;
 	}
 
-	/** Delete a slot and its backup, whether or not they are there. */
+	/**
+	 * The name an older build's migration gave its backup of `SlotName` at `Version`. Nothing writes one since the
+	 * migrations were removed (2026-11-27, issue #2928 slice 12); the name is built here for the checks that none is.
+	 */
+	static FString BackupName(const FString& SlotName, int32 Version)
+	{
+		return FString::Printf(TEXT("%s%s%d"), *SlotName, FCataclysmSaveStorage::BackupInfix, Version);
+	}
+
+	/** Delete a slot and any backup beside it, whether or not they are there. */
 	static void Cleanup(const FString& SlotName)
 	{
 		for (int32 Version = 0; Version <= 4; ++Version)
 		{
-			const FString Backup = FCataclysmSaveStorage::BackupSlotName(SlotName, Version);
+			const FString Backup = BackupName(SlotName, Version);
 			if (UGameplayStatics::DoesSaveGameExist(Backup, UserIndex))
 			{
 				UGameplayStatics::DeleteGameInSlot(Backup, UserIndex);
@@ -155,121 +164,6 @@ bool FCataclysmSaveSlotRoundTrip::RunTest(const FString&)
 }
 
 /**
- * An older record in a slot is backed up before anything touches it, migrated,
- * and only then written back over the original.
- *
- * SECTION 5, RULE 6, AND IT IS THE RULE THAT DECIDES WHAT A BROKEN MIGRATION
- * COSTS A PLAYER. Without it, a migration that goes wrong overwrites the only
- * copy of a character somebody has been playing for a month.
- *
- * THE BACKUP IS CHECKED BY ITS CONTENTS AND NOT BY ITS EXISTENCE. A backup
- * written after the migration, or written from the migrated record, would exist
- * and would be worthless; this reads it and checks it still holds the version 1
- * text, `Title` and all.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveOlderSlotIsBackedUpThenMigrated,
-	"Cataclysm.SaveStorage.AnOlderRecordIsBackedUpBeforeItIsMigrated",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmSaveOlderSlotIsBackedUpThenMigrated::RunTest(const FString&)
-{
-	using namespace CataclysmSaveStorageTest;
-
-	const FString SlotName = Slot(TEXT("OldExample"));
-	Cleanup(SlotName);
-
-	// THE SLOT IS FILLED FROM THE COMMITTED VERSION 1 FILE, not from anything
-	// this build wrote. That is what makes this a test of loading an old save
-	// rather than of the code agreeing with itself.
-	FString Version1Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Example_v1.json"), Version1Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-
-	if (!PutTextInSlot(SlotName, Version1Text))
-	{
-		AddError(FString::Printf(TEXT("could not put the version 1 text into slot '%s'"), *SlotName));
-		Cleanup(SlotName);
-		return false;
-	}
-
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
-	FString Message;
-	UCataclysmSaveExampleRecord* Read = Cast<UCataclysmSaveExampleRecord>(
-		FCataclysmSaveStorage::ReadFromSlot(SlotName, UserIndex,
-			UCataclysmSaveExampleRecord::StaticClass(), GetTransientPackage(), Result, Message));
-
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("nothing came back from slot '%s': %s -- %s"),
-			*SlotName, FCataclysmSaveStorage::Describe(Result), *Message));
-		Cleanup(SlotName);
-		return false;
-	}
-
-	TestEqual(TEXT("it says it was migrated"),
-		static_cast<int32>(Result), static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestEqual(TEXT("and it reached the current version"), Read->SchemaVersion,
-		UCataclysmSaveExampleRecord::SchemaVersionNow);
-	TestEqual(TEXT("the label came through the rename"), Read->Label,
-		FString(TEXT("The Example Record")));
-	TestEqual(TEXT("and 725 copper split into 7 gold"), Read->Gold, 7);
-	TestEqual(TEXT("and 25 copper"), Read->Copper, 25);
-
-	// THE BACKUP HOLDS THE FILE THAT WAS THERE, UNTOUCHED.
-	const FString BackupName = FCataclysmSaveStorage::BackupSlotName(SlotName, 1);
-	if (!UGameplayStatics::DoesSaveGameExist(BackupName, UserIndex))
-	{
-		AddError(FString::Printf(TEXT("no backup was written to '%s' before the migration"),
-			*BackupName));
-		Cleanup(SlotName);
-		return false;
-	}
-
-	FString BackupText;
-	if (!TextInSlot(BackupName, BackupText))
-	{
-		AddError(TEXT("the backup slot exists but could not be read"));
-		Cleanup(SlotName);
-		return false;
-	}
-
-	TestTrue(TEXT("the backup still says it is version 1"),
-		BackupText.Contains(TEXT("\"SchemaVersion\": 1")));
-	TestTrue(TEXT("the backup still holds the field the migration renamed away"),
-		BackupText.Contains(TEXT("Title")));
-	TestFalse(TEXT("the backup is not the migrated record"), BackupText.Contains(TEXT("Gold")));
-
-	// AND THE ORIGINAL SLOT NOW HOLDS THE MIGRATED RECORD, so the next load has
-	// no work to do.
-	FString SlotText;
-	if (!TextInSlot(SlotName, SlotText))
-	{
-		AddError(TEXT("the slot could not be read after the migration"));
-		Cleanup(SlotName);
-		return false;
-	}
-	TestTrue(TEXT("the slot was rewritten at the current version"),
-		SlotText.Contains(TEXT("\"SchemaVersion\": 3")));
-	TestFalse(TEXT("and no longer holds the old field name"), SlotText.Contains(TEXT("Title")));
-
-	ECataclysmSaveLoadResult Again = ECataclysmSaveLoadResult::SlotIsEmpty;
-	FString AgainMessage;
-	UCataclysmSaveRecord* Second = FCataclysmSaveStorage::ReadFromSlot(SlotName, UserIndex,
-		UCataclysmSaveExampleRecord::StaticClass(), GetTransientPackage(), Again, AgainMessage);
-
-	TestNotNull(TEXT("reading it a second time works"), Second);
-	TestEqual(TEXT("and the second read has nothing to migrate"),
-		static_cast<int32>(Again), static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
-
-	Cleanup(SlotName);
-	return true;
-}
-
-/**
  * An empty slot is an answer and not a failure, and rubbish in a slot is refused.
  *
  * THE FIRST IS WHAT A NEW PLAYER HAS, and what a Solo Self-Found character's
@@ -330,7 +224,7 @@ bool FCataclysmSaveEmptyAndBrokenSlots::RunTest(const FString&)
 	// and a backup named for a version nobody could read would be noise.
 	for (int32 Version = 0; Version <= 4; ++Version)
 	{
-		const FString Backup = FCataclysmSaveStorage::BackupSlotName(Broken, Version);
+		const FString Backup = BackupName(Broken, Version);
 		if (UGameplayStatics::DoesSaveGameExist(Backup, UserIndex))
 		{
 			AddError(FString::Printf(TEXT("a backup '%s' was written for an unreadable slot"),
@@ -341,38 +235,6 @@ bool FCataclysmSaveEmptyAndBrokenSlots::RunTest(const FString&)
 	}
 
 	Cleanup(Broken);
-	return true;
-}
-
-/**
- * A backup slot is named for the version it holds, so migrating through several
- * versions keeps several backups.
- *
- * THE COPY WORTH KEEPING IS THE OLDEST ONE, which is the one furthest from this
- * build and the one a player would want if the newest migration is the broken
- * step. A single backup name would have each migration overwrite it.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveBackupNamesTheVersion,
-	"Cataclysm.SaveStorage.ABackupIsNamedForTheVersionItHolds",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmSaveBackupNamesTheVersion::RunTest(const FString&)
-{
-	const FString First = FCataclysmSaveStorage::BackupSlotName(TEXT("Character_ABC"), 1);
-	const FString Second = FCataclysmSaveStorage::BackupSlotName(TEXT("Character_ABC"), 2);
-
-	TestNotEqual(TEXT("two versions get two different backups"), First, Second);
-	TestTrue(TEXT("a backup name starts with the slot it belongs to"),
-		First.StartsWith(TEXT("Character_ABC")));
-	TestTrue(TEXT("and it names the version it holds"), First.EndsWith(TEXT("1")));
-	TestTrue(TEXT("and the other one names its own"), Second.EndsWith(TEXT("2")));
-	TestNotEqual(TEXT("a backup is never the slot itself"), First, FString(TEXT("Character_ABC")));
-
-	// AN EMPTY SLOT NAME HAS NO BACKUP NAME EITHER, rather than one called
-	// nothing followed by a number, which every empty-named record would share.
-	TestTrue(TEXT("an empty slot name has no backup name"),
-		FCataclysmSaveStorage::BackupSlotName(FString(), 1).IsEmpty());
-
 	return true;
 }
 
@@ -533,9 +395,10 @@ bool FCataclysmSaveWaitsForItsSlot::RunTest(const FString&)
  *
  * - a slot this test made with `WriteToSlot` is deleted;
  * - a slot that was there before, written over by `WriteToSlot`, is kept;
- * - an asynchronous write's slot is noted when the write is queued, before it lands, and is deleted;
- * - a migration's backup of a slot this test made goes with it;
- * - and a migration's backup of a slot that was there before is kept, with the slot.
+ * - and an asynchronous write's slot is noted when the write is queued, before it lands, and is deleted.
+ *
+ * IT ALSO CHECKED THAT A MIGRATION'S BACKUP OF A SLOT THE TEST MADE WENT WITH IT, AND ONE OF A SLOT THERE BEFORE WAS KEPT,
+ * until the migrations and their backups were removed on 2026-11-27 (issue #2928 slice 12).
  *
  * "THERE BEFORE" IS A SLOT PUT DOWN WITHOUT THE STORAGE LAYER, as a save from before the test would have been. That the
  * framework runs the clean-up at every test's end is `EachTestsEndLogsTheRunsTestSavesLine`'s to show. Prints "TEST SAVES".
@@ -551,9 +414,7 @@ bool FCataclysmTestSavesDeletedTest::RunTest(const FString&)
 	const FString Made = Slot(TEXT("TestSavesMade"));
 	const FString Before = Slot(TEXT("TestSavesThereBefore"));
 	const FString Queued = Slot(TEXT("TestSavesQueued"));
-	const FString MadeOld = Slot(TEXT("TestSavesMadeOld"));
-	const FString BeforeOld = Slot(TEXT("TestSavesThereBeforeOld"));
-	const TArray<FString> Slots = {Made, Before, Queued, MadeOld, BeforeOld};
+	const TArray<FString> Slots = {Made, Before, Queued};
 	for (const FString& Each : Slots)
 	{
 		Cleanup(Each);
@@ -568,13 +429,6 @@ bool FCataclysmTestSavesDeletedTest::RunTest(const FString&)
 	// WHATEVER EARLIER STEPS OF THIS TEST NOTED, forgotten, so only what follows is measured.
 	FCataclysmTestSaves::DeleteWhatTheTestWrote(UserIndex);
 
-	FString Version1Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Example_v1.json"), Version1Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
 	UCataclysmSaveExampleRecord* Record = NewObject<UCataclysmSaveExampleRecord>();
 	Record->SchemaVersion = UCataclysmSaveExampleRecord::SchemaVersionNow;
 	Record->Label = TEXT("A test's record");
@@ -589,33 +443,14 @@ bool FCataclysmTestSavesDeletedTest::RunTest(const FString&)
 	const bool bQueued = FCataclysmSaveStorage::WriteToSlotAsync(Record, Queued, UserIndex, nullptr, Error);
 	const bool bNotedWhenQueued = FCataclysmTestSaves::IsNoted(Queued);
 
-	// A MIGRATION OF EACH: the test's own slot, noted by hand as a write would note it, and one there before.
-	FCataclysmTestSaves::NoteAWrite(MadeOld, UserIndex);
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::SlotIsEmpty;
-	FString Message;
-	const bool bOldsPut = PutTextInSlot(MadeOld, Version1Text) && PutTextInSlot(BeforeOld, Version1Text);
-	const bool bMadeOldRead = FCataclysmSaveStorage::ReadFromSlot(MadeOld, UserIndex,
-		UCataclysmSaveExampleRecord::StaticClass(), GetTransientPackage(), Result, Message) != nullptr;
-	const bool bBeforeOldRead = FCataclysmSaveStorage::ReadFromSlot(BeforeOld, UserIndex,
-		UCataclysmSaveExampleRecord::StaticClass(), GetTransientPackage(), Result, Message) != nullptr;
-	const FString MadeBackup = FCataclysmSaveStorage::BackupSlotName(MadeOld, 1);
-	const FString BeforeBackup = FCataclysmSaveStorage::BackupSlotName(BeforeOld, 1);
-	const bool bBackupsWritten = UGameplayStatics::DoesSaveGameExist(MadeBackup, UserIndex)
-		&& UGameplayStatics::DoesSaveGameExist(BeforeBackup, UserIndex);
-
 	const TArray<FString> Deleted = FCataclysmTestSaves::DeleteWhatTheTestWrote(UserIndex);
 	auto Exists = [](const FString& Name) { return UGameplayStatics::DoesSaveGameExist(Name, UserIndex); };
-	AddInfo(FString::Printf(TEXT("TEST SAVES: deleted [%s]; made %s, there before %s, queued %s (noted when queued: %s), "
-								 "made old %s and its backup %s, there before old %s and its backup %s"),
+	AddInfo(FString::Printf(TEXT("TEST SAVES: deleted [%s]; made %s, there before %s, queued %s (noted when queued: %s)"),
 							*FString::Join(Deleted, TEXT(" | ")), Exists(Made) ? TEXT("KEPT") : TEXT("gone"),
 							Exists(Before) ? TEXT("kept") : TEXT("GONE"), Exists(Queued) ? TEXT("KEPT") : TEXT("gone"),
-							bNotedWhenQueued ? TEXT("yes") : TEXT("NO"), Exists(MadeOld) ? TEXT("KEPT") : TEXT("gone"),
-							Exists(MadeBackup) ? TEXT("KEPT") : TEXT("gone"), Exists(BeforeOld) ? TEXT("kept") : TEXT("GONE"),
-							Exists(BeforeBackup) ? TEXT("kept") : TEXT("GONE")));
+							bNotedWhenQueued ? TEXT("yes") : TEXT("NO")));
 
-	if (!TestTrue(TEXT("set-up: every slot was written"), bMade && bBeforePut && bBeforeWritten && bQueued && bOldsPut)
-		|| !TestTrue(TEXT("set-up: both old records were read and migrated, each backed up"),
-					 bMadeOldRead && bBeforeOldRead && bBackupsWritten))
+	if (!TestTrue(TEXT("set-up: every slot was written"), bMade && bBeforePut && bBeforeWritten && bQueued))
 	{
 		return false;
 	}
@@ -623,9 +458,6 @@ bool FCataclysmTestSavesDeletedTest::RunTest(const FString&)
 	TestTrue(TEXT("a slot that was there before the test wrote over it is kept"), Exists(Before));
 	TestTrue(TEXT("an asynchronous write's slot is noted when the write is queued, before it lands"), bNotedWhenQueued);
 	TestFalse(TEXT("and is deleted"), Exists(Queued));
-	TestFalse(TEXT("a backup of a slot the test made is deleted with it"), Exists(MadeBackup) || Exists(MadeOld));
-	TestTrue(TEXT("a slot that was there before a migration is kept"), Exists(BeforeOld));
-	TestTrue(TEXT("and so is its backup"), Exists(BeforeBackup));
 	return true;
 }
 
