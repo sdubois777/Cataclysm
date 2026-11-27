@@ -367,7 +367,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidFreeAndDoubledTest,
  * O7 (c), O8. Two casters 40 m apart, each wearing the row with a target 2 m off and the same Heavy and Special strikes.
  * The control holds nine Void, the other ten. The control's Heavy pays its cost and deals its damage; the other's costs
  * nothing, deals twice the control's, and leaves no Void. Then each uses its Special: the one that spent its Void pays
- * and deals exactly what the control does. An aura's upkeep is never free: the cost asked for one is the control's.
+ * and deals exactly what the control does. A charge that is no use (`bForAUse` false; an aura's upkeep was one until
+ * 2026-11-27) is never free: the cost asked for one is the control's.
  */
 bool FCataclysmVoidFreeAndDoubledTest::RunTest(const FString&)
 {

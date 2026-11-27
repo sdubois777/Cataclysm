@@ -28,8 +28,13 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 import apply_war_data_rows_2026_11_24 as sentences  # noqa: E402
 import reapply_war_data_rows_workbook as rows  # noqa: E402
 
+sys.path.insert(0, str(REPO_ROOT / "tools" / "tests"))
+import without_the_aura_reservation  # noqa: E402
+
 DOCS = REPO_ROOT / "docs"
-WORKBOOK = DOCS / "All_Things_Cataclysm.xlsx"
+# COMPARED WITH THE AURA RESERVATION OF 2026-11-27 TAKEN OUT: it came after this script and adds rows to its nodes.
+# `without_the_aura_reservation.py` says why.
+WORKBOOK = without_the_aura_reservation.workbook()
 DATA = REPO_ROOT / "game" / "Data"
 
 

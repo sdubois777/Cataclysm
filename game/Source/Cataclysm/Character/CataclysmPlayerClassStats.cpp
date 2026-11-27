@@ -1090,6 +1090,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// kind's tags by UCataclysmCommand::ReserveFor. No gameplay attribute and no
 		// base: a negative figure would be floored at nought in the combat set.
 		TEXT("minion_reserve_percent_less"),
+		// AND AN AURA'S MANA RESERVE, ruled 2026-11-27 under the owner's choice "Reserve, don't drain": the flat mana
+		// off each aura, the summed percent LESS (a negative row being that many percent more), and the "more" bucket,
+		// each read with the aura's tags by UCataclysmCommand::ManaReserveFor. No gameplay attribute and no base, so a
+		// negative figure survives, as minion_reserve_percent_less's does.
+		TEXT("mana_reserve_reduction"),
+		TEXT("mana_reserve_percent_less"),
+		TEXT("mana_reserve"),
 		// Traps layer 4, ruled 2026-10-21 (F1 to F9), for "Triggered traps have a
 		// 25%-50% chance to reset and rearm instead of being consumed", "Traps deal
 		// 100%-200% increased damage to the first enemy that triggers them",
@@ -2752,6 +2759,12 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	{
 		Live->SetConvertedManaToHealth(ConvertedToHealth);
 		Live->RefreshLiveMaximumHealth();
+
+		// AND WHAT HELD AURAS RESERVE IS ASKED AGAIN, ruled 2026-11-27 by the coordinating session: "reprice auras
+		// LIVE, as Fervour reserves are". Gear put on or taken off and a point spent move the reduction stats, up or
+		// down. AFTER THE STAT LINE AND BOTH MAXIMA ARE WRITTEN, so it reads this refresh's figures, and BEFORE THE
+		// EARLY RETURN, because a character already in play is the case it exists for.
+		Live->RepriceAuraReservations();
 	}
 
 	// A CHARACTER ALREADY IN PLAY KEEPS ITS POOLS WHERE THEY ARE. Filling

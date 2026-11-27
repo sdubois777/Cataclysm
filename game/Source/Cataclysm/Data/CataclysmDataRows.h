@@ -1431,9 +1431,18 @@ struct FCataclysmSkillSlotRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
 	float CooldownHighest = 0.0f;
 
-	/** Mana one use costs at level 100. For the Aura, per second while on. */
+	/** Mana one use costs at level 100. The Aura's is nought since 2026-11-27: switching it on is free. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
 	float ManaCost = 0.0f;
+
+	/**
+	 * Maximum mana a skill of this slot holds while it is on, at skill level 1, AT EVERY CHARACTER LEVEL. 50 on the
+	 * Aura and nought elsewhere. Ruled 2026-11-27 under the owner's choice "Reserve, don't drain"; until then the
+	 * Aura drained 20 mana a second. Lowered by the skill's own level and the holder's reductions
+	 * (`UCataclysmCommand::ManaReserveFor`).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Skill Slot")
+	float ManaReserved = 0.0f;
 
 	/** Mana restored per hit, at level 100. Only the Basic Attack has any:
 	 *  it is automatic, so this is income for being in a fight rather than a

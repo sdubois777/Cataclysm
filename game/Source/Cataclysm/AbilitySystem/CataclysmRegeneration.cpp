@@ -302,6 +302,18 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 		Ceiling = HealthHealingCeiling(AbilitySystem, CeilingShare);
 	}
 
+	// AND MANA STOPS AT WHAT THE AURAS LEAVE UNRESERVED, ruled 2026-11-27 under the owner's "Reserve, don't drain": as
+	// reserved health is never filled, reserved mana is never filled either. Nought reserved for a character holding no
+	// aura, so it fills to the maximum as before.
+	if (Pool == UCataclysmVitalAttributeSet::GetManaAttribute())
+	{
+		if (const UCataclysmAbilitySystemComponent* Reserving =
+				Cast<const UCataclysmAbilitySystemComponent>(&AbilitySystem))
+		{
+			Ceiling = FMath::Min(Ceiling, Reserving->UnreservedMaximumMana());
+		}
+	}
+
 	// A POOL WITH NO MAXIMUM IS NOT A POOL. A class with no energy shield is a
 	// design position rather than an error state, and its shield maximum is
 	// zero; adding to it would be adding to something that does not exist, and
@@ -556,6 +568,12 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 		// `RefreshLiveMaximumHealth`, which runs only for a character whose
 		// maximum moves with its state and would miss one whose reservation does.
 		Cataclysm->HoldHealthToUnreserved();
+
+		// AND THE AURAS' MANA HOLD, ruled 2026-11-27: each held aura's reservation is asked again (a row whose figure
+		// moves with the character's state moves it), an aura that no longer fits the whole maximum is let go, newest
+		// first, and mana above the unreserved maximum comes down to it, as health's does above. Nothing changes for a
+		// character holding no aura.
+		Cataclysm->RepriceAuraReservations();
 
 		// AND ETERNAL HUNGER'S PART OF THE ABSORB DECAYS while its wearer is not leeching (V3a, 2026-11-25). Nothing
 		// for a character holding none of it.

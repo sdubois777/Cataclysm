@@ -1167,7 +1167,7 @@
       "data": {
         "kind": "basic",
         "name": "Reserve",
-        "description": "+2% increased maximum Fervour per point.",
+        "description": "+2% increased maximum Fervour per point. Your minions reserve 2% reduced Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1653,7 +1653,7 @@
       "data": {
         "kind": "basic",
         "name": "Wider Vessel",
-        "description": "+2% increased Maximum Mana per point.",
+        "description": "+2% increased Maximum Mana per point. Your auras reserve 3% reduced mana per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6

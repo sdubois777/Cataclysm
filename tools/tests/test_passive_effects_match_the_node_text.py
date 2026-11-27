@@ -861,7 +861,9 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: (`tools/reapply_death_finish_c_workbook.py`), E's six (`tools/reapply_death_finish_e_shadow_workbook.py`), D's 32
 #: (`tools/reapply_death_remains_workbook.py`), A's ten (`tools/reapply_death_finish_soul_collector_workbook.py`) and
 #: B's 29 (`tools/reapply_death_finish_b_workbook.py`), on 899.
-AUTHORED_ROWS = 998
+#: AND TO 1002 ON 2026-11-27, THE AURA RESERVATION (`tools/apply_aura_reservation_2026_11_27.py`), on 998: one row on
+#: each of four nodes that already had rows -- Wider Vessel, Reserve, Beacon of Despair and Aura of Pain.
+AUTHORED_ROWS = 1002
 
 #: How many of the 441 nodes have an authored effect.
 #:

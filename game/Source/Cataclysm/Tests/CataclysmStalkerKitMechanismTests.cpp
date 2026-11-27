@@ -915,9 +915,10 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitRandomBuffTest,
 /**
  * (a) A TIMED AURA IN THE SUPPORT SLOT PAYS ONE USE'S COST, AND NOT A DRAIN A SECOND. Grave Shroud's shape: `Radius=4;
  * Duration=6; Interval=1; Ailment=Necrosis` in the Support slot. Activating it spends the slot's cost once; a pulse
- * spends nothing more. Its pulse deals the Support slot's 0% and still lays the Necrosis, the rule of #917. THE
- * CONTROL is the same aura with no Duration, a toggle, in the same slot on another caster: its pulse drains the
- * slot's cost a second.
+ * spends nothing more and holds no mana back. Its pulse deals the Support slot's 0% and still lays the Necrosis, the
+ * rule of #917. THE CONTROL is the same aura with no Duration, a toggle made for the Aura slot, on the Support key of
+ * another caster: it holds part of that caster's maximum mana while on. Until 2026-11-27, when toggled auras began to
+ * reserve mana rather than drain it, the control was that a toggle's pulse drained the slot's cost a second.
  */
 CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitTimedSupportAuraTest,
 	"Cataclysm.StalkerKit.ATimedAuraInTheSupportSlotPaysOneUseAndLaysItsAilment")
@@ -956,20 +957,23 @@ CATACLYSM_STALKER_KIT_TEST(FCataclysmStalkerKitTimedSupportAuraTest,
 	TestEqual(TEXT("and a pulse of a timed aura spends nothing more"), Caster.Mana(), BeforeThePulse, 0.01f);
 	TestEqual(TEXT("the pulse deals the Support slot's nothing"), Inside.Health(), InsideBefore, 0.01f);
 	TestTrue(TEXT("and still lays the Necrosis its row states"), Inside.Carries(Necrosis));
+	TestEqual(TEXT("and the timed aura holds no mana back"), Caster.AbilitySystem->ManaReserved(), 0.0f, 0.001f);
 
-	// THE CONTROL: THE SAME AURA AS A TOGGLE DRAINS ON EVERY PULSE.
+	// THE CONTROL: THE SAME AURA AS A TOGGLE, MADE FOR THE AURA SLOT, HOLDS MANA BACK WHILE ON.
 	FKitFighter Toggler(World, FVector(0.0f, 30.0f * M, 0.0f));
 	UCataclysmAuraSkill* Toggle = GrantKitSkill<UCataclysmAuraSkill>(
 		Toggler, ECataclysmAbilitySlot::Support, TEXT("Radius=4; Interval=1"));
+	if (Toggle)
+	{
+		Toggle->DesignedSlot = ECataclysmAbilitySlot::Aura;
+	}
 	if (!TestNotNull(TEXT("set-up: the toggle"), Toggle)
 		|| !TestTrue(TEXT("set-up: it activates"), ActivateKitSkill(Toggler.AbilitySystem, Toggle)))
 	{
 		return false;
 	}
-	const float ToggleBefore = Toggler.Mana();
-	Toggle->Pulse();
-	TestEqual(TEXT("CONTROL: a toggle's pulse drains the slot's cost a second"), Toggler.Mana(), ToggleBefore - Cost,
-			  0.01f);
+	TestTrue(TEXT("CONTROL: a toggle holds part of its caster's maximum mana while on"),
+			 Toggler.AbilitySystem->ManaReserved() > 0.0f);
 	return true;
 }
 

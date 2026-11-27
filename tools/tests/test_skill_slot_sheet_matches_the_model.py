@@ -92,6 +92,28 @@ def test_every_mana_cost_matches(sheet, model):
         assert sheet[name]["Mana Cost"] == pytest.approx(slot.mana_cost), name
 
 
+#: The column the Aura's reservation lives in, since the ruling of 2026-11-27
+#: under the owner's choice "Reserve, don't drain". 50 on the Aura, 0 elsewhere.
+MANA_RESERVED = "Mana Reserved"
+
+
+def test_every_mana_reservation_matches(sheet, model):
+    """An aura reserves maximum mana while on rather than draining it a second.
+    The sheet carries that figure in its own column, and only the Aura reserves
+    any."""
+    missing = [name for name in model.SKILL_SLOTS
+               if MANA_RESERVED not in sheet[name]]
+    assert not missing, (
+        f"the {SHEET} sheet has no {MANA_RESERVED!r} column, which the "
+        "reservation ruling of 2026-11-27 adds; the workbook has not been "
+        "edited yet")
+    for name, slot in model.SKILL_SLOTS.items():
+        assert (sheet[name][MANA_RESERVED] or 0) == pytest.approx(
+            slot.mana_reserved), name
+    assert [n for n, s in model.SKILL_SLOTS.items() if s.mana_reserved] == [
+        "Aura"]
+
+
 def test_only_the_basic_attack_restores_mana_on_hit(sheet, model):
     """It is the automatic slot, so this is income for being in a fight rather
     than a generator the player has to press. Any other slot restoring mana

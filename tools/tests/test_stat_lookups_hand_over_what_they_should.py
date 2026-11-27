@@ -410,6 +410,18 @@ INVENTORY = {
         "Issue #2787, branch B. The call it replaced, the skill templates' "
         "PassiveStatFor for The Swarm's minion cap, went with the cap",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(ManaReserveReductionStat), Tags, 0.0f'):
+        'the mana points taken off what one held aura reserves, asked with '
+        "the aura's tags so a row requiring Slot.Aura reaches only auras; no "
+        'attribute, so nought is the fallback, and no blow is in hand. Ruled '
+        "2026-11-27 under the owner's choice to reserve rather than drain",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(ManaReservePercentLessStat), Tags, 0.0f'):
+        'the summed percentage less that one held aura reserves, asked with '
+        "the aura's tags as the flat reduction beside it is; no attribute, so "
+        'a negative row survives and nought is the fallback; held to 75 by '
+        'ReservedAfterReductions. Ruled 2026-11-27',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
      'FName(ReservedFervourSpentPercentStat), Tags, 0.0f'):
         "Bound Offering's share of a reserve held that counts as Fervour "
         "spent, asked with the making skill's tags when a skill made the "

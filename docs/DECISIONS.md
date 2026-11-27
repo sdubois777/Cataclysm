@@ -2,6 +2,232 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — An aura reserves maximum mana while it is on and drains none: 50 at skill level 1, lowered by the skill's level and by three new reserve stats, the summed percent held at 75% for mana and Fervour alike
+
+**Affects:**
+- `game/Data/SkillSlots.csv` (from the workbook's Skill Slots sheet): a "Mana Reserved" column, 50 on the Aura row and 0
+  elsewhere; the Aura's Mana Cost is 0. `FCataclysmSkillSlotRow::ManaReserved`, `FCataclysmSkillSlotNumbers::ManaReserved`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`: `ManaReservationFor`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`: `UCataclysmAuraSkill` takes nothing in
+  `Pulse`; `CheckCost` asks for room; `ActivateAbility` holds the reservation and `EndAbility` gives it back; `Reserves`,
+  `HasRoomToReserve`, `ReservedNow`; `bEndedForLackOfMana` now means "let go because it no longer fitted".
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `HoldAuraReservation`,
+  `ReleaseAuraReservation`, `HoldsAuraReservation`, `ManaReserved`, `HealthReservedByAuras` (added into
+  `HealthReserved`), `UnreservedMaximumMana`, `HoldManaToUnreserved`, `ReleaseAurasThatNoLongerFit`; `ManaPercent` in
+  `CurrentConditions` reads the unreserved maximum.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`: `ManaReserveFor`, `ReservedAfterReductions`,
+  `MostReservePercentLess` (75), `SmallestManaReserve` (1), and the three stat names; `ReserveFor` takes the 75% cap.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp`: `TopUp` fills mana only to the unreserved maximum;
+  the step lets go of auras that no longer fit and holds mana to the ceiling each second.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmBoneGiants.h` and `.cpp`: the Colossus's 20 and the Abomination's 100
+  go through `ReserveFor`.
+- `game/Source/Cataclysm/Character/CataclysmCorruptedStalkerCharacter.h` and `.cpp`,
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`: the rule that switched the Stalker's aura off below
+  30% of its mana, and `CorruptedStalkerAuraOffBelowManaShare`, are removed; its aura is chosen when it fits.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (a respawn holds mana to the ceiling),
+  `CataclysmPlayerClassStats.cpp` (the three stats have no attribute).
+- `game/Source/Cataclysm/Interface/CataclysmHUD.cpp`, `CataclysmCombatOverlay.h` and `.cpp`: a dark band and its figure
+  at the end of the mana bar. `CataclysmSkillBar.h` and `.cpp`: an aura that does not fit is greyed out, and its pop-up
+  says "Reserves N mana while on."
+- Enchantments, passive nodes, the re-apply script, the simulation and the design document: see below.
+- Tests: listed under "Tests".
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN COMPILED OR RUN IN UNREAL.** The window is registered and waits behind the Echoes, Soul
+  Collector and Sentinel windows.
+- **TWO CORRECTIONS TO THE DESIGN DRAFT (`.claude/windows/aura_reservation_draft.md`), found while building and ruled
+  by the coordinating session on 2026-11-27:**
+  1. **No "Ultimate key x2" rule existed.** The draft said "An aura on the Ultimate key pays its upkeep doubled (ruled
+     2026-10-15)", and ruling 1 below repeated it. The doubling ruled on 2026-10-15 is Mana Weaver's ten-piece bonus
+     (`UCataclysmGameplayAbility::UltimateCostDoublingFactor`), which reaches only a skill MADE for the Ultimate slot;
+     since the ruling of 2026-10-25 (Q7) a skill keeps its designed slot's numbers on any key, so a toggled aura on the
+     Ultimate key was never doubled. Ruled: "as today", literally. A toggled aura reserves its Aura slot's 50, times the
+     skill-level factor, times the Mana Weaver factor, which is 1 for every toggled aura. Timed auras reserve nothing.
+  2. **Water to Blood is one for one, not three.** The draft said an aura would reserve health "at the existing 3 health
+     to 1 mana". That ratio is a different row's ("Skills can spend HP instead of mana at a 3:1 ratio", spent only when
+     mana is short). Water to Blood converts the pool and not the price (`UCataclysmGameplayAbility::CostPool`). Ruled:
+     an aura reserves the same number of health points, and the 3:1 row does not apply to a reservation.
+- **The draft's other statements about the code were checked against it before registering, as the coordinating
+  session asked.** One more was partly wrong and changes nothing built: the draft said a Fervour reserve "is fixed when
+  each follower is made", but a skill's level-up reprices reserves already held (`UCataclysmSkillLevels::
+  RepriceReservesOf`). Put to the coordinating session, which ruled the same day: "reprice auras LIVE, as Fervour
+  reserves are" -- see "Repriced live" below. The others held: each damage type adds its aura once
+  (`CataclysmWeaponSkills.cpp`, "AND THE TYPE'S AURA ONCE"); any skill may go on any key but the basic attack's
+  (`ACataclysmPlayerState::RefusalForSkillChoice`); a refill of the keys ends running abilities; death ends auras only
+  under `auras_end_at_death`; mind adds 2% maximum mana a point (`Attributes.csv`); Ritual Focus and the Soul
+  Collector's capstone remove `mana_cost`; Cheap Bones is 4% a point and Lighter Bones 2% a point for permanent minions.
+
+### The owner's words, verbatim
+
+"I think we may need to adjust the mana cost of auras across the board. I have a lvl 100 character with 500+ mana and
+I can't even keep my auras going. That feels a bit extreme. It should be difficult to maintain them at low levels, but
+get easier. Players will likely be running more than one at a time, and right now that's impossible."
+
+Asked to choose, the owner chose "Reserve, don't drain". On running more than one aura: "It does, it's just not
+possible to sustain it." On levers: "There should probably be enchantments/passive nodes depending on class that lower
+reservation amounts of fervour/mana. Just another lever the player can pull to make their build."
+
+### The rulings: the coordinating session's, under the owner's delegation of unstated numbers
+
+1. "A flat 50, lowered by the aura skill's own level, the existing 0.9642 a level (about 25 at skill level 20). The
+   Ultimate key doubles it, as today." The second sentence is corrected: see SAID FIRST, correction 1.
+2. "The 75% cap on summed reductions applies to BOTH mana and Fervour: one rule in ReserveFor, with the floor of 1."
+3. "Route the Bone Colossus and the Abomination through ReserveFor, so reductions reach them. Test it, with a control."
+4. "The drawback enchantment becomes 50%-100% increased reservation. Weight and Tags unchanged."
+5. The Corrupted Stalker: "REMOVE its switch-off-below-30%-mana rule... Its aura reserves like the player's."
+6. "Ravager: no new node now. The Ravager gets its reductions from gear enchantments."
+7. "Conditions that read a mana percentage read the unreserved maximum."
+8. Approved as proposed: the three stats in the Fervour shape; the enchantment rows; the Ritualist's Wider Vessel and
+   Reserve, the Masochist's Beacon of Despair and the Bulwark's Aura of Pain. The Soul Collector's two nodes (Spirit to
+   Mana, Ossuary) go to the Soul Collector rework session after its window passes, and are not on this branch.
+
+### Research (re-read for the draft, `.claude/windows/aura_reservation_draft.md` section 1)
+
+All read through a summarising fetch tool on 2026-11-27, so the quotes are probably accurate but were not checked
+character by character; poewiki.net and poe2wiki.net refused automated reading.
+
+- **Path of Exile 2, Spirit** (poe2db.tw/us/Spirit): persistent skills reserve a FLAT amount that the gem's level
+  changes -- Herald of Ash "Reservation: 30 Spirit", Skeletal Warrior "Reservation: (60—20) Spirit" -- and "Reserving a
+  resource does not change the maximum value of that resource." That is the shape taken here, with mana as the pool
+  because the owner's words say mana.
+- **Path of Exile 1** (poedb.tw/us/Aura): "Reserved mana can't be used or recovered until whatever is reserving it is
+  disabled." That is the rule taken for what reserved mana is.
+- **Efficiency** (pathofexile.com/forum/view-thread/3185299): "Reservation Efficiency works by dividing the cost", so it
+  never reaches nought. This game's reductions subtract, so they can; hence the cap.
+- **A condition reading a mana percentage against the unreserved maximum** follows Path of Exile 1's Archmage, as the
+  comment on `PerPointOfMaximumMana` in `CataclysmStatPipeline.h` already recorded; that was not re-read at a source.
+- **What the research does not settle, and is this game's judgement:** every number (50, 0.9642 a level, 75%, 1), the
+  pool being mana rather than a new pool, and the cap; no source read states a cap or a floor.
+
+### How it works
+
+- **Switching an aura on costs nothing and needs room:** what the holder's auras leave unreserved of the MAXIMUM must be
+  at least this aura's reservation, as a Fervour reserve is measured. Mana in hand above the new ceiling is lost at once.
+- **While on, it holds that much of maximum mana**, which cannot be spent or refilled; the maximum itself is unchanged.
+  A pulse takes nothing. Switched off, the reservation is free again (mana is not refilled).
+- **The reservation is the designed slot's "Mana Reserved"** (only the Aura's, 50), times the skill's level factor, after
+  the holder's reductions: a flat `mana_reserve_reduction`, then one less the summed `mana_reserve_percent_less` (held at
+  75; a negative sum raises it and is not held), then the `mana_reserve` "more" rows, never below 1. **It does not grow
+  with the character's level**, which is what makes it hard early and easy late.
+- **Timed auras** (Living Pyre, Grave Muster, Grave Shroud, Fevered Blood, Coin of Misrule, Aegis of Dawn) reserve
+  nothing and pay once, as before. Every aura in the data made for a slot other than the Aura slot is timed.
+- **A maximum that falls below what is reserved** lets the most recently switched-on aura go, each regeneration step,
+  until the rest fit.
+- **Rows that scale with maximum mana keep reading the maximum.** Rows reading `mana_cost` no longer reach an aura, which
+  costs nothing.
+- **Under Water to Blood** an aura holds the same number of health points (added into `HealthReserved`), and room
+  keeps one point of health unreserved.
+- **Cast from Ward and "pays from health when short"** do not reach a reservation: it is not a payment that runs short.
+- **The key an aura sits on does not change it** (see SAID FIRST, correction 1).
+
+### Repriced live (ruled 2026-11-27 by the coordinating session)
+
+"Reprice auras LIVE, as Fervour reserves are (RepriceReservesOf). A skill level gained while the aura is on lowers its
+reservation at once. So does a change to the reduction stats, from equipping gear or spending a point: up or down. If a
+reprice raises the reservation above the unreserved maximum, current mana is held to the new ceiling, as the health
+version does. The aura stays on unless the reservation would exceed the whole maximum. In that case it switches off,
+with a log line."
+
+Built as `UCataclysmAbilitySystemComponent::RepriceAuraReservations`, which asks each held aura its reservation again,
+lets go of auras that no longer fit the whole maximum (newest first, an `AURA LET GO` line at `Log`), and holds mana and
+health to what is left. It is called when the stat line is written (`SetStatInputs`), at the end of a refresh once both
+maxima are written (`UCataclysmPlayerClassStats::ApplyTo`), when a skill levels
+(`ACataclysmPlayerState::RepriceReservesForLevelsGained`), and on every regeneration step. The pool is asked again too,
+so Water to Blood taken or given up moves a hold to the pool every cost comes from.
+
+### How many auras fit (no gear, no attribute points, skill level 1, room kept for one Ultimate and one Special)
+
+| Class line | Level 1 | Level 20 | Level 50 | Level 100 |
+|---|---|---|---|---|
+| Default line (Masochist, Shadow, Soul Collector, Bulwark, Berserker, Saboteur) | 0 | 2 | 4 | 9 |
+| Ravager | 0 | 1 | 2 | 4 |
+| Necromancer | 1 | 3 | 8 | 15 |
+| Ritualist | 1 | 5 | 11 | 21 |
+
+From `sim/cataclysm_sim/character.py`, `Character.auras_that_fit`, checked against the draft's table.
+
+### Enchantments and nodes
+
+Written by `tools/apply_aura_reservation_2026_11_27.py`, which finds every row by its key so a second run on a workbook
+another branch has changed still works, writes nothing on a second run, and refuses a cell holding a third value
+(`tools/tests/test_apply_aura_reservation.py`, 7 tests). Then `tools/generate_datatables.py`, which now emits
+`ManaReserved` and refuses a reservation below nought, one on a slot other than the Aura, and a slot that both reserves
+and costs mana (`tools/tests/test_skill_slot_reservation_refusals.py`, 4 tests).
+
+| Enchantment row | Was | Stat |
+|---|---|---|
+| `Positive_Your_auras_reserve_30_50_less_mana` | `Positive_Your_aura_costs_30_50_less_mana_per_second` (alias kept) | `mana_reserve` more -30 to -50, Slot.Aura |
+| `Negative_Your_auras_reserve_50_100_increased_mana` | `Negative_Your_auras_cost_100_200_increased_mana_per_sec`, 100%-200% (alias kept) | `mana_reserve_percent_less` -50 to -100, Slot.Aura |
+| `Positive_Your_auras_reserve_15_30_reduced_mana` | new, Weight 2 | `mana_reserve_percent_less` 15 to 30, Slot.Aura |
+| `Positive_Each_aura_you_hold_reserves_5_15_less_mana` | new, Weight 2 | `mana_reserve_reduction` 5 to 15, Slot.Aura |
+| `Positive_Your_gadgets_reserve_15_30_reduced_Fervour` | new, Weight 2 | `minion_reserve_percent_less` 15 to 30, Type.Gadget |
+
+The two renamed rows keep their Weight and Tags; the aliases are in `FCataclysmEnchantmentRenames::Aliases()` and
+`tools/tests/enchantment_row_names.txt`.
+
+| Passive row | Node | Adds, per point |
+|---|---|---|
+| `Ritualist_basic_d_c0#2` | Wider Vessel (6 points) | "Your auras reserve 3% reduced mana" |
+| `Ritualist_basic_c_c1#2` | Reserve (6 points) | "Your minions reserve 2% reduced Fervour" |
+| `Masochist_basic_fl_b2#4` | Beacon of Despair (8 points) | "Your auras reserve 2% reduced mana" |
+| `Bulwark_basic_tw_t3_001#3` | Aura of Pain (8 points) | "Your auras reserve 2% reduced mana" |
+
+No Ravager node, as ruled: the Ravager's reductions come from gear enchantments. The Soul Collector's two nodes (Spirit
+to Mana, Ossuary) are not on this branch; they go to the Soul Collector rework after its window passes.
+
+**The coverage pins move with the rows, as their comments ask:** the enchantment effect sheet's authored rows 709 to
+712 over 572 to 575 enchantments, the stated ranges 391 to 394 (in `test_enchantment_effects_match_the_row_text.py` and
+`Cataclysm.Enchantments.EveryRangeTheTablesStateIsFoundAndReplaced`), and the passive effect rows 998 to 1002.
+Rows that read `mana_cost` -- "Skills cost 50%-75% more mana", Ritual Focus, the Soul Collector's capstone -- no longer
+reach an aura, which costs nothing.
+
+### Tests
+
+- New, `game/Source/Cataclysm/Tests/CataclysmAuraReservationTests.cpp`, group `Cataclysm.AuraReservation.` (13):
+  room against the maximum; two auras fit 100 and a third does not; the skill's level; flat across character levels;
+  the 75% cap and the floor; a row scoped to auras; a falling maximum lets the newest go; regeneration's ceiling; a
+  mana percentage; a timed aura; a level gained reprices at once; a reduction taken off reprices and holds the mana; a
+  reservation too large for the whole maximum switches the aura off.
+- New: `Cataclysm.Remains.TheBoneColossusAndTheAbominationReserveLessUnderTheReserveRows`.
+- New probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` for `mana_reserve_reduction`, `mana_reserve_percent_less`, `mana_reserve`.
+- Rewritten, the drain they pinned being gone (old name -> new):
+  - `Cataclysm.Skills.AnAuraSwitchesOffWhenTheManaRunsOut` -> `AnAuraReservesManaWhileOnAndAPulseTakesNone`
+  - `AnAuraKeepsRunningOnHealthWhenTheManaPoolBecameHealth` -> `AnAuraReservesHealthWhenTheManaPoolBecameHealth`
+  - `AnAurasUpkeepPaysWhatTheStatSaysRatherThanTheSlotsFigure` -> `AnAurasReservationReadsTheReserveRowsAndNotTheManaCostRows`
+  - `BelowTenPercentManaAnAurasUpkeepStillDrainsMana` -> `BelowTenPercentManaSwitchingAnAuraOnTakesNoHealth`
+  - `CastFromWardAnAurasUpkeepIsPaidFromTheShieldWhenManaIsShort` -> `CastFromWardAnAurasReservationTakesNothingFromTheShield`
+  - `Cataclysm.AuraEffect.ARowLeavesAnAurasRadiusAndItsUpkeepAsTheyWere` -> `...AndItsReservationAsTheyWere`
+  - `...TheBasicAttackAndAnAurasUpkeepPayNoHealth` -> `...TheBasicAttackAndAnAuraPayNoHealth`
+  - `Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana` ->
+    `ACorruptedStalkerHoldsOneAuraAtATimeAndItReservesManaAsThePlayersDoes`
+- Changed in place: `Cataclysm.Skills.EverySlotHasItsNumbers` (the Aura reserves 50 and costs nothing);
+  `Cataclysm.NoCaps.NoReductionTakesAReserveBelowOnePoint` (the 75% cap); the Corrupted Stalker choice tests in
+  `CataclysmDungeonModifierEffectsTests.cpp` and `CataclysmStalkerEntryTests.cpp` (its aura is kept out by room, not by
+  30% of its mana); `Cataclysm.StalkerKit.ATimedAuraInTheSupportSlotPaysOneUseAndLaysItsAilment` (its control is a
+  toggle's hold, not its drain); two `Cataclysm.Enchantments.` aura tests given a pool of 1,000, their wearer's 50 being
+  exactly the reservation; `Cataclysm.Enchantments.EveryRangeTheTablesStateIsFoundAndReplaced` (394).
+- Python: `sim/tests/test_skill_slots.py` (the reservation model and the auras that fit);
+  `tools/tests/test_skill_slot_sheet_matches_the_model.py` (`test_every_mana_reservation_matches`);
+  `tools/tests/test_skill_slot_reservation_refusals.py` and `tools/tests/test_apply_aura_reservation.py` (new); the two
+  inventories in `test_every_gain_to_the_pool_goes_through_raise_pool.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`; four older scripts' replay tests, which now compare against copies
+  with this reservation taken out (`tools/tests/without_the_aura_reservation.py`).
+
+### Evidence
+
+- **Python suite** (`python -u -m pytest --junit-xml=...`, on the tree before this commit's last test file was added):
+  "1 failed, 9693 passed, 9 skipped in 943.11s"; the JUnit file agrees, tests=9703, failures=1, errors=0, skipped=9.
+  The one failure is `test_datatable_assets_are_current`: six CSVs changed (EnchantmentEffects, EnchantmentsNegative,
+  EnchantmentsPositive, PassiveEffects, PassiveNodes, SkillSlots), and their assets are rebuilt in the window.
+  `tools/tests/test_skill_slot_reservation_refusals.py`, added after that run began: "4 passed".
+- `python -m ruff check .`: "All checks passed!". `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs
+  are up to date." `python tools/check_includes.py --changed` and the new test file: 25 files, 0 types unseen; its
+  control, the new test file with `CataclysmCommand.h` removed, FAILS naming `UCataclysmCommand`.
+- **Guard proofs and the Unreal window: not yet run.** They are recorded here when they are.
+
+---
+
 ## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
 
 **Affects:**

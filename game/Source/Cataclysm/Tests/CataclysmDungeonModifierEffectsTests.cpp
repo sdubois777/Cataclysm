@@ -64587,8 +64587,10 @@ bool FCataclysmCorruptedStalkerChoicesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// ITS BRAIN CHOOSES THE FIRST SKILL IN THE RULED ORDER IT MAY USE: the aura with mana, the support skill below half its
-// health, the movement skill beyond 15 m, the ultimate with its Fervour, then the heavy skill and the special by reach.
+// ITS BRAIN CHOOSES THE FIRST SKILL IN THE RULED ORDER IT MAY USE: the aura when it fits, the support skill below half
+// its health, the movement skill beyond 15 m, the ultimate with its Fervour, then the heavy skill and the special by
+// reach. "WHEN IT FITS" SINCE 2026-11-27: its aura reserves mana as the player's does, and is chosen when what its auras
+// leave unreserved holds the reservation. Until then it was "with mana", 30% of it, a rule removed with the drain.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerChoosesTest,
 	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkersBrainChoosesTheFirstSkillItMayUseInTheRuledOrder",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -64613,9 +64615,19 @@ bool FCataclysmCorruptedStalkerChoosesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// NO ROOM FOR ITS AURA: something already holds all but 10 of its maximum mana. Held for the Stalker itself, which
+	// is a hold the component lets go of only when asked.
+	UCataclysmAbilitySystemComponent* Holder = StalkerHolder(Stalker);
+	if (!TestNotNull(TEXT("set-up: its ability system"), Holder))
+	{
+		return false;
+	}
+	const float MaxMana = Holder->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute());
+	Holder->HoldAuraReservation(Stalker, FGameplayAbilitySpecHandle(), MaxMana - 10.0f, /*bFromHealth=*/false);
+
 	StalkerAt(Stalker, 0.2f, 1.0f, 0.0f);
-	TestEqual(TEXT("below 30% mana, full health, no Fervour, at 3 m: the heavy skill"), Brain->ChooseAbility(300.0f),
-			  StalkerChoiceIndex(Slot::Heavy));
+	TestEqual(TEXT("with no room for its aura, full health, no Fervour, at 3 m: the heavy skill"),
+			  Brain->ChooseAbility(300.0f), StalkerChoiceIndex(Slot::Heavy));
 	TestEqual(TEXT("at 8 m: the special, which reaches 12 m"), Brain->ChooseAbility(800.0f),
 			  StalkerChoiceIndex(Slot::Special));
 	TestEqual(TEXT("at 20 m: the movement skill"), Brain->ChooseAbility(2000.0f), StalkerChoiceIndex(Slot::Movement));
@@ -64632,14 +64644,19 @@ bool FCataclysmCorruptedStalkerChoosesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("CONTROL: above half its health, the ultimate again"), Brain->ChooseAbility(300.0f),
 			  StalkerChoiceIndex(Slot::Ultimate));
 
-	StalkerAt(Stalker, 1.0f, 0.45f, 100.0f);
-	TestEqual(TEXT("with its mana: the aura first of all"), Brain->ChooseAbility(300.0f), StalkerChoiceIndex(Slot::Aura));
+	// ROOM AGAIN: AT A FIFTH OF ITS MANA, which until 2026-11-27 kept its aura off.
+	Holder->ReleaseAuraReservation(Stalker);
+	StalkerAt(Stalker, 0.2f, 0.45f, 100.0f);
+	TestEqual(TEXT("with room for its aura, at a fifth of its mana: the aura first of all"), Brain->ChooseAbility(300.0f),
+			  StalkerChoiceIndex(Slot::Aura));
 	return true;
 }
 
-// ONE AURA AT A TIME, AND IT GOES OFF BELOW 30% MANA.
+// ONE AURA AT A TIME, AND IT RESERVES MANA AS THE PLAYER'S DOES: it stays on at a fifth of the Stalker's mana. Ruled
+// 2026-11-27: "Its aura reserves like the player's." Until then this test was
+// `ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana`, for the rule that switched it off.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerAuraTest,
-	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana",
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsOneAuraAtATimeAndItReservesManaAsThePlayersDoes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCorruptedStalkerAuraTest::RunTest(const FString& Parameters)
@@ -64673,9 +64690,12 @@ bool FCataclysmCorruptedStalkerAuraTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and while it runs the aura cannot be chosen again"), Stalker->EnemyAbilities()[Aura].MaxRangeCm, 0.0f,
 			  0.0001f);
 
+	const UCataclysmAbilitySystemComponent* Holder = StalkerHolder(Stalker);
+	TestTrue(TEXT("and it holds part of the Stalker's maximum mana"), Holder && Holder->ManaReserved() > 0.0f);
+
 	StalkerAt(Stalker, 0.2f, 1.0f, 0.0f);
 	Stalker->AfterRegenerationStep();
-	TestFalse(TEXT("below 30% mana its aura goes off"), Stalker->IsRunningASkillIn(Slot::Aura));
+	TestTrue(TEXT("at a fifth of its mana its aura stays on"), Stalker->IsRunningASkillIn(Slot::Aura));
 	return true;
 }
 
@@ -65309,8 +65329,20 @@ bool FCataclysmCorruptedStalkerStartingFervourTest::RunTest(const FString& Param
 	TestEqual(TEXT("twenty seconds alone and it still holds its Ultimate's Fervour"),
 			  StalkerRead(Stalker, Resource::GetClassResourceAttribute()), Effects::CorruptedStalkerStartingFervour, 0.01f);
 
-	// BESIDE THE PLAYER, BELOW ITS AURA'S MANA SHARE AND AT FULL HEALTH: ITS ULTIMATE, AND IT CASTS IT.
+	// BESIDE THE PLAYER, WITH NO ROOM FOR ITS AURA AND AT FULL HEALTH: ITS ULTIMATE, AND IT CASTS IT. NO ROOM SINCE
+	// 2026-11-27, when its aura began to reserve mana as the player's does: all but 10 of its maximum mana is held for it.
+	// Until then a fifth of its mana, below a 30% rule removed with the drain, kept the aura out.
 	Stalker->SetActorLocation(Player.Character->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f));
+	const auto NoRoomForItsAura = [](ACataclysmCorruptedStalkerCharacter* Who)
+	{
+		if (UCataclysmAbilitySystemComponent* Holder = StalkerHolder(Who))
+		{
+			Holder->HoldAuraReservation(Who, FGameplayAbilitySpecHandle(),
+										StalkerRead(Who, UCataclysmVitalAttributeSet::GetMaxManaAttribute()) - 10.0f,
+										/*bFromHealth=*/false);
+		}
+	};
+	NoRoomForItsAura(Stalker);
 	StalkerSet(Stalker, Vital::GetManaAttribute(), StalkerRead(Stalker, Vital::GetMaxManaAttribute()) * 0.2f);
 	const int32 Ultimate = StalkerChoiceIndex(Slot::Ultimate);
 	TestEqual(TEXT("at 3 m its brain chooses its Ultimate"), Brain->ChooseAbility(300.0f), Ultimate);
@@ -65320,6 +65352,7 @@ bool FCataclysmCorruptedStalkerStartingFervourTest::RunTest(const FString& Param
 
 	// CONTROL: A STALKER AT NO FERVOUR CHOOSES ITS HEAVY SKILL THERE INSTEAD.
 	StalkerSet(Empty, Resource::GetClassResourceAttribute(), 0.0f);
+	NoRoomForItsAura(Empty);
 	StalkerSet(Empty, Vital::GetManaAttribute(), StalkerRead(Empty, Vital::GetMaxManaAttribute()) * 0.2f);
 	TestEqual(TEXT("CONTROL: a Stalker at no Fervour chooses its heavy skill at 3 m"), EmptyBrain->ChooseAbility(300.0f),
 			  StalkerChoiceIndex(Slot::Heavy));

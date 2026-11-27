@@ -83,17 +83,29 @@ bool FCataclysmSkillSlotNumbersTest::RunTest(const FString& Parameters)
 		}
 
 		// Only the Basic Attack is free. Everything a player chooses is paid for,
-		// or nothing limits how often it is used.
+		// or nothing limits how often it is used -- THE AURA BY WHAT IT RESERVES
+		// rather than by a cost, since 2026-11-27 (the owner's choice "Reserve,
+		// don't drain"): switching it on is free, and while on it holds maximum
+		// mana. It is the only slot that reserves.
 		if (Slot == ECataclysmAbilitySlot::BasicAttack)
 		{
 			TestEqual(TEXT("the Basic Attack is free"), Numbers.ManaCostAtLevel100, 0.0f);
 			TestTrue(TEXT("and it restores mana on hit"),
 				Numbers.ManaOnHitAtLevel100 > 0.0f);
 		}
+		else if (Slot == ECataclysmAbilitySlot::Aura)
+		{
+			TestEqual(TEXT("switching the Aura on costs no mana"), Numbers.ManaCostAtLevel100, 0.0f);
+			TestEqual(TEXT("and while on it reserves 50 maximum mana"), Numbers.ManaReserved, 50.0f);
+			TestEqual(TEXT("and it does not restore mana; only the automatic slot does"),
+				Numbers.ManaOnHitAtLevel100, 0.0f);
+		}
 		else
 		{
 			TestTrue(FString::Printf(TEXT("%s costs mana"), *Name),
 				Numbers.ManaCostAtLevel100 > 0.0f);
+			TestEqual(FString::Printf(TEXT("%s reserves nothing; only the Aura does"), *Name),
+				Numbers.ManaReserved, 0.0f);
 			TestEqual(FString::Printf(
 				TEXT("%s does not restore mana; only the automatic slot does"), *Name),
 				Numbers.ManaOnHitAtLevel100, 0.0f);

@@ -177,7 +177,12 @@ MORE_SLOWLY = re.compile(r"\bmore\s+slowly\b", re.IGNORECASE)
 #: session on 2026-11-21, with the sentence's "increased" rather than "more"
 #: because the percentages reaching a kind add: accepted on this stat only, since
 #: "increased" in TAKING would let a negative row on any stat pass on that word.
-RESERVES_MORE_WHEN_NEGATIVE = {"minion_reserve_percent_less"}
+#:
+#: AND `mana_reserve_percent_less` SINCE 2026-11-27, the aura reservation ruled
+#: by the coordinating session under the owner's choice "Reserve, don't drain":
+#: the same shape for an aura's maximum mana. "Your auras reserve 50%-100%
+#: increased mana" is minus 50 to minus 100 on it.
+RESERVES_MORE_WHEN_NEGATIVE = {"minion_reserve_percent_less", "mana_reserve_percent_less"}
 RESERVE_INCREASED = re.compile(r"\breserves?\b.*\bincreased\b", re.IGNORECASE)
 
 #: A sentence saying a stat is gone, which is what the `removed` kind is for.
@@ -1075,8 +1080,14 @@ BASE_PLUS_SINGLE_VALUES = {
 #: issue #1833, 2026-10-22, from 703 over 566: three rows on three enchantments.
 #: AND 709 OVER 572 SINCE THE TWO GEM ENCHANTMENTS' ROWS, issue #46 slice G10,
 #: 2026-11-22, from 707 over 570: one row on each of two enchantments.
-AUTHORED_ROWS = 709
-AUTHORED_ENCHANTMENTS = 572
+#: AND 712 OVER 575 SINCE THE AURA RESERVATION OF 2026-11-27, from 709 over 572,
+#: ruled by the coordinating session under the owner's choice "Reserve, don't
+#: drain" (`tools/apply_aura_reservation_2026_11_27.py`): one row on each of three
+#: new enchantments -- "Your auras reserve 15%-30% reduced mana", "Each aura you
+#: hold reserves 5-15 less mana" and "Your gadgets reserve 15%-30% reduced
+#: Fervour". The two aura mana sentences it reworded keep one row each.
+AUTHORED_ROWS = 712
+AUTHORED_ENCHANTMENTS = 575
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -1154,7 +1165,10 @@ SETS_THAT_WORK = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
 #: 391 SINCE 2026-10-07, when the owner's reword of "DoTs last 2x-4x as long on
 #: you" to "DoTs on you have 100%-300% more duration" made that sentence state
 #: a range a reader reads.
-STATED_RANGES = 391
+#:
+#: 394 SINCE 2026-11-27, the aura reservation: three new enchantments state one
+#: range each. The two aura mana sentences it reworded still state one each.
+STATED_RANGES = 394
 
 
 def read(path: pathlib.Path) -> list[dict]:

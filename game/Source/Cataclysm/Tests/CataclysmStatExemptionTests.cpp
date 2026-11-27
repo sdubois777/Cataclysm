@@ -12955,6 +12955,39 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * The three stats an aura's mana reserve is lowered by, each read by `UCataclysmCommand::ManaReserveFor`: ruled
+	 * 2026-11-27 under the owner's choice "Reserve, don't drain". ONE FIGHTER. THE CONTROL IS THE SAME FIGHTER BEFORE
+	 * THE STAT IS GRANTED: a stated 50 is reserved whole. Granted, `mana_reserve_reduction` flat 10 makes it 40,
+	 * `mana_reserve_percent_less` flat 50 makes it 25, and `mana_reserve` More -50 makes it 25.
+	 *
+	 * WHAT THIS DOES NOT REACH. An aura switched on under them, the 75% cap and the floor: `Cataclysm.AuraReservation.`.
+	 */
+	void ProbeManaReserve(FAutomationTestBase& Test, const TCHAR* Stat, ECataclysmStatBucket Bucket, float Value,
+						  float Expected)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Fighter.Actor));
+		if (!Test.TestNotNull(TEXT("set-up: the fighter's ability system"), System))
+		{
+			return;
+		}
+		Test.TestEqual(*FString::Printf(TEXT("control: with no %s a stated 50 is reserved whole"), Stat),
+					   UCataclysmCommand::ManaReserveFor(System, 50.0f, FGameplayTagContainer()), 50.0f, 0.0001f);
+		GrantOne(System, Stat, Bucket, Value);
+		Test.TestEqual(*FString::Printf(TEXT("with %s at %.0f it is %.0f, so ManaReserveFor really reads it"), Stat,
+										Value, Expected),
+					   UCataclysmCommand::ManaReserveFor(System, 50.0f, FGameplayTagContainer()), Expected, 0.0001f);
+	}
+
+	/**
 	 * `reserved_fervour_spent_percent`, read by `UCataclysmCommand::HoldReserve`, which every minion, thrall, gadget and
 	 * trap holds its reserve through: Bound Offering, the Death trees' slice C3b (2026-11-25). ONE FIGHTER. THE CONTROL IS
 	 * THE SAME FIGHTER BEFORE THE STAT IS GRANTED: holding back 20 raises no spend. Granted at a flat 90, the same hold
@@ -16201,6 +16234,12 @@ namespace CataclysmStatExemptionTest
 			{TEXT("trap_arming_speed"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/true); }},
 			{TEXT("trap_trigger_radius"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/false); }},
 			{TEXT("minion_reserve_percent_less"), &ProbeReservePercentLess},
+			{TEXT("mana_reserve_reduction"), [](FAutomationTestBase& Test)
+			 { ProbeManaReserve(Test, UCataclysmCommand::ManaReserveReductionStat, ECataclysmStatBucket::Flat, 10.0f, 40.0f); }},
+			{TEXT("mana_reserve_percent_less"), [](FAutomationTestBase& Test)
+			 { ProbeManaReserve(Test, UCataclysmCommand::ManaReservePercentLessStat, ECataclysmStatBucket::Flat, 50.0f, 25.0f); }},
+			{TEXT("mana_reserve"), [](FAutomationTestBase& Test)
+			 { ProbeManaReserve(Test, UCataclysmCommand::ManaReserveStat, ECataclysmStatBucket::More, -50.0f, 25.0f); }},
 			{TEXT("traps_do_not_expire"), &ProbeTrapExpiry},
 			{TEXT("trap_rearm_chance"),
 			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapRearmChanceStat); }},

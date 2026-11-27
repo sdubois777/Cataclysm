@@ -50,7 +50,7 @@ enum class ECataclysmWildMagicLeftOut : uint8
 	/** It moves the character somewhere the player did not choose. */
 	Movement,
 
-	/** A toggle with an upkeep. */
+	/** A toggle that reserves mana while on (a per-second upkeep until 2026-11-27). */
 	Aura,
 
 	/** It reserves Fervour and counts against a most-active figure. */
@@ -671,7 +671,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	 * `UCataclysmSkillTemplate::PayHealthCost` takes from health. 2026-10-23, G7c.
 	 *
 	 * "MANA COST" IS THE MANA ACTUALLY TAKEN FROM THE MANA POOL, after every reduction, ruled 2026-10-23: nothing for a
-	 * cost paid from health or energy shield, nothing for a free cast, nothing for an aura's upkeep.
+	 * cost paid from health or energy shield, nothing for a free cast. (Nothing for an aura's upkeep either, until auras stopped draining on 2026-11-27.)
 	 *
 	 * ITS OWN FIELD, WRITTEN ONCE A FLOOR BY `PlayerEffectsFor` AT THE EDICT STRENGTH, which no beat rule assigns: the
 	 * #1765 trap the three G7b Edicts' fields name. NOT `ManaCostAsCurrentHealthPercent`, Desperate Measures', which
@@ -1804,9 +1804,9 @@ public:
 	 * that rule, and its comment says why the cost after the character's own
 	 * reductions decides it rather than the slot's figure.
 	 *
-	 * AN AURA'S UPKEEP IS NOT A CAST AND STILL DRAINS MANA, a judgement under the
-	 * same delegation. The row says "to cast", and an upkeep paid in health
-	 * instead would let a toggled aura run for ever at low mana.
+	 * AN AURA'S UPKEEP WAS NOT A CAST AND STILL DRAINED MANA, a judgement under
+	 * the same delegation, until 2026-11-27, when auras stopped draining and
+	 * began to reserve mana instead; a reservation is no cast either.
 	 */
 	static const TCHAR* DesperateMeasuresKey;
 
@@ -7351,8 +7351,8 @@ public:
 	// delegation; the order its choice pass asks in is aura, support, movement, ultimate, heavy, special, and its
 	// weapon's basic attack when none of those is chosen. Issue #1308.
 
-	/** Its aura is turned off below this share of its maximum mana, and not turned on below it. */
-	static constexpr float CorruptedStalkerAuraOffBelowManaShare = 0.30f;
+	// ITS AURA HAS NO MANA SHARE OF ITS OWN SINCE 2026-11-27: the 30% below which it was turned off and not turned on was
+	// removed with the drain, ruled by the coordinating session ("Its aura reserves like the player's").
 
 	/** It uses its movement skill when the player is farther than this. 15 m. */
 	static constexpr float CorruptedStalkerMovementBeyondCm = 1500.0f;

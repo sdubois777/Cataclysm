@@ -2621,8 +2621,12 @@ enum class ECataclysmStatScale : uint8
 	 *
 	 * THE MAXIMUM AND NOT THE MANA IN HAND. A spell that spends mana does not
 	 * shrink the bonus of the spell after it. Path of Exile 2's Archmage reads
-	 * maximum mana the same way; Path of Exile 1's reads unreserved maximum
-	 * mana, because that game reserves mana and this one does not.
+	 * maximum mana the same way. Path of Exile 1's reads unreserved maximum
+	 * mana. THIS GAME RESERVES MANA SINCE 2026-11-27 (an aura switched on holds
+	 * part of it) and still reads the maximum here, ruled with the reservation:
+	 * reserving does not lower the maximum, so a row that scales with the
+	 * maximum keeps reading it, while a condition reading a mana PERCENTAGE reads
+	 * the unreserved maximum (`UCataclysmAbilitySystemComponent::UnreservedMaximumMana`).
 	 */
 	PerPointOfMaximumMana
 		UMETA(DisplayName = "Per Point Of Maximum Mana"),

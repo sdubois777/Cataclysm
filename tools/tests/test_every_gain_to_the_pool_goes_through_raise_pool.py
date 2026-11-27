@@ -53,8 +53,8 @@ INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
         1, "Fervour borrowed for a cooldown, a negative change"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp", "UCataclysmSkillTemplate::SpendSoulFuel"): (
         1, "Soul Fuel's spend on a skill's use, a negative change (the Death finish slice A, 2026-11-26)"),
-    ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp", "UCataclysmAuraSkill::Pulse"): (
-        1, "an aura's charged Fervour, a negative change"),
+    # UCataclysmAuraSkill::Pulse left this list on 2026-11-27: an aura's pulse charges nothing since auras began to
+    # reserve mana rather than drain it.
     ("game/Source/Cataclysm/AbilitySystem/CataclysmDelayedDamage.cpp", "UCataclysmDelayedDamage::DrainStep"): (
         1, "health, not the pool"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp", "UCataclysmHealthDebt::Defer"): (
