@@ -135,6 +135,66 @@ Crossbow and Two-Handed Crossbow only. Whether a Bow should exist is a question
 for the project owner rather than something to invent here; it is raised on
 issue #1125.
 
+## Where the hand holds each mesh
+
+**The owner, play-testing on 2026-11-27: "he's holding the greatsword by the
+tip.. instead of the handle".** The hand socket holds a mesh's origin, and nothing
+moved it: until then each mesh was attached with no offset or turn. So where the
+pack's author put the origin decided what the hand held.
+
+**How it was measured, without the editor.** The owner's editor was open, so each
+`.uasset` in `Medieval_Weapons/Meshes/VOL2` of the main checkout was read as bytes,
+read-only:
+
+- the stored bounds (`ExtendedBounds`) and the pack's own `WeaponSocket`, from the
+  mesh's tagged properties;
+- the vertex positions, from the mesh description's Oodle-compressed buffer,
+  decompressed with the engine's own `oo2core.dll`;
+- the mesh's width in 1 cm slices along its long axis Z. The crossguard is the
+  widest slice, the grip the narrow run between it and the pommel, and the blade
+  narrows to its tip.
+
+The scripts were scratch work and are not committed. The bounds agree with the
+sizes in the table above (SM_Sword_3: 22.5 x 3.1 x 92.7 cm against 23 x 3 x 93).
+
+| Mesh | Origin is | Along Z | Verdict | Sure? |
+|---|---|---|---|---|
+| `SM_Sword_3` | the blade's tip | tip 0.9, crossguard 72-76, grip 78-88, pommel 89-93.5 | **held by the tip** | yes: the vertices and the pack's socket (Z 88.6) agree |
+| `SM_Sword_1` | the blade's tip | tip -0.8, crossguard 55-62, grip 63-76, pommel 77-87 | **held by the tip** | yes |
+| `SM_Dagger` | the blade's tip | tip -1.4, crossguard 19-22, grip 22-31, pommel 31-33 | **held by the tip** | yes |
+| `SM_Mace` | on its plain shaft | wrapped grip -30 to -9, shaft -9 to 9, head 30-51 | held the right way, about 19 cm above its grip's middle | the grip's extent is a reading of the widths |
+| `SM_Axe` | on its shaft, just above its butt | butt -19 to -4, shaft to 42, head 42-72 | right | yes |
+| `SM_Staff` | on its shaft | foot -38, head 41-68 | right | yes |
+| `SM_Spear` | at its butt | butt 0.8-41, shaft, head 163-244 | right way round, held at the very end | yes |
+| `SM_Crossbow` | its middle | lies in X and Y, 12 cm deep in Z | not judged: which way its stock points was not read | no |
+| `SM_Shield_1` | its middle | 60 x 13 x 76 cm | held at its middle | the strap's position was not read |
+
+**What changed.** The Weapon Meshes sheet gained six columns, written by
+`tools/apply_weapon_grips_2026_11_27.py`: **Grip X, Grip Y, Grip Z**, the mesh
+point the hand holds, in centimetres along the mesh's own axes before Scale; and
+**Grip Pitch, Grip Yaw, Grip Roll**, the turn about it in degrees.
+`UCataclysmWeaponMeshes::GripFor` turns a row into the hand component's relative
+transform, which puts that point on the socket at the row's scale, and
+`ACataclysmPlayerCharacter::DrawWeaponsInHands` sets it whenever a mesh is drawn.
+
+| Base | Mesh | Grip Z | Grip Roll | Why |
+|---|---|:-:|:-:|---|
+| Sword | `SM_Sword_1` | 69.5 | 180 | the grip's middle; turned so the blade points away from the hand |
+| Dagger | `SM_Dagger` | 26.5 | 180 | the same |
+| Greatsword | `SM_Sword_3` | 83 | 180 | the same |
+| Warhammer | `SM_Mace` | -19 | 0 | the wrapped grip's middle, a judgement |
+| every other base | | 0 | 0 | held at its origin, as before |
+
+**180 degrees of roll** is a turn about the mesh's X axis, the blade's width, so
+the flat of the blade stays in the same plane and +Z, the direction a mesh held at
+its origin points away from the hand, becomes the blade's direction.
+
+**Not done, and recorded:** the Spear is still held at its butt; the Crossbow's
+and the Shield's grips were not judged. **None of this has been seen in the game**:
+automation tests do not render. The owner is asked to look at the Greatsword,
+Sword, Dagger and Warhammer in the hand, and at the Spear, Crossbow and Shield.
+Correcting one is a change to six cells of the sheet and no rebuild.
+
 ## Where it attaches
 
 **`SK_Mannequin` already ships the sockets and neither had to be authored.**
