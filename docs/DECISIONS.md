@@ -224,7 +224,17 @@ reach an aura, which costs nothing.
 - `python -m ruff check .`: "All checks passed!". `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs
   are up to date." `python tools/check_includes.py --changed` and the new test file: 25 files, 0 types unseen; its
   control, the new test file with `CataclysmCommand.h` removed, FAILS naming `UCataclysmCommand`.
-- **Guard proofs and the Unreal window: not yet run.** They are recorded here when they are.
+- **Three Python guard proofs, PROVED**, with `tools/prove_guard.py` `break_and_run` in an archive copy of `850b362cc`
+  (`git archive`), each prediction registered in the script before the run, and each failing exactly the test named:
+
+  | Break | Command | Named failure | Summary |
+  |---|---|---|---|
+  | `SLOTS_THAT_RESERVE_MANA` given `"Heavy"` too | `pytest tools/tests/test_skill_slot_reservation_refusals.py` | `test_a_reservation_on_a_slot_other_than_the_aura_is_refused` | "PROVED: 1 failed, 3 passed \| restored: 4 passed" |
+  | `RESERVE_REDUCTION_CAP_PERCENT` 75.0 -> 100.0 | `pytest sim/tests/test_skill_slots.py` | `test_the_summed_percent_reduction_stops_at_seventy_five` | "PROVED: 1 failed, 61 passed \| restored: 62 passed" |
+  | the simulation's Aura `mana_reserved` 50.0 -> 40.0 | `pytest tools/tests/test_skill_slot_sheet_matches_the_model.py` | `test_every_mana_reservation_matches` | "PROVED: 1 failed, 7 passed \| restored: 8 passed" |
+
+- **The Unreal window has not run.** Its compile, the new group alone, the whole suite, the C++ proofs and the DataTable
+  rebuild are recorded here when they are.
 
 ---
 
