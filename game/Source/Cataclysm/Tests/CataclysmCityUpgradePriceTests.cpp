@@ -28,6 +28,7 @@
 #include "Save/CataclysmSaveTriggers.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * City upgrades cost gold. Issue #2742's second slice: the owner's ruling of 2026-11-18 that city upgrades are the
@@ -124,6 +125,7 @@ namespace CataclysmCityUpgradePriceTest
 		}
 
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2742, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 
@@ -204,6 +206,7 @@ bool FCataclysmCityUpgradePriceByTierTest::RunTest(const FString&)
 	const int64 NoSuchRow = UCataclysmCityUpgradeMapping::PriceFor(FName(TEXT("Not_A_City_Upgrade")), 1);
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* InSeed */ 2742, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 	Run->DifficultyTier = 3;
 	const int64 InTheRun = UCataclysmCityUpgradePurchase::PriceIn(nullptr, Run, FName(Row), 0);

@@ -24,6 +24,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The Cataclysmic Forge's screen and the empire map's "Forge" button: the owner's ruling of 2026-11-19 and the
@@ -84,6 +85,7 @@ namespace CataclysmForgeScreenTest
 		}
 
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2766, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 
@@ -457,6 +459,7 @@ bool FCataclysmForgeScreenMapButtonPressTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(3);
 	Screen->SetRunForTests(Run);
 

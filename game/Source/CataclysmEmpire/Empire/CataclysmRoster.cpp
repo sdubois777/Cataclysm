@@ -64,6 +64,11 @@ FCataclysmBuiltCataclysmsForTests::~FCataclysmBuiltCataclysmsForTests()
 	GCataclysmBuiltForTests = Replaced;
 }
 
+bool FCataclysmBuiltCataclysmsForTests::IsHeld()
+{
+	return GCataclysmBuiltForTests != nullptr;
+}
+
 const TArray<ECataclysmType>& UCataclysmRoster::Built()
 {
 	if (GCataclysmBuiltForTests)

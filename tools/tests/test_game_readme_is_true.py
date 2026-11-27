@@ -231,6 +231,10 @@ def test_the_empire_layer_claim_is_still_true() -> None:
         # Demonic's Infernal Rifts on the map, added 2026-11-24 for issue #51
         # slice B2. The readme's empire bullet now says what a Rift is and does.
         "CataclysmRiftsTests.cpp",
+        # How a test begins a run against a named built list, added 2026-11-26
+        # for issue #2928. Test support, not something the layer does, so the
+        # readme's empire bullet has nothing to add for it.
+        "CataclysmTestRun.h",
     }
     unexpected = sorted(
         path.relative_to(REPO_ROOT).as_posix()

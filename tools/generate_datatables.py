@@ -2816,6 +2816,13 @@ def item_bases(book) -> list[dict]:
 #: silently is not."
 DRAWS_NOTHING = "None"
 
+#: The Weapon Meshes sheet's grip columns and the row fields they become, in
+#: order: the mesh point the hand holds, then the turn about it. 2026-11-27.
+WEAPON_GRIP_COLUMNS = (
+    ("Grip X", "GripX"), ("Grip Y", "GripY"), ("Grip Z", "GripZ"),
+    ("Grip Pitch", "GripPitch"), ("Grip Yaw", "GripYaw"), ("Grip Roll", "GripRoll"),
+)
+
 #: Where a weapon mesh path has to start. A mesh outside /Game/ is not in the
 #: project's content at all and could never be loaded.
 CONTENT_PREFIX = "/Game/"
@@ -2901,6 +2908,24 @@ def weapon_meshes(book) -> list[dict]:
                 f"is a weapon that cannot be seen, which is what writing\n"
                 f"{DRAWS_NOTHING!r} in the Mesh column is for.")
 
+        # WHERE THE HAND HOLDS IT. The owner, 2026-11-27: "he's holding the
+        # greatsword by the tip.. instead of the handle". A pack mesh's origin is
+        # wherever its author put it, and the hand socket holds the origin, so
+        # each row says which point of the mesh is its grip (centimetres, in the
+        # mesh's own axes, before Scale) and how to turn the mesh about that
+        # point (degrees). Every row states all six, zeros included, so a row
+        # nobody measured cannot be told apart from one measured as right.
+        grip = {}
+        for column, field in WEAPON_GRIP_COLUMNS:
+            text = _cell(raw, headers, column)
+            try:
+                grip[field] = float(text)
+            except (TypeError, ValueError) as exc:
+                raise DataError(
+                    f"{where}: {column} is {text!r}, which is not a number.\n"
+                    f"Write 0 for a mesh whose origin is already its grip."
+                ) from exc
+
         out.append({
             "Name": row_name("Weapon", name),
             "BaseName": name,
@@ -2909,6 +2934,7 @@ def weapon_meshes(book) -> list[dict]:
             # against a magic word it would have to keep in step with this file.
             "Mesh": "" if mesh == DRAWS_NOTHING else mesh,
             "Scale": scale_value,
+            **grip,
         })
 
     missing = sorted(weapon_bases - covered)

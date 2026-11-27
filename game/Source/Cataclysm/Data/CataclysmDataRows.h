@@ -837,6 +837,40 @@ struct FCataclysmWeaponMeshRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
 	float Scale = 1.0f;
+
+	/**
+	 * The point of the mesh the hand holds, in centimetres along the mesh's own
+	 * axes and before `Scale`. All three nought hold the mesh at its origin.
+	 *
+	 * WHY IT EXISTS. The owner, 2026-11-27: "he's holding the greatsword by the
+	 * tip.. instead of the handle". The hand socket holds a mesh's origin, and
+	 * the pack's swords and dagger put their origin at the blade's tip. Measured
+	 * from each mesh's own vertices on 2026-11-27; game/docs/weapon-source-assets.md
+	 * has the figures. `UCataclysmWeaponMeshes::GripFor` puts this point on the
+	 * socket.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	float GripX = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	float GripY = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	float GripZ = 0.0f;
+
+	/**
+	 * How the mesh is turned about its grip point, in degrees. 180 of roll turns
+	 * a mesh whose blade runs from the hand toward -Z so that it runs toward +Z,
+	 * the way every mesh held as authored points.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	float GripPitch = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	float GripYaw = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon Mesh")
+	float GripRoll = 0.0f;
 };
 
 /**

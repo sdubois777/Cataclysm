@@ -14,6 +14,7 @@
 #include "Interface/CataclysmEmpireStatusBar.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for the empire status bar on the dungeon screen, issue #49: "Empire status bar -- active dungeon count, next
@@ -50,6 +51,7 @@ namespace CataclysmEmpireStatusBarTest
 	{
 		UCataclysmEmpireRun* Run = Outer != nullptr ? NewObject<UCataclysmEmpireRun>(Outer)
 													: NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(7);
 		Run->AdvanceDay();
 		return Run;

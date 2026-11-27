@@ -11,6 +11,7 @@
 #include "Interface/CataclysmCityScreenLayout.h"
 #include "Player/CataclysmCityUpgradePurchase.h"
 #include "Player/CataclysmPlayLoopLog.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * What the screens and the play log say about a city upgrade being built. Issue #2825, ruled 2026-11-21: "every
@@ -27,6 +28,7 @@ namespace CataclysmCityUpgradeBuildScreenTest
 	UCataclysmEmpireRun* MakeRun()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 12345, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		return Run;
 	}

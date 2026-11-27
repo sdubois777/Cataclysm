@@ -17,6 +17,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Each run's own mask on its dungeons' walk seeds, so two runs' dungeons differ. Issue #2749, B10, ruled by the
@@ -36,6 +37,7 @@ namespace CataclysmWalkSeedTest
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 		Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static, /*LethalityRung=*/0, /*InDifficultyTier=*/1);
 		return Run;
 	}

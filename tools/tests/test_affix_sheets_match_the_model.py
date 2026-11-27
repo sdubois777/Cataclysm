@@ -258,14 +258,14 @@ class TestAffixes:
 
 
 class TestTheCountsThatAreAssertedInUnreal:
-    """The Unreal automation test pins these row counts by hand.
+    """The workbook sheets hold as many item bases and affixes as the model.
 
-    No Python test can catch a stale number there, and it has been missed
-    before, so the two counts are stated here as well and compared.
+    Read from the model rather than typed (issue #2928): the Unreal test no longer
+    pins these row counts, so the two counts are compared with the model only.
     """
 
     def test_the_item_base_count(self, base_sheet, model):
-        assert len(base_sheet) == 55 == len(model.ITEM_BASES)
+        assert len(base_sheet) == len(model.ITEM_BASES) > 0
 
     def test_the_affix_count(self, affix_sheet, model):
         """68 after eight attribute affixes were added on 2026-08-04, then
@@ -286,15 +286,4 @@ class TestTheCountsThatAreAssertedInUnreal:
         # affix, so a class with no energy shield regeneration base -- every
         # class but the Ritualist -- had nothing for that increase to
         # multiply, and a shield built entirely from gear never came back.
-        assert len(affix_sheet) == 86 == model.total_pool_size()
-
-    def test_the_gem_count(self, model):
-        """The Gems sheet count the Unreal test pins by hand.
-
-        Not derived from the model: `affixes.py` holds no gem list. Stated here
-        because a gem added to the workbook without the Unreal number being
-        moved fails only in the C++ suite, which nothing on a pull request runs.
-        """
-        gem_rows = read_sheet("Gems")
-        # 28 since issue #2803 added Of The Scholar, which raises skill experience gain.
-        assert len(gem_rows) == 28
+        assert len(affix_sheet) == model.total_pool_size() > 0
