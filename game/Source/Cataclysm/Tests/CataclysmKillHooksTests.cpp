@@ -408,13 +408,8 @@ bool FCataclysmKillHooksRealRowsTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("Soul Tide: one row"), Tide, 1);
 
-	const TArray<const FCataclysmPassiveEffectRow*> Herd = RowsOf(TEXT("SoulCollector_basic_b_stem2"));
-	if (TestEqual(TEXT("Thinning the Herd: one row"), Herd.Num(), 1))
-	{
-		TestEqual(TEXT("Thinning the Herd: by the enemies in reach"), Herd[0]->Scale, FString(TEXT("enemies_in_reach")));
-		TestEqual(TEXT("Thinning the Herd: within 8 metres"), Herd[0]->ReachMetres, 8.0f, 0.001f);
-		TestEqual(TEXT("Thinning the Herd: up to 10"), Herd[0]->ScaleMaxSteps, 10);
-	}
+	// THINNING THE HERD LEFT THIS TEST WITH THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951): its new rows are read by
+	// `Cataclysm.SoulCollectorRework.TheTwentyNodesRowsAreTheirSentences`.
 	const TArray<const FCataclysmPassiveEffectRow*> Patience = RowsOf(TEXT("Shadow_basic_a_stem0"));
 	if (TestEqual(TEXT("Death's Patience: one row"), Patience.Num(), 1))
 	{

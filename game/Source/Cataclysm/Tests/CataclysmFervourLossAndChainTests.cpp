@@ -295,9 +295,8 @@ bool FCataclysmFervourLossRealRowsTest::RunTest(const FString&)
 		int32 Count;
 	};
 	const FExpected Expected[] = {
-		{TEXT("SoulCollector_basic_a_b1"), 0, TEXT("fervour_decay_floor_percent"), TEXT("flat"), 3.0f, 1},
-		{TEXT("SoulCollector_keystone_spine_003"), 0, TEXT("fervour_kill_decay_per_second"), TEXT("removed"), 1.0f, 1},
-		{TEXT("SoulCollector_keystone_spine_003"), 0, TEXT("health_percent_lost_per_fervour_lost"), TEXT("flat"), 2.0f, 1},
+		// MISER'S GRIP AND SOULBOUND LEFT THIS LIST WITH THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951): their new rows
+		// are read by `Cataclysm.SoulCollectorRework.TheTwentyNodesRowsAreTheirSentences`.
 		{TEXT("SoulCollector_keystone_a_kA"), 0, TEXT("fervour_overflow_attack_speed_seconds"), TEXT("flat"), 5.0f, 1},
 		{TEXT("SoulCollector_keystone_a_kA"), 0, TEXT("attack_speed"), TEXT("increased"), 1.0f, 1},
 		{TEXT("SoulCollector_basic_b_a1"), 0, TEXT("kill_chain_seconds"), TEXT("flat"), 1.0f, 2},

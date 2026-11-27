@@ -370,13 +370,14 @@ bool FCataclysmFervourOnEventsWalkTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourOnEventsCopiesTest,
-	"Cataclysm.FervourOnEvents.OpeningFoundsSecondRowAndTearLoosesChanceAreCopiedApart",
+	"Cataclysm.FervourOnEvents.OpeningFoundsSecondRowAndGleaningsChanceAreCopiedApart",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * The real tables. Opening Found at 3 points copies two rows, one under the node's own name and one named `_Row2`, each
- * worth 3, so they keep two keys. Tear Loose at 8 points copies one row worth 1 with a chance of 16. THE CONTROL: Tear
- * Loose at 1 point has a chance of 2, so the chance, not the amount, follows the points.
+ * worth 3, so they keep two keys. Gleaning at 6 points copies one row worth 50 with a chance of 30. THE CONTROL: Gleaning
+ * at 1 point has a chance of 5, so the chance, not the amount, follows the points. Tear Loose was the row with a chance
+ * here until the Soul Collector keystone rework (issue #2951) gave it a row without one.
  */
 bool FCataclysmFervourOnEventsCopiesTest::RunTest(const FString&)
 {
@@ -405,24 +406,24 @@ bool FCataclysmFervourOnEventsCopiesTest::RunTest(const FString&)
 		}
 	}
 
-	for (const int32 Points : {8, 1})
+	for (const int32 Points : {6, 1})
 	{
-		FCataclysmPassiveAllocation Tear;
-		Tear.Add(FName(TEXT("SoulCollector_basic_b_b1")), Points);
+		FCataclysmPassiveAllocation Gleaning;
+		Gleaning.Add(FName(TEXT("SoulCollector_basic_b_stem0")), Points);
 		const TArray<FCataclysmEnchantmentEffectRow> Copied =
-			UCataclysmPassiveTree::EnchantmentRowsFor(Tear, Nodes, Effects, Death);
+			UCataclysmPassiveTree::EnchantmentRowsFor(Gleaning, Nodes, Effects, Death);
 		int32 Rows = 0;
 		for (const FCataclysmEnchantmentEffectRow& Row : Copied)
 		{
-			if (Row.Enchantment == TEXT("Passive_SoulCollector_basic_b_b1"))
+			if (Row.Enchantment == TEXT("Passive_SoulCollector_basic_b_stem0"))
 			{
 				++Rows;
-				TestEqual(FString::Printf(TEXT("Tear Loose at %d: worth 1"), Points), Row.ValueLow, 1.0f, 0.001f);
-				TestEqual(FString::Printf(TEXT("Tear Loose at %d: a chance of %d"), Points, 2 * Points),
-						  Row.ChancePercent, 2.0f * Points, 0.001f);
+				TestEqual(FString::Printf(TEXT("Gleaning at %d: worth 50"), Points), Row.ValueLow, 50.0f, 0.001f);
+				TestEqual(FString::Printf(TEXT("Gleaning at %d: a chance of %d"), Points, 5 * Points),
+						  Row.ChancePercent, 5.0f * Points, 0.001f);
 			}
 		}
-		TestEqual(FString::Printf(TEXT("Tear Loose at %d: one row"), Points), Rows, 1);
+		TestEqual(FString::Printf(TEXT("Gleaning at %d: one row"), Points), Rows, 1);
 	}
 	return true;
 }
@@ -455,12 +456,11 @@ bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 		{TEXT("SoulCollector_capstone_25"), 2, TEXT("class_resource"), TEXT("target_is_boss"), 5.0f, 0.0f, 1},
 		{TEXT("SoulCollector_capstone_25"), 2, TEXT("fervour_kill_decay_per_second"), TEXT("enemy_of_rarity_in_reach"),
 		 1.0f, 0.0f, 1},
-		{TEXT("SoulCollector_basic_b_b1"), 0, TEXT("class_resource"), TEXT("target_rarity_at_least"), 1.0f, 2.0f, 1},
+		{TEXT("SoulCollector_basic_b_b1"), 0, TEXT("health"), TEXT("target_rarity_at_least"), 1.0f, 0.0f, 1},
 		{TEXT("Shadow_basic_d_a0"), 0, TEXT("evasion"), TEXT("opponent_rarity_at_least"), 1.0f, 0.0f, 1},
 		{TEXT("Shadow_keystone_spine_002"), 0, TEXT("fervour_kill_decay_per_second"), TEXT("no_enemy_in_reach"), 1.0f,
 		 0.0f, 1},
-		{TEXT("SoulCollector_basic_b_b2"), 0, TEXT("fervour_kill_decay_per_second"), TEXT("enemy_of_rarity_in_reach"),
-		 -5.0f, 0.0f, 1},
+		{TEXT("SoulCollector_basic_b_b2"), 0, TEXT("attack_speed"), TEXT("enemy_of_rarity_in_reach"), 1.0f, 0.0f, 1},
 	};
 	for (const FExpected& Want : Expected)
 	{

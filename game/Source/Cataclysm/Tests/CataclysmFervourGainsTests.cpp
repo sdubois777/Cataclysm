@@ -342,55 +342,6 @@ bool FCataclysmFervourGainsRaisePoolTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourGainsRealRowsTest,
-	"Cataclysm.FervourGains.TheThreeNodesRowsAreTheirSentences",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * The three nodes' real rows, read from the passive effects table: Any Fuel an increased row on the generation rate
- * under the new condition; Borrowed Time a second at each third point; Kindred Fires a switch of 1.
- */
-bool FCataclysmFervourGainsRealRowsTest::RunTest(const FString&)
-{
-	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
-	if (!TestNotNull(TEXT("set-up: the passive effects table"), Effects))
-	{
-		return false;
-	}
-
-	const TArray<const FCataclysmPassiveEffectRow*> Fuel =
-		UCataclysmPassiveTree::EffectsFor(Effects, FName(TEXT("SoulCollector_basic_b_c0")));
-	if (TestEqual(TEXT("Any Fuel: one row"), Fuel.Num(), 1))
-	{
-		TestEqual(TEXT("Any Fuel: the generation rate"), Fuel[0]->Stat,
-				  FString(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat));
-		TestEqual(TEXT("Any Fuel: increased"), Fuel[0]->ValueKind, FString(TEXT("increased")));
-		TestEqual(TEXT("Any Fuel: not from a kill"), Fuel[0]->Condition, FString(TEXT("fervour_gain_not_from_a_kill")));
-	}
-
-	TArray<int32> Steps;
-	for (const FCataclysmPassiveEffectRow* Row :
-		 UCataclysmPassiveTree::EffectsFor(Effects, FName(TEXT("SoulCollector_basic_b_c1"))))
-	{
-		Steps.Add(Row->MinPoints);
-		TestEqual(TEXT("Borrowed Time: the hold's seconds"), Row->Stat,
-				  FString(UCataclysmFervour::HoldExtendedOnGainSecondsStat));
-		TestEqual(TEXT("Borrowed Time: 1 second each"), Row->ValuePerPoint, 1.0f, 0.001f);
-	}
-	Steps.Sort();
-	TestTrue(TEXT("Borrowed Time: a row at 3 points and at 6"), Steps == TArray<int32>({3, 6}));
-
-	const TArray<const FCataclysmPassiveEffectRow*> Kindred =
-		UCataclysmPassiveTree::EffectsFor(Effects, FName(TEXT("SoulCollector_keystone_b_kC")));
-	if (TestEqual(TEXT("Kindred Fires: one row"), Kindred.Num(), 1))
-	{
-		TestEqual(TEXT("Kindred Fires: the switch"), Kindred[0]->Stat,
-				  FString(UCataclysmFervour::HoldRestartedByAnyGainStat));
-		TestEqual(TEXT("Kindred Fires: 1"), Kindred[0]->ValuePerPoint, 1.0f, 0.001f);
-	}
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourGainsWarGainsTest,
 	"Cataclysm.FervourGains.AWarRateAndCleavesNetGainAreGainsKindredFiresHears",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
