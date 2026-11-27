@@ -34,8 +34,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS BEEN COMPILED OR RUN IN UNREAL.** The window is registered and waits behind the Echoes, Soul
-  Collector and Sentinel windows.
+- **WINDOW aur-w1 PASSED IN UNREAL ON `87e2124f9`, AND NOTHING HAS BEEN SEEN IN PLAY.** The whole suite passed 6,123 of
+  6,123 and the C++ guard proof PROVED with exactly its eight predicted failures (see Evidence). The owner is asked to
+  switch auras on at low and high level and look at the reserved band on the mana bar.
 - **TWO CORRECTIONS TO THE DESIGN DRAFT (`.claude/windows/aura_reservation_draft.md`), found while building and ruled
   by the coordinating session on 2026-11-27:**
   1. **No "Ultimate key x2" rule existed.** The draft said "An aura on the Ultimate key pays its upkeep doubled (ruled
@@ -233,8 +234,34 @@ reach an aura, which costs nothing.
   | `RESERVE_REDUCTION_CAP_PERCENT` 75.0 -> 100.0 | `pytest sim/tests/test_skill_slots.py` | `test_the_summed_percent_reduction_stops_at_seventy_five` | "PROVED: 1 failed, 61 passed \| restored: 62 passed" |
   | the simulation's Aura `mana_reserved` 50.0 -> 40.0 | `pytest tools/tests/test_skill_slot_sheet_matches_the_model.py` | `test_every_mana_reservation_matches` | "PROVED: 1 failed, 7 passed \| restored: 8 passed" |
 
-- **The Unreal window has not run.** Its compile, the new group alone, the whole suite, the C++ proofs and the DataTable
-  rebuild are recorded here when they are.
+- **WINDOW aur-w1 PASSED IN UNREAL on `87e2124f9`**: this branch with development `20b6f44ff` (the Soul Collector rework)
+  merged, plus the six DataTable assets the window built and committed. The scripts are in `.claude/windows/aur_w1/`.
+
+  | Step | Printed result |
+  |---|---|
+  | Three compiles: the branch; each changed `.cpp` alone; unity again | "Succeeded - 98 actions, 88 files compiled"; "69 actions, 66 files"; "27 actions, 24 files". 0 compiler warning or error lines |
+  | DataTable assets | DT_SkillSlots, DT_EnchantmentsPositive, DT_EnchantmentsNegative, DT_EnchantmentEffects, DT_PassiveEffects and DT_PassiveNodes rebuilt and committed alone as `87e2124f9` |
+  | The new group alone, `Cataclysm.AuraReservation.` | "Tests: 13 tests performed, 13 succeeded, 0 failed" |
+  | Whole Unreal suite | "6123 tests performed, 6123 succeeded, 0 failed": window bc-w1's 6,105, development's net +4 since its tree (14 tests out, 18 in), and this branch's +14. Registered 6,123: MATCH |
+  | Test saves; tests that skipped part of what they check | "893 written and deleted, 0 left behind"; 62. Both as registered |
+  | Python, beside the Unreal suite | "9695 passed, 10 skipped in 967.97s"; JUnit tests 9,705, failures 0, errors 0 |
+  | ruff | "All checks passed!" |
+
+- **The window's script first marked the group-alone step FAILED although it printed 13 of 13**, and so held back the
+  proof. `tools/unreal_build.py` prints a "Group" line only when the prefix names two or more groups, and the script read
+  only that line. The script now reads the `Tests:` line when one group runs alone; no test changed. The proof was then
+  run on its own on the same head, as the coordinating session ruled.
+- **The C++ guard proof, PROVED**: one `prove_cpp_guard` call with three breaks, prefix
+  `Cataclysm.AuraReservation.+Cataclysm.NoCaps.+Cataclysm.Skills.AnAuraReservesHealth`, registered before the run with
+  its eight predicted failures. The breaks: the 75% cap taken out (`FMath::Min(PercentLess, MostReservePercentLess)` ->
+  `PercentLess`); a held reservation never asked again once set; and an aura never refused for want of room. Printed:
+  "PROVED: with the break in: 20 tests performed, 12 succeeded, 8 failed: ALevelGainedLowersAHeldAurasReservationAtOnce,
+  AReductionTakenOffRaisesAHeldAurasReservationAtOnceAndHoldsTheMana,
+  AReservationThatNoLongerFitsTheWholeMaximumSwitchesTheAuraOff, RoomIsMeasuredAgainstTheMaximumAndNotTheManaInHand,
+  TheSummedReductionStopsAtSeventyFivePercentAndTheFloorIsOne, TwoAurasFitAPoolOfAHundredAndAThirdDoesNot,
+  NoReductionTakesAReserveBelowOnePoint, AnAuraReservesHealthWhenTheManaPoolBecameHealth | restored: 20 tests performed,
+  20 succeeded, 0 failed". The eight are exactly the eight predicted; the source hash was the same before and after.
+- **Nothing has been seen in play.**
 
 ---
 
