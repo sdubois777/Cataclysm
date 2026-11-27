@@ -3605,6 +3605,9 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("target_marked_by_you")
 			// AND GUARD THE MASTER'S "the last enemy that hit you", the same slice: a state.
 			|| Name == TEXT("target_is_your_last_attacker")
+			// AND FIRST AMONG THE DEAD'S "your permanent minion with the most maximum health", the Death line's finishing
+			// slice B (2026-11-26): a state of the minion asking.
+			|| Name == TEXT("minion_has_your_most_maximum_health")
 			// THE BERSERKER'S STATES, 2026-11-25: "DUAL WIELD ONLY", "WHILE IN WRATH" AND "WHILE IN FRENZY". Each names
 			// a state, so each compares nothing.
 			|| Name == TEXT("dual_wielding")
@@ -11594,11 +11597,12 @@ bool FCataclysmEveryPlainDemonicRowTest::RunTest(const FString&)
 // --- the three energy-shield keystones -------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWardedOnARealCharacterTest,
-	"Cataclysm.Passives.WardedLetsARealRitualistsShieldTakeDamageOverTime",
+	"Cataclysm.Passives.WardedLetsARealRitualistsShieldTakeWhatWouldBypassIt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** `Ritualist_keystone_c_kA` Warded: "Your Energy Shield absorbs damage over
- *  time as well as hits." A flag, so the row holds 1. */
+/** `Ritualist_keystone_c_kA` Warded: "Your Energy Shield absorbs damage that
+ *  would bypass it." (the owner's choice of 2026-11-26). A flag, so the row
+ *  holds 1. */
 bool FCataclysmPassiveWardedOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
@@ -11631,9 +11635,9 @@ bool FCataclysmPassiveWardedOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is whether the shield absorbs damage over time"),
+	TestEqual(TEXT("and it is whether the shield absorbs damage that would bypass it (the owner, 2026-11-26)"),
 			  Effects[0]->Stat,
-			  FString(UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat));
+			  FString(UCataclysmDamageCalculation::ShieldAbsorbsWhatBypassesItStat));
 	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
 	TestEqual(TEXT("of one, because a flag is on or off"),
@@ -11642,9 +11646,9 @@ bool FCataclysmPassiveWardedOnARealCharacterTest::RunTest(const FString&)
 			  FString());
 
 	const FGameplayAttribute Flag =
-		Combat::GetShieldAbsorbsDamageOverTimeAttribute();
+		Combat::GetShieldAbsorbsWhatBypassesItAttribute();
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("an unspent Ritualist's shield stops hits only"),
+	TestEqual(TEXT("an unspent Ritualist's shield lets past what would bypass it"),
 			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
 
 	FCataclysmPassiveAllocation Allocation;
@@ -17206,14 +17210,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveAttritionOnARealCharacterTest,
  * highest a draw from 0 to 100 can come, so only a chance of the whole range
  * passes. A node granting half would pass a roll pinned at nought.
  *
- * THE TENTH-OF-MAXIMUM-HEALTH RULE STILL APPLIES, settled by the documents and
- * not ruled here: the project owner's rule of 2026-09-02 (#917) covers every
- * ailment that does not come from the skill's own row, and the sentence removes
- * the roll, not the threshold. So a melee blow taking less than a tenth applies
- * neither.
+ * THE BLOW MUST STILL HAVE DEALT SOMETHING. The project owner's ruling of
+ * 2026-11-26 ("I agree, fix it") covers every ailment that does not come from
+ * the skill's own row: it applies from any blow that landed, dealt more than
+ * nought and left the target alive. It replaced the tenth of maximum health of
+ * 2026-09-02 (#917), so a melee blow taking less than a tenth now applies both,
+ * and the sentence removes the roll, not that rule.
  *
  * EVERY CLAIM HAS ITS CONTROL: the same blow without the point, the same blow
- * with a spell's tags, and a blow below the threshold, each applying neither.
+ * with a spell's tags, and a melee blow that dealt nothing, each applying
+ * neither.
  */
 bool FCataclysmPassiveAttritionOnARealCharacterTest::RunTest(const FString&)
 {
@@ -17395,9 +17401,23 @@ bool FCataclysmPassiveAttritionOnARealCharacterTest::RunTest(const FString&)
 	TestTrue(*FString::Printf(TEXT("a melee blow that takes under a tenth lands: "
 								   "%.1f of %.0f"), Small.Taken, DeepPool),
 			 Small.Taken > 0.0f && Small.Taken < DeepPool / 10.0f);
-	TestFalse(TEXT("and does not Cripple, the threshold still applying"),
-			  Small.bCrippled);
-	TestFalse(TEXT("or Weaken"), Small.bWeakened);
+	TestTrue(TEXT("and Cripples, a blow that dealt anything being enough"),
+			 Small.bCrippled);
+	TestTrue(TEXT("and Weakens"), Small.bWeakened);
+
+	// THE CONTROL FOR THE RULE THAT REPLACED THE TENTH: a melee blow that deals
+	// nothing applies neither, Attrition or not.
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetAttackDamageAttribute(), 0.0f);
+	const FStruck Nothing = Strike(Melee, SmallPool);
+	if (!TestEqual(TEXT("set-up: a melee blow with no attack damage takes nothing"),
+				   Nothing.Taken, 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("CONTROL: a melee blow that dealt nothing does not Cripple"),
+			  Nothing.bCrippled);
+	TestFalse(TEXT("CONTROL: or Weaken"), Nothing.bWeakened);
 
 	return true;
 }
@@ -17655,8 +17675,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDeeperHurtOnARealCharacterTest
  * Weaken you apply per point", and this test measured that. The duration stat it
  * granted keeps its reader and its probe and no longer has a row.
  *
- * ATTRITION IS HELD THROUGHOUT, so a melee blow over a tenth of the target's
- * maximum health Cripples and Weakens it. Both nodes are spent through the player
+ * ATTRITION IS HELD THROUGHOUT, so a melee blow that deals the target anything
+ * Cripples and Weakens it (a tenth of its maximum health until the owner's ruling
+ * of 2026-11-26). Both nodes are spent through the player
  * state; nothing is granted by hand, so this fails while the row is missing. The
  * blow is a real one, and the death is the game's own: the victim's health set to
  * nought, which runs `ACataclysmEnemyCharacter::HandleDeath`.
@@ -21375,21 +21396,22 @@ bool FCataclysmNeverLetsGoRealHitTest::RunTest(const FString&)
 			return false;
 		}
 
-		// A BLOW OF A TENTH OF THE ENEMY'S MAXIMUM HEALTH OR MORE, AND NOT A KILLING ONE.
-		// An ailment that does not come from the skill's own row is rolled only on
-		// a blow that takes a tenth of the target's maximum health, the owner's rule
-		// of 2026-09-02 (#917), and never on a corpse. This test first hit for 100
-		// and rolled nothing. Both are set-up, asserted, so a wrong guess about the
-		// enemy's armour or the Ravager's multipliers fails here and not on "Crippled it".
+		// A BLOW THAT DEALS SOMETHING, AND NOT A KILLING ONE. An ailment that does not
+		// come from the skill's own row is rolled only on a blow that dealt more than
+		// nought and left the target alive, the owner's rule of 2026-11-26. From
+		// 2026-09-02 until then it asked a tenth of the target's maximum health (#917),
+		// which is why this blow is so large: the test first hit for 100 and rolled
+		// nothing. Both are set-up, asserted, so a wrong guess about the enemy's
+		// armour or the Ravager's multipliers fails here and not on "Crippled it".
 		const FGameplayAttribute EnemyHealth = UCataclysmVitalAttributeSet::GetHealthAttribute();
 		const float MaxHealth = EnemySystem->GetNumericAttribute(
 			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
 		const float HealthBefore = EnemySystem->GetNumericAttribute(EnemyHealth);
 		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy, 250'000.0f, Melee, Delivery);
 		const float Taken = HealthBefore - EnemySystem->GetNumericAttribute(EnemyHealth);
-		if (!TestTrue(*FString::Printf(TEXT("set-up: the blow took %.0f, at least a tenth of %.0f"),
+		if (!TestTrue(*FString::Printf(TEXT("set-up: the blow took %.0f of %.0f, more than nought"),
 									   Taken, MaxHealth),
-					  Taken >= MaxHealth * 0.1f)
+					  Taken > 0.0f)
 			|| !TestTrue(TEXT("set-up: and the enemy is still alive"),
 						 EnemySystem->GetNumericAttribute(EnemyHealth) > 0.0f))
 		{

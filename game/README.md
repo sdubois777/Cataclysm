@@ -239,7 +239,8 @@ by `git add` with no error and no warning. Guarded by
 
   **The layer knows which Cataclysms a campaign faces, and which one sent each
   dungeon.** `UCataclysmRoster` names the eight, draws the order a character adds
-  them in from its seed, and answers how many quest dungeons each of them asks
+  them in from its seed -- the built ones, Demonic, Death and War, first, by the
+  project owner's ruling of 2026-11-26 -- and answers how many quest dungeons each of them asks
   for. `UCataclysmEmpireRun` faces as many of them as the difficulty tier says,
   stamps every dungeon a surge lands with the Cataclysm that sent it, counts
   cleared quest dungeons per Cataclysm rather than only per run, and answers

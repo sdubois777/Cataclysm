@@ -748,15 +748,17 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookHealthShareTest,
 // ==========================================================================
 
 CATACLYSM_TEST(FCataclysmTrapBlowHookDamageOverTimeTest,
-	"Cataclysm.Traps.TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffWhenTheBlowTookATenth")
+	"Cataclysm.Traps.TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffEvenWhenTheBlowTookUnderATenth")
 {
 	using namespace CataclysmTrapBlowHookTest;
 
 	// FOUR PLAYERS 100 M APART, EACH HOLDING A DEMONIC WHIP AND THE HEAVY FLAG, a Heavy trap 20 m north with the enemy
 	// that sets it off 2.5 m east of it. The control holds the flag alone; the other three also the row at 50. THE
 	// CONTROL'S AND THE ROW'S: a second enemy 4 m east of the trap, in the same cone; their creatures 1,500 health, so the
-	// lash takes a tenth of each. THE STURDY ONE'S: its enemy 100,000 health, so the lash takes less than a tenth. THE
-	// REFRESHED ONE'S: a second trap 2.5 m east of its enemy, so two casts strike the one enemy.
+	// lash takes a tenth of each. THE STURDY ONE'S: its enemy 100,000 health, so the lash takes less than a tenth, and
+	// since the owner's ruling of 2026-11-26 ("I agree, fix it") a blow that dealt more than nought is enough, so it is
+	// given the damage over time as well. THE REFRESHED ONE'S: a second trap 2.5 m east of its enemy, so two casts strike
+	// the one enemy.
 	FTrapBlowHookWorld Scope;
 	if (!TestNotNull(TEXT("a world"), Scope.World))
 	{
@@ -853,12 +855,16 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookDamageOverTimeTest,
 	TestEqual(TEXT("but only the enemy that set the trap off is given it, not the second"),
 		TrapBlowHookEffectsGranting(RowOther, Generic), 0);
 
-	// THE RULE OF A TENTH: A BLOW TAKING LESS LAYS NOTHING.
+	// THE TENTH OF #917 IS GONE (the owner's ruling of 2026-11-26): A BLOW TAKING LESS LAYS IT ALL THE SAME.
+	const float SturdyBlowTook = TrapBlowHookTakenFrom(SturdySetter, Sturdy);
 	TestTrue(*FString::Printf(TEXT("set-up: the sturdy enemy was struck for less than a tenth of its 100,000: %.2f"),
-							  TrapBlowHookTakenFrom(SturdySetter, Sturdy)),
-		TrapBlowHookTakenFrom(SturdySetter, Sturdy) > 0.0f && TrapBlowHookTakenFrom(SturdySetter, Sturdy) < Sturdy / 10.0f);
-	TestEqual(TEXT("so it is given no damage over time: the owner's rule of a tenth"),
-		TrapBlowHookEffectsGranting(SturdySetter, Generic), 0);
+							  SturdyBlowTook),
+		SturdyBlowTook > 0.0f && SturdyBlowTook < Sturdy / 10.0f);
+	TestEqual(TEXT("so it is given one damage over time: a blow that dealt anything is enough"),
+		TrapBlowHookEffectsGranting(SturdySetter, Generic), 1);
+	TestEqual(*FString::Printf(TEXT("worth the row's half of what that blow took from health: %.2f against %.2f"),
+							   TrapBlowHookRemainingOn(SturdySetter, Generic), SturdyBlowTook * 0.5f),
+		TrapBlowHookRemainingOn(SturdySetter, Generic), SturdyBlowTook * 0.5f, SturdyBlowTook * 0.001f + 0.01f);
 
 	// REFRESHED, NOT STACKED: TWO CASTS ON THE ONE ENEMY.
 	TrapBlowHookStep(RefreshedFirst);
@@ -1039,7 +1045,7 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookRearmedSlowTest,
 
 	// TWO PLAYERS 100 M APART, EACH HOLDING A DEMONIC WAND, WHOSE HEAVY MALEFICE IS A SHOT, THE HEAVY FLAG AND THE SLOW
 	// ROW: a Heavy trap 20 m north with the enemy that sets it off 2.5 m east of it, of 1,000 health, so the shot takes a
-	// tenth of it (the owner's rule of #917). THE CONTROL holds no rearm row, so its trap is used up as its cast starts and
+	// tenth of it (more than the owner's ruling of 2026-11-26 asks, a blow that dealt anything). THE CONTROL holds no rearm row, so its trap is used up as its cast starts and
 	// its shot lays the waiting slow by layer 3's path; THE OTHER holds the rearm chance at 100, so its trap stands while
 	// its shot flies and the shot lays the slow as a standing trap's blow.
 	FTrapBlowHookWorld Scope;
@@ -1122,7 +1128,7 @@ CATACLYSM_TEST(FCataclysmTrapBlowHookRearmedSlowTest,
 /**
  * The trap's damage over time share credits the skill the trap cast, and is sized by that skill's level once: it is a
  * share of the trap's blow, which was already priced at the level. Issue #2764, slice 2a. THE SET-UP IS
- * `Cataclysm.Traps.TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffWhenTheBlowTookATenth`'s,
+ * `Cataclysm.Traps.TheDamageOverTimeRowLaysItsShareOverThreeSecondsOnTheEnemyThatSetTheTrapOffEvenWhenTheBlowTookUnderATenth`'s,
  * above, for its row's player alone, twice: two players 100 m apart, each holding a Demonic Whip, the Heavy flag and the
  * row at 50, one with Searing Lash at level 1 and one at level 3. Each share is half its blow, and the level 3 blow is
  * 1.0567 squared times the level 1 blow, so the share grows by the factor once and not twice.

@@ -2915,6 +2915,25 @@ UNIT_FIGURE = re.compile(
 #: `{n}` where the number stands. A phrase may match more than once; every
 #: match must hold the value.
 PROSE_RESTATEMENTS: dict[tuple[str, str, str, str], tuple[str, ...]] = {
+    # The Wraith, Death's first creature of its own (2026-11-26).
+    ("Wraith", "Wraith", "Reap", "Radius"): (
+        "The scythe reaches {n} metres",),
+    ("Wraith", "Wraith", "Reap", "Angle"): (
+        "in a {n} degree arc",),
+    ("Wraith", "Wraith", "Phase Dash", "Range"): (
+        "It dashes {n} metres along",
+        "between 4 and {n} metres away"),
+    ("Wraith", "Wraith", "Phase Dash", "Radius"): (
+        "a straight lane marked {n} metre in radius",),
+    ("Wraith", "Wraith", "Phase Dash", "cooldown"): (
+        "The dash is ready every {n} seconds",),
+    # THE DASH'S SHORTEST USE IS SOUL GRAB'S RADIUS BY DESIGN, not by coincidence: Soul Grab covers the ground inside
+    # it (`ACataclysmWraithCharacter::PhaseDashMinimumRangeCm` is `SoulGrabRadiusCm`).
+    ("Wraith", "Wraith", "Soul Grab", "Radius"): (
+        "grasping hands {n} metres in radius",
+        "between {n} and 8 metres away"),
+    ("Wraith", "Wraith", "Soul Grab", "cooldown"): (
+        "Soul Grab is ready every {n} seconds",),
     # The Abyssal Warden.
     ("Abyssal Warden", "Abyssal Warden", "Stampede", "Range"): (
         "it reaches {n} metres",
@@ -3056,6 +3075,19 @@ PROSE_RESTATEMENTS: dict[tuple[str, str, str, str], tuple[str, ...]] = {
         "Its curse keeps its {n} second cooldown"),
     ("Succubus", "Succubus", "Dominion", "Radius"): (
         "every allied enemy within {n} metres",),
+    # The Lich, 2026-11-26.
+    ("Lich", "Lich", "Raise the Fallen", "Range"): (
+        "most recent deaths within {n} metres of the Lich",),
+    ("Lich", "Lich", "Raise the Fallen", "cooldown"): (
+        "Its {n} second cooldown is Path of Exile 2's",),
+    ("Lich", "Lich", "Grave Burst", "Radius"): (
+        "When the player comes within {n} metres",),
+    ("Lich", "Lich", "Grave Burst", "cooldown"): (
+        "Its {n} second cooldown is the Brute's",),
+    ("Lich", "Lich", "Grave Bolt", "Radius"): (
+        "Its radius is {n} metres, so the slowest class can step clear of it from 1.95",),
+    ("Lich", "Lich", "Grave Bolt", "Range"): (
+        "The Lich walks to {n} metres and holds",),
 }
 
 #: Numbers with a unit that equal one of their own enemy's values and do NOT

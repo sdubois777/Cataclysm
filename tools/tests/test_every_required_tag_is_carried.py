@@ -39,6 +39,10 @@ REQUIRING = ("EnchantmentEffects.csv", "PassiveEffects.csv")
 #: TAGS THE GAME CODE GRANTS, each with the file that grants it and how. Read in
 #: the code on 2026-10-28 for issue #1785.
 ENGINE_GRANTED = {
+    "Minion.RaisedOnRemains": (
+        "AbilitySystem/CataclysmRemains.cpp",
+        "UCataclysmRemains::RaiseOn adds it to a minion a summon skill raised on its summoner's remains (the Death "
+        "finish's slice D, 2026-11-26)"),
     "Keyword.DoT.Poison": (
         "AbilitySystem/CataclysmAilments.cpp",
         "the Poison ailment's own tag in the ailment table, requested by name for its effect"),
@@ -54,6 +58,15 @@ ENGINE_GRANTED = {
     "Keyword.DoT.Generic": (
         "AbilitySystem/CataclysmMinion.cpp",
         "the skill trap's own damage over time, ACataclysmMinion::LaySkillTrapsDamageOverTime (F9)"),
+    # THE DEATH FINISH SLICE A (2026-11-26): put on a skill's tags for a use that spent Fervour, read by Soul Shatter's
+    # and Final Rites' rows ("Skills that spend Fervour").
+    "Use.SpentFervour": (
+        "AbilitySystem/CataclysmSkillTemplate.cpp",
+        "UCataclysmSkillTemplate::SpentFervourTag, put on a use's tags by MarkTheUseAsSpendingFervour"),
+    "Minion.Permanent": (
+        "AbilitySystem/CataclysmNecromancerArmy.cpp",
+        "a permanent minion's tag, added by UCataclysmNecromancerArmy::MakePermanent and to every thrall's tags by "
+        "UCataclysmCommand::ThrallMinionTags (the Death line's finishing slice B, 2026-11-26)"),
 }
 
 

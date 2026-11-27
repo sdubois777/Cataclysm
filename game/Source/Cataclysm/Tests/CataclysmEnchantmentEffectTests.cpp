@@ -3806,18 +3806,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedDrawbackReachesTheShieldTest,
 /**
  * "Energy shield can now be effected by bleed", from its row, worn. Issue #2014.
  *
- * THE ONE EXCEPTION TO THE ONE EXCEPTION. The project owner, 2026-09-18:
- * "every DoT except bleed reaches ES." A bleed passes an energy shield to
- * health; this drawback makes its wearer's shield take bleed too, by granting
- * `shield_absorbs_damage_over_time`, the flag Warded grants.
+ * THE ONE EXCEPTION TO THE ONE EXCEPTION. The project owner, 2026-11-26: "Bleed
+ * deals no damage while the target has energy shield." This drawback makes its
+ * wearer's bleed drain the shield one for one and then health, by granting
+ * `bleed_drains_energy_shield` (the coordinating session's ruling of the same
+ * day; the stat was `shield_absorbs_damage_over_time` until then).
  *
  * READ FROM THE ROW AND WORN, NOT GRANTED BY HAND. A case that wrote the flag
  * itself would pass with no row at all, which is how three nodes on the passive
  * side came to grant nothing. The drawback is paired with a benefit that has
  * no effect row, so the flag is the only thing the item changes.
  *
- * BOTH HALVES, WITHOUT AND WITH, on the same wearer: a bleed passes the shield
- * before the item is worn and is absorbed after.
+ * BOTH HALVES, WITHOUT AND WITH, on the same wearer: a bleed deals nothing
+ * before the item is worn, and comes off the shield and then health after.
  */
 bool FCataclysmBleedDrawbackReachesTheShieldTest::RunTest(const FString&)
 {
@@ -3853,7 +3854,7 @@ bool FCataclysmBleedDrawbackReachesTheShieldTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("which grants the flag that lets bleed into the shield"),
 			  Effect->Stat,
-			  FString(UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat));
+			  FString(UCataclysmDamageCalculation::BleedDrainsEnergyShieldStat));
 	TestEqual(TEXT("stated flat"), Effect->ValueKind, FString(TEXT("flat")));
 	TestTrue(TEXT("and above zero, which is what the flag asks"),
 			 Effect->ValueLow > 0.0f);
@@ -3895,8 +3896,10 @@ bool FCataclysmBleedDrawbackReachesTheShieldTest::RunTest(const FString&)
 	// shield's share is exactly its whole 400 when it applies at all.
 	constexpr float Tick = 100000.0f;
 
-	TestEqual(TEXT("wearing nothing, the shield absorbs none of a bleed"),
-			  BleedFor(Tick).AbsorbedByShield, 0.0f, 0.001f);
+	const FCataclysmDamageResult Bare = BleedFor(Tick);
+	TestEqual(TEXT("wearing nothing, the shield absorbs none of a bleed"), Bare.AbsorbedByShield, 0.0f, 0.001f);
+	TestEqual(TEXT("and the bleed deals nothing to health while the shield stands"), Bare.DealtToHealth, 0.0f,
+			  0.001f);
 
 	FCataclysmItem Removed;
 	FCataclysmItem AlsoRemoved;
@@ -11501,7 +11504,7 @@ namespace CataclysmRandomDotRowTest
 		return Character && Tag.IsValid() && Character->HasMatchingGameplayTag(Tag);
 	}
 
-	/** A thousand health, so a tenth of the maximum is 100. */
+	/** A thousand health, so a blow of 50 is under the tenth of the maximum #917 asked until 2026-11-26. */
 	void GiveAThousand(UAbilitySystemComponent* Character)
 	{
 		Character->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
@@ -11544,10 +11547,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCriticalStrikeRandomDotRowTest,
 /**
  * "Critical strikes apply a random DoT to the target". Issue #1833 group D,
  * ruled 2026-09-30: one of Bleed, Poison, Disease, Necrosis and Burn on the
- * enemy struck, from a blow that took a tenth of its maximum health (#917). Its
- * Trigger Cooldown cell is empty, so the generator wrote the quarter second a
- * critical strike's trigger waits, and a second critical strike in the same
- * moment applies nothing.
+ * enemy struck, from a blow that dealt it more than nought: the owner's ruling
+ * of 2026-11-26, so a blow of 50 against a thousand applies it. Until then it
+ * needed a tenth of the maximum health (#917). Its Trigger Cooldown cell is
+ * empty, so the generator wrote the quarter second a critical strike's trigger
+ * waits, and a second critical strike in the same moment applies nothing.
+ * CONTROL: a critical strike carrying nought applies nothing, and one worth 50
+ * on the same enemy in the same moment then applies it, so the row was ready
+ * and only the nought refused it. Raised by hand, as every event here is.
  */
 bool FCataclysmCriticalStrikeRandomDotRowTest::RunTest(const FString&)
 {
@@ -11570,8 +11577,8 @@ bool FCataclysmCriticalStrikeRandomDotRowTest::RunTest(const FString&)
 	GiveAThousand(Second.AbilitySystem);
 	const FName Crit(TEXT("critical_strike"));
 
-	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, First.Actor);
-	TestTrue(TEXT("a critical strike taking a tenth applies the pinned Poison"),
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 50.0f, true, First.Actor);
+	TestTrue(TEXT("a critical strike worth 50, under a tenth of a thousand, applies the pinned Poison"),
 		Carries(First.AbilitySystem, *Pool[1]));
 	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, Second.Actor);
 	TestFalse(TEXT("a second in the same moment applies nothing: the row waits"),
@@ -11580,6 +11587,17 @@ bool FCataclysmCriticalStrikeRandomDotRowTest::RunTest(const FString&)
 	Worn.ASC()->ActOnEvent(Crit, nullptr, 100.0f, true, Second.Actor);
 	TestTrue(TEXT("a quarter of a second later it applies again"),
 		Carries(Second.AbilitySystem, *Pool[1]));
+
+	// THE CONTROL, a further quarter second on so the row is ready again.
+	CataclysmEnchantmentEffectTest::FWearer Third(Worn.World);
+	GiveAThousand(Third.AbilitySystem);
+	Worn.World->TimeSeconds += 0.25f;
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 0.0f, true, Third.Actor);
+	TestFalse(TEXT("CONTROL: a critical strike carrying nought applies nothing"),
+		Carries(Third.AbilitySystem, *Pool[1]));
+	Worn.ASC()->ActOnEvent(Crit, nullptr, 50.0f, true, Third.Actor);
+	TestTrue(TEXT("control set-up: one worth 50 in the same moment applies it, so the row was ready"),
+		Carries(Third.AbilitySystem, *Pool[1]));
 	return true;
 }
 
@@ -12537,8 +12555,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCriticalBleedRowTest,
  * "Your critical strikes always cause bleeding". Issue #1833 group E part 1: a
  * status action on `critical_strike`, Bleed, 100. WORN by a real player, whose
  * real critical strike on a creature bleeds it, and whose ordinary blow on
- * another bleeds nothing. Each blow takes over a tenth of the creature's ten
- * thousand, so the owner's rule of #917 is met and is not what decides it.
+ * another bleeds nothing. Each blow takes health from a living creature, so the
+ * owner's rule of 2026-11-26 (more than nought dealt, and a bleed only from a
+ * blow that reached health) is met and is not what decides it. Each takes over
+ * a tenth of its ten thousand as well, which the rule of #917 asked until then.
  */
 bool FCataclysmCriticalBleedRowTest::RunTest(const FString&)
 {
@@ -18774,12 +18794,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWearerDamageOverTimeRowsTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Six stat rows. The two that raise a figure are read against a figure of
+ * Six stat rows. The three that scale a figure are read against a figure of
  * 100, with the bleed tag and with the burn tag, since each is scoped to bleed:
  * "Bleed effects applied to you deal 30%-50% increased damage" makes 150 of a
- * bleed and leaves a burn at 100, and "Bleeding on you lasts 50%-100% longer"
- * makes 200. A drawback is worn at its harshest roll. The four flat rows read
- * their own figure: 1, 20, 1 and 1, the bleed immunity only with the bleed tag.
+ * bleed and leaves a burn at 100, "Bleeding on you lasts 50%-100% longer"
+ * makes 200, and "You take 10%-20% less damage from bleeding" (the owner's
+ * choice of 2026-11-26) makes 80. A drawback is worn at its harshest roll and a
+ * benefit at its best. The three flat rows read their own figure: 1, 1 and 1,
+ * the bleed immunity only with the bleed tag.
  */
 bool FCataclysmWearerDamageOverTimeRowsTest::RunTest(const FString&)
 {
@@ -18797,14 +18819,16 @@ bool FCataclysmWearerDamageOverTimeRowsTest::RunTest(const FString&)
 		const TCHAR* Row;
 		const TCHAR* Stat;
 		float OfABleed;
+		bool bBenefit = false;
 	};
 	const FRaised Raised[] = {
 		{TEXT("Negative_Bleed_effects_applied_to_you_deal_30_50_increa"), TEXT("damage_over_time_taken"), 150.0f},
 		{TEXT("Negative_Bleeding_on_you_lasts_50_100_longer"), TEXT("debuff_duration_taken"), 200.0f},
+		{TEXT("Positive_You_take_10_20_less_damage_from_bleeding"), TEXT("damage_over_time_taken"), 80.0f, true},
 	};
 	for (const FRaised& Case : Raised)
 	{
-		FWorn Worn(Case.Row, false);
+		FWorn Worn(Case.Row, Case.bBenefit);
 		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
 		{
 			return false;
@@ -18828,8 +18852,6 @@ bool FCataclysmWearerDamageOverTimeRowsTest::RunTest(const FString&)
 	};
 	const FFlat Flats[] = {
 		{TEXT("Positive_Unaffected_by_bleeding"), true, TEXT("ailment_immunity"), true, 1.0f},
-		{TEXT("Positive_10_20_of_bleed_damage_you_take_is_taken_from_y"), true,
-		 TEXT("bleed_damage_taken_from_energy_shield"), false, 20.0f},
 		{TEXT("Positive_DoTs_deal_damage_to_your_mana_pool_first"), true,
 		 TEXT("damage_over_time_taken_from_mana_first"), false, 1.0f},
 		{TEXT("Negative_Your_persistent_AOE_zones_apply_their_effects_to"), false,

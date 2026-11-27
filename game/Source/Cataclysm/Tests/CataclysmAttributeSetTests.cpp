@@ -395,7 +395,14 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// stat with no attribute. Missed at registration: window nocaps-b-w1's whole
 	// suite read 73 against 74, and the sheet's own count 45 against 46, which
 	// is the knock-on the resource count's comment below describes.
-	constexpr int32 OffSheetCombatStats = 45;
+	// AND FORTY-SIX SINCE THE WARDED KEYSTONE HAS A STAT OF ITS OWN, the owner's
+	// choice of 2026-11-26: "Your Energy Shield absorbs damage that would bypass
+	// it", `ShieldAbsorbsWhatBypassesIt`, beside the bleed drawback's flag, which
+	// was renamed rather than added. No affix grants it, nothing scales it, no
+	// class differs on it, and `Ritualist_keystone_c_kA` is its only source. A
+	// FLAG. Missed at registration: window ail-w1's whole suite read 74 against 73,
+	// and the sheet's own count 47 against 46.
+	constexpr int32 OffSheetCombatStats = 46;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

@@ -273,7 +273,8 @@ float UCataclysmRetaliation::PayPulseFor(UAbilitySystemComponent* Defender, AAct
 		Paying->ActOnEvent(FName(TEXT("retaliation_dealt")), /*EventTags=*/nullptr, /*EventAmount=*/Taken,
 						   /*bLanded=*/Taken > 0.0f, Target);
 		// "THIS ALSO APPLIES BLEED TO EVERY ENEMY IT STRIKES": an enemy it took health from. Laid directly, as the
-		// sentence names it, and not through the rule of a tenth an event's status row keeps. A judgement.
+		// sentence names it, and not through the ailment rule an event's status row keeps (a tenth of maximum health
+		// until the owner's ruling of 2026-11-26, more than nought dealt since). A judgement.
 		if (Bleed && Taken > 0.0f)
 		{
 			UCataclysmAilments::Apply(Instigator, Target, *Bleed, /*Magnitude=*/1.0f, /*Skill=*/nullptr, NAME_None,

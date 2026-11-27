@@ -16,6 +16,7 @@
 // stand in it. Blood Pyre. Issue #1162.
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For a swing drawn back whose row says its caster cannot be healed. The
 // Greatsword's The Whole Weight. Issue #1162.
@@ -131,7 +132,7 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// RESTORE HEALTH, which is the same argument the healing ceiling below makes
 	// for sitting here rather than at each caller.
 	//
-	// EVERY POOL, NOT ONLY HEALTH, and that is the row's own wording read
+	// EVERY POOL BUT THE CLASS RESOURCE (below), NOT ONLY HEALTH, and that is the row's own wording read
 	// plainly: "you cannot be healed" says nothing comes back while the swing is
 	// up. A held Ultimate lasts three seconds.
 	//
@@ -139,8 +140,13 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// never refuses it: The Whole Weight is a Greatsword Ultimate and Living Pyre
 	// is a Fist Ultimate, and a character holds one weapon, so the two can never
 	// be up at once.
-	if (UCataclysmStrikeSkill::AHeldSwingForbids(AbilitySystem.GetOwnerActor(),
-												 TEXT("Healing")))
+	//
+	// BUT NEVER THE CLASS RESOURCE: a gain of Fervour is not healing. Ruled by the coordinating session on 2026-11-26,
+	// when issue #2936 sent a pool action's Fervour gain through here: the swing that forbids healing must not stop it.
+	// Mana and the energy shield are refused as before.
+	if (Pool != UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()
+		&& UCataclysmStrikeSkill::AHeldSwingForbids(AbilitySystem.GetOwnerActor(),
+													TEXT("Healing")))
 	{
 		return;
 	}
@@ -805,6 +811,10 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 	{
 		Marker->MaintainShadowMarks();
 	}
+
+	// AND THE NECROMANCER'S ARMY: a permanent minion's live health, Mending Dead and Master's Edge on a thrall (the Death
+	// line's finishing slice B, 2026-11-26). After Bound Bones, whose figure it leaves where it is.
+	UCataclysmNecromancerArmy::Step(Character, SecondsInStep);
 }
 
 const TCHAR* UCataclysmRegeneration::SharedBloodStat =

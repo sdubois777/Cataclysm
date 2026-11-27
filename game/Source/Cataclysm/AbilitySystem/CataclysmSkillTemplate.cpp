@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+#include "AbilitySystem/CataclysmDetonation.h"
 // For UCataclysmSelfBuffSkill, which is the one shape that reacts to a kill.
 // A base including its own subclass is confined to this .cpp; the header
 // knows nothing about it.
@@ -17,6 +18,7 @@
 // The Wand's Anathema. Issue #37.
 #include "AbilitySystem/CataclysmCurseSpread.h"
 // For a curse under which the dying rise. Issue #2885, N5.
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRisingCurse.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -129,6 +131,92 @@ float UCataclysmSkillTemplate::SpendHeldNextUseCharges(
 	return LastNextUseIncreasePercent;
 }
 
+const TCHAR* UCataclysmSkillTemplate::SkillFervourSpendStat = TEXT("skill_fervour_spend");
+const TCHAR* UCataclysmSkillTemplate::DamagePerSoulFuelFervourStat = TEXT("damage_per_skill_fervour_spent");
+const TCHAR* UCataclysmSkillTemplate::AreaPerFiveFervourSpentStat = TEXT("area_of_effect_per_five_fervour_spent");
+
+FGameplayTag UCataclysmSkillTemplate::SpentFervourTag()
+{
+	// ASKED AFRESH RATHER THAN KEPT IN A STATIC, for the reason `CommitAndBegin` gives for its own tags: a static filled
+	// before the tag table loaded would hold an invalid tag for the life of the process.
+	return FGameplayTag::RequestGameplayTag(FName(TEXT("Use.SpentFervour")), /*ErrorIfNotFound=*/false);
+}
+
+bool UCataclysmSkillTemplate::SoulFuelReaches() const
+{
+	const ECataclysmAbilitySlot Designed = GetDesignedSlot();
+	// "OTHER THAN MOVEMENT SKILLS", the basic attack (no cooldown in any case), and an Ultimate (ruling 1).
+	if (Designed == ECataclysmAbilitySlot::Movement || Designed == ECataclysmAbilitySlot::Ultimate
+		|| Designed == ECataclysmAbilitySlot::BasicAttack)
+	{
+		return false;
+	}
+	// A ROW THAT ALREADY HOLDS OR SPENDS FERVOUR: Cold Blood and Requiem (ruling 2, issue #2937).
+	if (Params.bHoldsFervour || Params.bSpendsAllFervour)
+	{
+		return false;
+	}
+	// "THAT HAVE A COOLDOWN": the skill's own, before any reduction.
+	return GetBaseCooldown() > 0.0f;
+}
+
+float UCataclysmSkillTemplate::SpendSoulFuel(UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem || !SoulFuelReaches()
+		|| !AbilitySystem->HasAttributeSetForAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()))
+	{
+		return 0.0f;
+	}
+	const float Most = AbilitySystem->StatForSkill(FName(SkillFervourSpendStat), SkillTags, 0.0f);
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Held = AbilitySystem->GetNumericAttribute(Pool);
+	// "UP TO": what is held when it is less, so an empty pool spends nothing and the use goes on.
+	const float Spend = FMath::Min(FMath::Max(0.0f, Most), FMath::Max(0.0f, Held));
+	if (Spend <= 0.0f)
+	{
+		return 0.0f;
+	}
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Spend);
+	const float Spent = FMath::Max(0.0f, Held - AbilitySystem->GetNumericAttribute(Pool));
+
+	// A SPEND LIKE A COST, recorded as `ApplyCost` records one: Spent Breath, Feast, Soul Furnace and the rest of the
+	// limb hear it with this skill's tags.
+	AbilitySystem->NoteResourceConsumed(Spent, &SkillTags);
+	AbilitySystem->NoteFervourSpent(Spent, &SkillTags);
+	FCataclysmWarFervour::NoteFervourSpentOrDrained(AbilitySystem, Spent);
+	UE_LOG(LogCataclysm, Log, TEXT("SOUL FUEL: '%s' spent %.0f Fervour of %.0f held (at most %.0f)."), *SkillName, Spent,
+		   Held, Most);
+	return Spent;
+}
+
+float UCataclysmSkillTemplate::SoulFuelIncreasePercent(const UCataclysmAbilitySystemComponent* AbilitySystem,
+													   float Spent) const
+{
+	if (!AbilitySystem || Spent <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float PerFervour = AbilitySystem->StatForSkill(FName(DamagePerSoulFuelFervourStat), SkillTags, 0.0f);
+	return FMath::Max(0.0f, PerFervour) * FMath::FloorToFloat(Spent);
+}
+
+void UCataclysmSkillTemplate::MarkTheUseAsSpendingFervour()
+{
+	const FGameplayTag Mark = SpentFervourTag();
+	if (!Mark.IsValid())
+	{
+		return;
+	}
+	if (FervourSpentByThisUse > 0.0f)
+	{
+		SkillTags.AddTag(Mark);
+	}
+	else
+	{
+		SkillTags.RemoveTag(Mark);
+	}
+}
+
 float UCataclysmSkillTemplate::GetDamagePercent() const
 {
 	// THE SKILL'S OWN FIGURE FIRST, AND THAT ORDER IS THE WHOLE POINT.
@@ -232,6 +320,14 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// EVERY USE BEGINS HITTING WHAT ITS OWN SHAPE HITS. Written here and not below, because a free start skips the
 	// block that takes what a row rolled.
 	ThisUseHitsAllWithinCm = 0.0f;
+
+	// AND EVERY USE BEGINS HAVING SPENT NO FERVOUR, its last use's mark taken off before the commit reads the tags. The
+	// Death finish slice A (2026-11-26): the commit below adds what a cost takes (`FervourPaidThisCommit`), Soul Fuel adds
+	// its spend, and the mark goes back on after both for a use that spent any.
+	FervourPaidThisCommit = 0.0f;
+	SoulFuelSpentThisUse = 0.0f;
+	FervourSpentByThisUse = 0.0f;
+	MarkTheUseAsSpendingFervour();
 
 	// AND A SKILL THAT ROLLS ITS DAMAGE DRAWS THIS USE'S FIGURE, before anything below reads `GetDamagePercent`.
 	// Issue #2580, [N3]: "drawn uniformly per use". A free repeat is a use of its own and draws again.
@@ -355,6 +451,18 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 			{
 				LastNextUseIncreasePercent += RolledIncreasePercent;
 			}
+		}
+		// SOUL FUEL'S SPEND, AND THE DAMAGE IT BUYS. The Death finish slice A (2026-11-26), issue #2937: "Your skills that
+		// have a cooldown, other than movement skills, spend up to 10 Fervour when you use them, and deal +1% increased
+		// damage for every 4 points for each Fervour they spend." Spent here, past the commit, so a press the cost or the
+		// cooldown refused spends nothing, and a free start never reaches this block. The damage joins the increases
+		// this use carries to everything it deals itself (its hits, its projectiles, its ground), as a next-use charge's
+		// does (ruled 2026-09-24), for each WHOLE Fervour spent; a use that deals no damage itself (a buff, a summon, a
+		// deployable) still spends, and buys nothing with it. A judgement, recorded in docs/DECISIONS.md.
+		SoulFuelSpentThisUse = SpendSoulFuel(Cataclysm);
+		if (SoulFuelSpentThisUse > 0.0f && !bThisUseDealsNoDamage && DeliversDamageItself())
+		{
+			LastNextUseIncreasePercent += SoulFuelIncreasePercent(Cataclysm, SoulFuelSpentThisUse);
 		}
 		// AND THE FREE, EMPOWERED NEXT ABILITY A WORN ROW'S KEPT STACKS BUY AT THEIR CAP: SPENT HERE, BY EVERY PAID USE
 		// BUT THE BASIC ATTACK. Ruled 2026-10-17 (O7 c, O8), for the Null Emperor 6-piece: "At 10 stacks, your next
@@ -514,6 +622,11 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// reads that one.
 		LastNextUseMoreMultiplier = bFreeRepeat ? FreeRepeatDamageShare : 1.0f;
 	}
+
+	// AND WHAT THIS USE SPENT IN ALL, AND ITS MARK. The Death finish slice A (2026-11-26): the cost the commit took and
+	// Soul Fuel's spend; Requiem adds its rest when it spends it. "Skills that spend Fervour" are the uses this marks.
+	FervourSpentByThisUse = FervourPaidThisCommit + SoulFuelSpentThisUse;
+	MarkTheUseAsSpendingFervour();
 
 	// THE BURST AT THE CASTER, AND THIS IS THE ONLY PLACE IT IS ASKED FOR.
 	// Every one of the eight skill shapes calls this function first, so one call
@@ -1945,11 +2058,44 @@ int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,
 // Detonating the caster's own minions, and ordering them -- issue #2885
 // ==========================================================================
 
+bool UCataclysmSkillTemplate::DetonatesOwnMinions() const
+{
+	// THE ROW'S KEY, OR LIT FUSE. The finishing of the Death Cataclysm, slice C (2026-11-26), `Necromancer_basic_ch_stem0`:
+	// "Your weapon skills that land on one of your own minions detonate it, whatever kind it is."
+	if (Params.bDetonates)
+	{
+		return true;
+	}
+	// A WEAPON SKILL, NOT THE BASIC ATTACK, a judgement: the basic attack is the one slot the design calls automatic, and
+	// is no skill use (ruled 2026-09-14); a Necromancer swinging it beside his minions would pop them all the time. AND
+	// THE CASTER'S OWN USE, NOT A COPY ANOTHER ACTOR CASTS FROM WHERE IT STANDS (`FreeRepeatCastBy`), a judgement: a
+	// minion casting The Horde Ascendant's copy, or a gadget its own, stands at the heart of that copy's area and would
+	// detonate itself.
+	return Slot != ECataclysmAbilitySlot::BasicAttack && FreeRepeatCastBy.IsExplicitlyNull()
+		&& UCataclysmDetonation::WeaponSkillsDetonateOwnMinions(Avatar());
+}
+
 int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const AActor&)> IsInside)
 {
 	AActor* Self = Avatar();
-	if (!Params.bDetonates || !Self)
+	// AND THE CASTER'S OWN REMAINS INSIDE THE SAME AREA, BEFORE THE MINIONS' OWN RULE: Mantle of Bone, "Your weapon skills
+	// that land on remains detonate them". The Death finish's slice D (2026-11-26), approved by the coordinating session:
+	// every weapon skill's landing reaches this function, and the remains need no `Detonates=1`. AT THE TOP, before
+	// slice C's rule for the caster's minions (`DetonatesOwnMinions`, below), as slice C left room for.
+	UCataclysmRemains::DetonateWhere(Self, IsInside);
+	if (!Self)
 	{
+		MinionsDetonated = 0;
+		return 0;
+	}
+
+	// EVERY WEAPON SKILL'S LANDING ARRIVES HERE, since the finishing of the Death Cataclysm (2026-11-26): the call sites
+	// no longer ask the row's `Detonates` key, so what a skill's area holds can be detonated whatever its row says. The
+	// caster's MINIONS are detonated only below, by the row's key or Lit Fuse (`DetonatesOwnMinions`); a skill with
+	// neither leaves them standing.
+	if (!DetonatesOwnMinions())
+	{
+		MinionsDetonated = 0;
 		return 0;
 	}
 
@@ -1979,21 +2125,20 @@ int32 UCataclysmSkillTemplate::DetonateOwnMinionsWhere(TFunctionRef<bool(const A
 	// minion dies, as the Necromancer's "dies without being detonated" nodes read it, so the clocks Death Ward and Bone
 	// Knit ask start too. Told before the blast, while the body still stands, as a killed minion is. NOT the Fervour or
 	// the shield a minion killed grants (`UCataclysmFervour::GainOnMinionDeath`): those pay for a loss, and a minion
-	// spent on purpose is not one.
-	UCataclysmAbilitySystemComponent* Told = Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	// spent on purpose is not one. `UCataclysmDetonation::Detonate` tells it, since slice C.
 	int32 Exploded = 0;
 	for (const TWeakObjectPtr<ACataclysmMinion>& One : Caught)
 	{
 		ACataclysmMinion* Minion = One.Get();
 		if (IsValid(Minion) && !UCataclysmSkillEffects::IsDead(Minion))
 		{
-			if (Told)
+			// AS THIS SKILL'S AREA HIT, since 2026-11-26: 200% of the caster's weapon damage (`ExplodeSetOffBy`). THROUGH
+			// `UCataclysmDetonation::Detonate` since the finishing of the Death Cataclysm, slice C, which tells the caster
+			// first (`NoteMinionDied`, as this did) and pays what the Charnel limb adds to a detonation.
+			if (UCataclysmDetonation::Detonate(Minion, this))
 			{
-				Told->NoteMinionDied(Minion, Minion->TypeTags);
+				++Exploded;
 			}
-			// AS THIS SKILL'S AREA HIT, since 2026-11-26: 200% of the caster's weapon damage (`ExplodeSetOffBy`).
-			Minion->ExplodeSetOffBy(this);
-			++Exploded;
 		}
 	}
 
@@ -3041,7 +3186,7 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// Support skill dealing nothing still lays it (#917); whether it connected is (#1156).
 		if (bLanded)
 		{
-			ApplyStatedAilmentTo(Self, Target);
+			ApplyStatedAilmentTo(Self, Target, Resolved.DealtToHealth);
 		}
 
 		// AND ANY RUNNING BUFF THAT REACTS TO A LANDED BLOW IS TOLD, AND WHERE.
@@ -3580,7 +3725,7 @@ float UCataclysmSkillTemplate::PayHitFervourFor(AActor* Firer, float& StatedPaid
 	return UCataclysmFervour::GainStated(UCataclysmTargeting::AbilitySystemOf(Firer), Offered);
 }
 
-bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target) const
+bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target, float DealtToHealth) const
 {
 	if (Params.Ailment.IsEmpty() || !IsValid(Self) || !IsValid(Target))
 	{
@@ -3601,6 +3746,13 @@ bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target)
 	// so every tick names this skill (issue #41, slice 4) and the applier's damage over time stats are asked with its
 	// tags. NO DAMAGE TYPE IS HANDED OVER: the ticks are met as the instigator's, as an ailment a gear chance rolled
 	// is, which is `RollOnLandedBlow`'s call.
+	// A STATED BLEED STILL NEEDS HEALTH: "bleed should be the only ailment that doesn't apply against energy shield" (the
+	// owner, 2026-11-26). Every other stated ailment applies whether or not the blow hurt, as before. `DealtToHealth`
+	// below nought means the caller has no blow's figure, and the target's shield answers.
+	if (UCataclysmAilments::IsBleed(*Kind) && !UCataclysmAilments::BlowCanCarryABleed(Target, DealtToHealth))
+	{
+		return false;
+	}
 	return UCataclysmAilments::Apply(Self, Target, *Kind, /*Magnitude=*/1.0f, this);
 }
 
@@ -3778,10 +3930,30 @@ float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const
 	// modifier naming a required tag is missing from it, and the Saboteur node
 	// "+15% area of effect for traps per point" widened nothing at all. Passing
 	// the tags is what makes it widen a trap and leave every other skill alone.
-	return UCataclysmSkillEffects::AsMultiplierForSkill(
-		GetAbilitySystemComponentFromActorInfo(),
-		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(),
+	const UAbilitySystemComponent* Source = GetAbilitySystemComponentFromActorInfo();
+	const float Multiplier = UCataclysmSkillEffects::AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(),
 		FName(UCataclysmItemModifiers::AreaOfEffectStat), SkillTags);
+
+	// AND PYRE'S, FOR A USE THAT SPENT FERVOUR, IN THE SAME BUCKET OF INCREASES. The Death finish slice A (2026-11-26):
+	// "Skills that spend Fervour have +1% increased Area of Effect per point for every 5 Fervour they spend", every whole
+	// five of what this use spent in all (`FervourSpentByThisUse`: an Ultimate's 50 among it). The figure above is the
+	// area's base times one plus its increases, times its more multipliers; one plus the increases is swapped for one plus
+	// the increases and Pyre's, so Pyre adds to the increases as any increased area does and is not a multiplier of its
+	// own.
+	const UCataclysmAbilitySystemComponent* Mine = Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float Fives = FMath::FloorToFloat(FMath::Max(0.0f, FervourSpentByThisUse) / 5.0f);
+	if (!Mine || Fives <= 0.0f)
+	{
+		return Multiplier;
+	}
+	const float PerFive = Mine->StatForSkill(FName(AreaPerFiveFervourSpentStat), SkillTags, 0.0f);
+	const float Increases = Mine->IncreasesForStat(FName(UCataclysmItemModifiers::AreaOfEffectStat), SkillTags);
+	if (PerFive <= 0.0f || 1.0f + Increases <= 0.0f)
+	{
+		return Multiplier;
+	}
+	return Multiplier * (1.0f + Increases + PerFive * Fives / 100.0f) / (1.0f + Increases);
 }
 
 const TCHAR* UCataclysmSkillTemplate::MeleeReachMetresStat =

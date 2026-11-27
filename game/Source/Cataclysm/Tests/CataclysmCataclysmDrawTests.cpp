@@ -61,7 +61,11 @@ namespace CataclysmDrawTest
  *
  * CONTROL: two runs that name no character, at the same two run seeds, face different lists, so it is the character's
  * seed and not luck that makes the two agree. By the Python copy of the generator: the character's (24681357) tier 3
- * list is Demonic, Pestilence, War; run seed 11's own is Death, Chaos, Void and 12's War, Famine, Demonic.
+ * list is Demonic, War, Death; run seed 11's own is Death, Demonic, War and 12's War, Demonic, Death. SINCE THE PROJECT
+ * OWNER'S RULING OF 2026-11-26 every tier 3 list is the three built Cataclysms (`UCataclysmRoster::Built`), so the
+ * control's two lists differ in their order and not in their names; the lists compared are names in order, so it still
+ * tells the character's seed from luck, now about five times in six rather than 335 in 336. Until the ruling the three
+ * lists were Demonic, Pestilence, War; Death, Chaos, Void; and War, Famine, Demonic.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDrawSameTierTest,
 	"Cataclysm.CataclysmDraw.TwoRunsOfOneCharacterAtOneTierFaceTheSameCataclysmsInOrder",
@@ -133,6 +137,11 @@ bool FCataclysmDrawTierHigherTest::RunTest(const FString& Parameters)
  * Two characters with different seeds can face different Cataclysms, though their runs share one seed. Seeds 7 and 8
  * were picked because the Python copy of the generator gives them different tier 3 lists: Celestial, Death, Void and
  * Void, Demonic, Death. Prints "TWO CHARACTERS".
+ *
+ * TIER 4 SINCE THE PROJECT OWNER'S RULING OF 2026-11-26, which put the three built Cataclysms first in every draw
+ * (`UCataclysmRoster::Built`): at tier 3 every character faces the same three, so two characters could differ only in
+ * order. Tier 4 adds the first unbuilt one, and by the Python copy the two lists are Death, Demonic, War, Celestial and
+ * Demonic, Death, War, Void -- different names, not only a different order.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDrawTwoCharactersTest,
 	"Cataclysm.CataclysmDraw.TwoCharactersWithDifferentSeedsCanFaceDifferentCataclysms",
@@ -144,15 +153,15 @@ bool FCataclysmDrawTwoCharactersTest::RunTest(const FString& Parameters)
 
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
 	const FString Seven = NamesOfRun(Instance->BeginACharactersEmpireRun(/*Seed*/ 5, /*CataclysmOrderSeed*/ 7,
-																		 ECataclysmSurgeMode::Static, 0, /*Tier*/ 3));
+																		 ECataclysmSurgeMode::Static, 0, /*Tier*/ 4));
 	const FString Eight = NamesOfRun(Instance->BeginACharactersEmpireRun(/*Seed*/ 5, /*CataclysmOrderSeed*/ 8,
-																		 ECataclysmSurgeMode::Static, 0, /*Tier*/ 3));
+																		 ECataclysmSurgeMode::Static, 0, /*Tier*/ 4));
 
-	AddInfo(FString::Printf(TEXT("TWO CHARACTERS: on run seed 5 at tier 3, the character of seed 7 [%s], of seed 8 [%s]"),
+	AddInfo(FString::Printf(TEXT("TWO CHARACTERS: on run seed 5 at tier 4, the character of seed 7 [%s], of seed 8 [%s]"),
 							*Seven, *Eight));
 
-	TestTrue(TEXT("the character of seed 7 faces its own draw"), Seven == NamesOf(UCataclysmRoster::ActiveFor(7, 3)));
-	TestTrue(TEXT("the character of seed 8 faces its own draw"), Eight == NamesOf(UCataclysmRoster::ActiveFor(8, 3)));
+	TestTrue(TEXT("the character of seed 7 faces its own draw"), Seven == NamesOf(UCataclysmRoster::ActiveFor(7, 4)));
+	TestTrue(TEXT("the character of seed 8 faces its own draw"), Eight == NamesOf(UCataclysmRoster::ActiveFor(8, 4)));
 	TestTrue(TEXT("the two characters face different Cataclysms"), Seven != Eight);
 	return true;
 }

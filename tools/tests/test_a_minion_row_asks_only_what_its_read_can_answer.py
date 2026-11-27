@@ -49,6 +49,10 @@ ABILITY_SYSTEM_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySyst
                       / "CataclysmAbilitySystemComponent.cpp")
 MINION_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
               / "CataclysmMinion.cpp")
+ARMY_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
+            / "CataclysmNecromancerArmy.cpp")
+DAMAGE_CALCULATION_CPP = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
+                          / "CataclysmDamageCalculation.cpp")
 DATA = REPO_ROOT / "game" / "Data"
 
 #: The sheets that grant stats under a condition. `Affixes.csv` has no
@@ -96,8 +100,26 @@ def asking_minion_kinds() -> set[str]:
     block = body_of(read(ABILITY_SYSTEM_CPP),
                     "float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(",
                     "the summoner's lookup a minion's damage is read through")
-    return {"MinionWithinMetresOfYou"} if re.search(
+    kinds = {"MinionWithinMetresOfYou"} if re.search(
         r"State\.AskingMinionMetres = \(AskingMinion && Self\)", block) else set()
+    # AND FIRST AMONG THE DEAD'S, the Death line's finishing slice B (2026-11-26), filled by the call below.
+    if re.search(r"UCataclysmNecromancerArmy::FillAskingMinionState\(State, Self, AskingMinion\)", block):
+        kinds.add("MinionHasYourMostMaximumHealth")
+    return kinds
+
+
+def stats_read_as_the_minion_asking() -> set[str]:
+    """The minion stats other than `minion_damage` whose read names the minion, so a condition about the minion asking
+    (and only such a condition) is answered: since the Death line's finishing slice B (2026-11-26), a permanent minion's
+    live health (`UCataclysmNecromancerArmy::HealthStep`) and the damage a follower takes (`MinionDamageTakenFactor`).
+    Each read from the line that names the minion, so the allowance lasts only while it does."""
+    stats = set()
+    if re.search(r'SummonerMultiplierFor\(Minion->Summoner, TEXT\("minion_health"\), Minion->TypeTags, Minion\)',
+                 read(ARMY_CPP)):
+        stats.add("minion_health")
+    if re.search(r'TEXT\("minion_damage_taken"\)[^;]*/\*AskingMinion=\*/Body\)', read(DAMAGE_CALCULATION_CPP), re.S):
+        stats.add("minion_damage_taken")
+    return stats
 
 
 def minion_rows() -> list[tuple[str, str, str, str]]:
@@ -116,6 +138,8 @@ def minion_rows() -> list[tuple[str, str, str, str]]:
 
 def test_the_parsers_found_what_they_read() -> None:
     """The positive control: every list is non-trivial before any verdict."""
+    assert asking_minion_kinds() == {"MinionWithinMetresOfYou", "MinionHasYourMostMaximumHealth"}
+    assert stats_read_as_the_minion_asking() == {"minion_health", "minion_damage_taken"}
     assert len(blow_or_skill_kinds()) >= FEWEST_BLOW_OR_SKILL
     assert len(target_answered_kinds()) >= FEWEST_TARGET_ANSWERED
     assert len(minion_rows()) >= FEWEST_MINION_ROWS
@@ -141,6 +165,8 @@ def test_no_minion_row_asks_what_its_read_cannot_answer(request) -> None:
     kind_of_name = {name: kind for kind, name in names.items()}
     blow = blow_or_skill_kinds()
     targeted = target_answered_kinds() | asking_minion_kinds()
+    asking = asking_minion_kinds()
+    named = stats_read_as_the_minion_asking()
 
     wrong = []
     for sheet, name, stat, condition in minion_rows():
@@ -148,6 +174,8 @@ def test_no_minion_row_asks_what_its_read_cannot_answer(request) -> None:
         if not condition or kind is None or kind not in blow:
             continue
         if stat == TARGETED_MINION_STAT and kind in targeted:
+            continue
+        if stat in named and kind in asking:
             continue
         wrong.append(f"{sheet}: {name} ({stat}, condition {condition})")
 

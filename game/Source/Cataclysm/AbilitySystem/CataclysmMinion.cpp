@@ -1,16 +1,19 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "Misc/ScopeExit.h"
-// For the owner's rule of a tenth, asked of a trap's damage over time. Traps layer 4, 2026-10-21.
+// For the owner's ailment rule, asked of a trap's damage over time. Traps layer 4, 2026-10-21 (a tenth of maximum
+// health until the ruling of 2026-11-26, more than nought dealt since).
 #include "AbilitySystem/CataclysmAilments.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDetonation.h"
 #include "AbilitySystem/CataclysmDeployableSelfBlast.h"
 // For the chaos pool a killed minion leaves its commander. Ruled 2026-10-06.
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -1712,6 +1715,11 @@ void ACataclysmMinion::RefreshWalkSpeed()
 	}
 }
 
+float ACataclysmMinion::AttackReachCm() const
+{
+	return UCataclysmDetonation::AttackReachCmFor(this, ReachCm);
+}
+
 void ACataclysmMinion::AttackOnce()
 {
 	// Nearest first, one target. Used by tests and by anything that wants one
@@ -1735,6 +1743,13 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		return;
 	}
 	if (!IsValid(Summoner) || !IsValid(Target))
+	{
+		return;
+	}
+	// A LIVING BOMB'S ATTACK IS ITS DETONATION, when it has reached its enemy. The Second Rite's option 2, slice C of the
+	// Death Cataclysm's finishing (2026-11-26): "Your minions run at the nearest enemy and detonate on contact". It is
+	// destroyed by it, so nothing below runs.
+	if (UCataclysmDetonation::DetonateOnContact(this, Target))
 	{
 		return;
 	}
@@ -1877,7 +1892,9 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		const float Damage = UCataclysmSkillEffects::ModifiedDamage(
 			UCataclysmTargeting::AbilitySystemOf(this),
 			Own * UCataclysmCommand::SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target, TypeTags,
-															   /*AskingMinion=*/this),
+															   /*AskingMinion=*/this)
+				// AND MASTER'S EDGE'S CRITICAL STRIKE, rolled for this blow: one with no such row (slice B, 2026-11-26).
+				* UCataclysmNecromancerArmy::CriticalFactorForBlow(this),
 			TypeTags, /*SkillHealthCostPercent=*/-1.0f, /*MetresMovedBeforeBlow=*/-1.0f,
 			/*TargetDistanceMetres=*/-1.0f, /*bTargetIsStaggered=*/false, Target);
 
@@ -1984,10 +2001,15 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 				Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
 		{
 			// WITH WHAT REACHED THE ENEMY'S HEALTH AS ITS AMOUNT, so an ailment a row applies on it meets the owner's
-			// rule of 2026-09-02 (#917, a tenth of the target's maximum health) as a hit's does. Window death3-w2 found
+			// ailment rule as a hit's does (a tenth of the target's maximum health from 2026-09-02, #917, until the
+			// ruling of 2026-11-26; more than nought dealt since, and health reached for a bleed). Window death3-w2 found
 			// it carried nought, which refused every ailment: Cold Hands' and Grave Cold's Necrosis never landed.
+			// AND EVERYTHING IT LANDED, its shield's part included, which an ailment a row lays asks above nought since the
+			// owner's ruling of 2026-11-26.
+			const float WasLanded = Theirs->SetHitBeingAnnouncedLanded(Resolved.Landed());
 			Theirs->ActOnEvent(FName(TEXT("minion_hit")), &TypeTags, Resolved.DealtToHealth,
 							   /*bLanded=*/!Resolved.bEvaded && !Resolved.bRefusedByImmunityToAttacker, Target);
+			Theirs->SetHitBeingAnnouncedLanded(WasLanded);
 		}
 	}
 
@@ -2136,6 +2158,13 @@ bool ACataclysmMinion::RenewLifetimeIfRekindled()
 void ACataclysmMinion::LifeSpanExpired()
 {
 	if (RenewLifetimeIfRekindled())
+	{
+		return;
+	}
+	// RIPENED, AFTER REKINDLED: a minion kept for its time again has not reached its end. The finishing of the Death
+	// Cataclysm, slice C (2026-11-26): "A minion of yours whose lifespan ends without being detonated has a 10% chance per
+	// point to explode anyway". Its explosion destroys it, so nothing below runs.
+	if (UCataclysmDetonation::RipenAtLifespanEnd(this))
 	{
 		return;
 	}
@@ -2355,22 +2384,27 @@ void ACataclysmMinion::RecordExplosionRadius(float RadiusCm)
 	ExplosionRadiusCm = RadiusCm;
 }
 
-void ACataclysmMinion::ExplodeSetOffBy(UCataclysmSkillTemplate* SetOffBy)
+float ACataclysmMinion::ExplodeSetOffBy(UCataclysmSkillTemplate* SetOffBy, float ShareOfFigure)
 {
 	AActor* Caster = SetOffBy ? SetOffBy->GetAvatarActorFromActorInfo() : nullptr;
 	if (!IsValid(Caster) || ExplosionRadiusCm <= 0.0f)
 	{
 		Explode();
-		return;
+		return 0.0f;
 	}
 
 	// THE SKILL'S AREA HIT, CENTRED ON THIS MINION: 200% of the caster's weapon damage, the skill named so its level
 	// factor and its tags apply, times the summoner's `minion_explosion_damage` (Volatile, `Ritualist_basic_b_b2`, the
 	// one row stating it on 2026-11-26), which every explosion takes.
+	// AND A DETONATION'S OWN TWO, the finishing of the Death Cataclysm, slice C (2026-11-26): the summoner's
+	// `minion_detonation_damage` on the figure and `minion_detonation_area` on the radius (`UCataclysmDetonation`), and
+	// the share of the whole figure the caller asks for, Mass Grave's 40% for each minion it chains to.
 	const float Percent = DetonatedPercentOfWeaponDamage
-		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags);
+		* UCataclysmCommand::SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"), TypeTags)
+		* UCataclysmDetonation::DamageMultiplierFor(this) * FMath::Max(0.0f, ShareOfFigure);
 	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), this, GetActorLocation(), ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this));
+		GetWorld(), this, GetActorLocation(),
+		ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this) * UCataclysmDetonation::AreaMultiplierFor(this));
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsArea = true;
 	Delivery.Skill = SetOffBy;
@@ -2388,7 +2422,17 @@ void ACataclysmMinion::ExplodeSetOffBy(UCataclysmSkillTemplate* SetOffBy)
 			 "landed %.1f"),
 		*TypeName, *GetName(), Caught.Num(), Caught.Num() == 1 ? TEXT("y") : TEXT("ies"), Percent,
 		*SetOffBy->SkillName, Sent);
+
+	// WHAT IT WAS WORTH, for Lingering Rot's share: the largest the blast sent, and with nothing caught the figure it
+	// would have sent, priced by the caster's own modifiers as `ApplyHit` prices it, before any defender.
+	const float Figure = Sent > 0.0f
+		? Sent
+		: UCataclysmSkillEffects::ModifiedDamage(
+			  UCataclysmTargeting::AbilitySystemOf(Caster),
+			  UCataclysmSkillEffects::WeaponDamageOf(UCataclysmTargeting::AbilitySystemOf(Caster)) * Percent / 100.0f,
+			  SetOffBy->SkillTagsForStats());
 	Destroy();
+	return Figure;
 }
 
 void ACataclysmMinion::Explode()
@@ -3779,7 +3823,8 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// which the triggering enemy usually is; the slots cast around it keep the triggering enemy.
 	AActor* const AimedAtEnemy = SkillTrapFiresAtTheNearestEnemy(SentenceSlot) ? SkillTrapNearestEnemyTo(Enemy) : Enemy;
 	// THE ENEMY THAT SET IT OFF, AND NOTHING TAKEN FROM IT YET: `ApplyHit` keeps what the cast's blows take from it, for
-	// the slow's rule of a tenth (the owner, 2026-10-21).
+	// the slow's ailment rule (the owner, 2026-10-21; a tenth of maximum health until the ruling of 2026-11-26, more than
+	// nought dealt since).
 	SkillTrapTriggeringEnemy = Enemy;
 	SkillTrapTookFromItsEnemy = 0.0f;
 	// AND THIS TRIGGER'S SHARE OF THAT ENEMY'S MAXIMUM HEALTH NOT YET ADDED: once per trigger (traps layer 4, F6).
@@ -3808,7 +3853,8 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	}
 
 	// TOLD BEFORE IT IS USED UP (M5), with the trap's tags and the enemy that set it off (T13), so a row can find it, AND
-	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's rule of a tenth reads.
+	// WHAT THE CAST HAS TAKEN FROM THAT ENEMY SO FAR as the amount, which the slow's ailment rule reads (more than nought
+	// since the owner's ruling of 2026-11-26; a tenth of maximum health until then).
 	const FGameplayTagContainer TrapTags = TypeTags;
 	// AND WHICH TRAP IT IS, while the event is raised, so a slow no blow has yet earned can wait for a later blow of this
 	// cast (ruled 2026-10-21, brief 60c).
@@ -3931,7 +3977,8 @@ bool ACataclysmMinion::SkillTrapsDoNotExpireFor(const AActor* Player)
 
 void ACataclysmMinion::NoteSkillTrapBlowOn(const AActor* Struck, float DealtToHealth) const
 {
-	// THE LARGEST SINGLE BLOW, since the rule of a tenth is asked of one blow and not of a sum.
+	// THE LARGEST SINGLE BLOW, since the ailment rule is asked of one blow and not of a sum (it was a tenth of maximum
+	// health until the owner's ruling of 2026-11-26, when the largest blow decided it; more than nought since).
 	if (Struck && Struck == SkillTrapTriggeringEnemy.Get())
 	{
 		SkillTrapTookFromItsEnemy = FMath::Max(SkillTrapTookFromItsEnemy, DealtToHealth);
@@ -3976,7 +4023,8 @@ float ACataclysmMinion::SkillTrapShareAsDamageOverTimeFor(const AActor* Player)
 	return FMath::Max(0.0f, SkillTrapFigureOf(Player, TrapDamageOverTimeShareStat));
 }
 
-bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth, FName SkillRow)
+bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth, FName SkillRow,
+												   float Landed)
 {
 	// A GENERIC DAMAGE OVER TIME AND NOT AN AILMENT (F9): its own tag, so a second blow lays over it as every damage over
 	// time does, the stronger a second replacing it and a weaker refreshing its time, and it never stacks.
@@ -3988,9 +4036,11 @@ bool ACataclysmMinion::LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struc
 		return false;
 	}
 
-	// THE OWNER'S RULE OF A TENTH (#917), against what this blow took from that enemy's health: "Follow the tenth rule",
-	// which the owner holds for every lasting effect a trap lays on an enemy (F9).
-	if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, DealtToHealth))
+	// THE OWNER'S RULE FOR EVERY LASTING EFFECT A TRAP LAYS ON AN ENEMY (F9, "Follow the tenth rule"), which is the rule
+	// for every ailment that is not the skill's own. Since the owner's ruling of 2026-11-26 that rule asks a blow that
+	// dealt more than nought, its shield's part counted, and no longer a tenth of maximum health. The share below is
+	// still a share of what reached health.
+	if (!UCataclysmAilments::BlowCanCarryAnAilment(Struck, Landed >= 0.0f ? Landed : DealtToHealth))
 	{
 		return false;
 	}

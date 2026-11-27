@@ -575,7 +575,10 @@ STATED_MIX = re.compile(
 #: 9919) gave the Basic share from 63.8% to 76.5%, median 70.3%, against 69.86%
 #: over all 10,000. Seeds 0 to 319, which this file reads, give 66.2%. Widened
 #: to 7 by a ruling of the coordinating session, 2026-10-18, which declined
-#: more campaigns.
+#: more campaigns. Since the project owner's ruling of 2026-11-26 that a
+#: character draws the built Cataclysms first, War among them, seeds 0 to 319
+#: give 46.19% Basic and 49.28% Quest against 50.38% and 45.24% over all 10,000;
+#: the disjoint blocks were not re-measured.
 SHARE_TOLERANCE_POINTS = 7.0
 
 

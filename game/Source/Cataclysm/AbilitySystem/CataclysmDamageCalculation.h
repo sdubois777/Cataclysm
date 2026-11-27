@@ -148,9 +148,12 @@ struct CATACLYSM_API FCataclysmIncomingHit
 
 	/**
 	 * Whether this blow passes the defender's energy shield by and goes to health. Death's Soul Eater, "Completely
-	 * ignores player energy shields", 2026-11-24. Read into here by `UCataclysmVitalAttributeSet` off the creature that
-	 * caused the blow, as `bCannotBeEvaded` is, and read once in `Resolve`: step 8 takes nothing. Every other step,
-	 * the temporary absorb and mana included, meets the blow as it would meet any other; the row names the shield.
+	 * ignores player energy shields", 2026-11-24, and a Void Splinter's tick (the owner, 2026-11-26). Read into here by
+	 * `UCataclysmVitalAttributeSet` off the creature that caused the blow, as `bCannotBeEvaded` is, or off the tick's
+	 * granted tags, and read once in `Resolve`: step 8 takes nothing, UNLESS THE DEFENDER CARRIES
+	 * `shield_absorbs_what_bypasses_it` (Warded, "Your Energy Shield absorbs damage that would bypass it"), when the
+	 * shield takes it like any other blow. Every other step, the temporary absorb and mana included, meets the blow as
+	 * it would meet any other; the row names the shield.
 	 */
 	bool bIgnoresEnergyShield = false;
 
@@ -217,11 +220,13 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	/**
 	 * A damage-over-time tick that is a bleed. Issue #2014.
 	 *
-	 * THE ONE KIND OF DAMAGE OVER TIME AN ENERGY SHIELD DOES NOT ABSORB. The
-	 * project owner, 2026-09-18: "every DoT except bleed reaches ES." A bleed
-	 * passes to health unless the defender carries
-	 * `shield_absorbs_damage_over_time`, which the Warded keystone and the
-	 * "Energy shield can now be effected by bleed" drawback grant.
+	 * THE ONE KIND OF DAMAGE OVER TIME AN ENERGY SHIELD DOES NOT ABSORB, AND
+	 * SINCE 2026-11-26 IT DEALS NOTHING WHILE THE SHIELD HOLDS: "Bleed deals no
+	 * damage while the target has energy shield" (the owner). Until then
+	 * ("every DoT except bleed reaches ES", 2026-09-18) a bleed passed to
+	 * health, as it still does once the shield is gone, unless the defender carries
+	 * `bleed_drains_energy_shield`, which the "Energy shield can now be effected
+	 * by bleed" drawback grants: then the shield takes it one for one.
 	 *
 	 * FILLED FROM THE TICK'S GRANTED TAGS, NOT ITS ASSET TAGS.
 	 * `UCataclysmSkillEffects::ApplyDamageOverTime` grants the ailment's tag,
@@ -533,6 +538,14 @@ struct CATACLYSM_API FCataclysmDamageResult
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	float DealtToHealth = 0.0f;
+
+	/**
+	 * EVERYTHING THE BLOW DEALT after every mitigation step: what the mana, the energy shield and a temporary barrier
+	 * absorbed, and what reached health. What `FCataclysmHitNotice::Landed` is filled from, and what an ailment that is
+	 * not the skill's own asks to be above nought (the owner's ruling of 2026-11-26; see
+	 * `UCataclysmAilments::BlowCanCarryAnAilment`).
+	 */
+	float Landed() const { return AbsorbedByMana + AbsorbedByShield + AbsorbedByTemporary + DealtToHealth; }
 
 	/**
 	 * How far the blow went past the health the defender held: the damage that reached the health step, less that
@@ -901,22 +914,20 @@ public:
 	static const TCHAR* MinionsLeaveChaosPoolsStat;
 
 	/**
-	 * THREE ABOUT DAMAGE OVER TIME ON THE CHARACTER WHO CARRIES THEM. Ruled 2026-10-06. None has an attribute.
+	 * TWO ABOUT DAMAGE OVER TIME ON THE CHARACTER WHO CARRIES THEM. Ruled 2026-10-06. Neither has an attribute.
+	 * A third, `bleed_damage_taken_from_energy_shield`, was retired on 2026-11-26: under the owner's rule that a bleed
+	 * deals nothing while the shield stands it could do nothing, and the one enchantment granting it now reads "You take
+	 * 10%-20% less damage from bleeding" through `damage_over_time_taken`.
 	 *
 	 * `ailment_immunity`: "Unaffected by bleeding". A flag, above nought is yes, asked with the tags of the ailment
 	 * being applied, so its row requires the bleed tag. Read by `UCataclysmSkillEffects::ApplyDamageOverTime`,
 	 * which then applies nothing at all. Converted damage not yet taken is not refused.
-	 *
-	 * `bleed_damage_taken_from_energy_shield`: "10%-20% of bleed damage you take is taken from your energy shield
-	 * instead of your health". The percent of a bleed tick the energy shield takes, as far as the shield has it.
-	 * Read in `Resolve`, and only for a bleed the shield would otherwise let through.
 	 *
 	 * `damage_over_time_taken_from_mana_first`: "DoTs deal damage to your mana pool first". A flag. Every damage
 	 * over time tick takes one point of mana for one point of damage, as far as the mana goes, before the shield
 	 * and health. Read in `Resolve`; `UCataclysmVitalAttributeSet` writes the mana.
 	 */
 	static const TCHAR* AilmentImmunityStat;
-	static const TCHAR* BleedDamageTakenFromEnergyShieldStat;
 	static const TCHAR* DamageOverTimeTakenFromManaFirstStat;
 
 	/**
@@ -938,19 +949,26 @@ public:
 	static const TCHAR* DebuffDamageSuppressedStat;
 
 	/**
-	 * The stat saying this character's energy shield absorbs damage over time
-	 * as well as hits. Issue #1515.
+	 * The stat saying a bleed on this character is not stopped by its energy
+	 * shield: its ticks come off the shield one for one, then off health. Issue
+	 * #1515, then #2014, then the coordinating session's ruling of 2026-11-26,
+	 * which renamed it from `shield_absorbs_damage_over_time`.
 	 *
-	 * `Ritualist_keystone_c_kA` Warded is the only source, and its row is a
-	 * flag: above zero or not, with nothing in between meaning anything.
+	 * The drawback "Energy shield can now be effected by bleed" is the only
+	 * source, and its row is a flag: above zero or not.
 	 *
-	 * ONE SITE READS IT, the line in `Resolve` deciding whether the shield
-	 * applies to this hit at all. Every place downstream reads
-	 * `FCataclysmDamageOutcome::AbsorbedByShield`, which is zero for a tick
-	 * today only because that line makes it so, so they all follow with no
-	 * change of their own.
+	 * ONE SITE READS IT, step 8 of `Resolve`.
 	 */
-	static const TCHAR* ShieldAbsorbsDamageOverTimeStat;
+	static const TCHAR* BleedDrainsEnergyShieldStat;
+
+	/**
+	 * The stat saying this character's energy shield takes a blow or tick that
+	 * would bypass it (`FCataclysmIncomingHit::bIgnoresEnergyShield`) like any
+	 * other, a bleed excepted. `Ritualist_keystone_c_kA` Warded: "Your Energy
+	 * Shield absorbs damage that would bypass it." The owner's choice of
+	 * 2026-11-26. A flag. ONE SITE READS IT, step 8 of `Resolve`.
+	 */
+	static const TCHAR* ShieldAbsorbsWhatBypassesItStat;
 
 	/**
 	 * The stat saying no attacker ignores any of this character's armour.
@@ -1026,6 +1044,13 @@ public:
 	 * modifier was built.
 	 */
 	static const TCHAR* MeleeEvasionSuppressedStat;
+
+	/**
+	 * The share, in per cent, of the defender's evasion chance that area damage meets: Ever Moving's, 50 while moving
+	 * (the Death line's finishing slice E, 2026-11-26). Nought, every defender without the row, leaves area damage
+	 * unevadable as it has always been. Read on the defender, with the blow, at the evasion step of `Resolve`.
+	 */
+	static const TCHAR* EvasionAgainstAreaPercentStat;
 
 	/**
 	 * What either of those two reads when nothing has changed it.

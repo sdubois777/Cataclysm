@@ -9,6 +9,9 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmPlayerCharacter.h"
+// For Death's Shadow Step on a wearer that is not a creature, issue #2899.
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -48,6 +51,17 @@ namespace
 		const UCataclysmAbilitySystemComponent* Its =
 			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Candidate));
 		return Its && Its->IsHiddenByThinAir();
+	}
+
+	/**
+	 * Whether a candidate that is not a creature is one Death's Shadow Step hides from creatures' sight now
+	 * (`UCataclysmEnemyModifiers::IsHiddenByShadowStep`): a player wearing it, lent by Wearer of the Dead, who has not
+	 * attacked in the last second. Issue #2899 (2026-11-26), on Thin Air's path, which the issue names as the nearest.
+	 * NOT A CREATURE: a creature Shadow Step hides is hidden from drawing, and what may target it is as it was.
+	 */
+	bool CandidateHiddenByShadowStep(const ACataclysmCharacterBase* Candidate)
+	{
+		return !Cast<ACataclysmEnemyCharacter>(Candidate) && UCataclysmEnemyModifiers::IsHiddenByShadowStep(Candidate);
 	}
 }
 
@@ -380,7 +394,9 @@ AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase
 				|| MinionWhoseRowDrawsNoAttention(Candidate)
 				|| !UCataclysmTargeting::IsHostileTo(Candidate, Searcher)
 				// AND A PLAYER THIN AIR HIDES, as if it were not there (2026-11-25): the creature takes the next nearest.
-				|| PlayerCandidateHiddenByThinAir(Candidate))
+				|| PlayerCandidateHiddenByThinAir(Candidate)
+				// AND ONE DEATH'S SHADOW STEP HIDES, the same way (issue #2899).
+				|| CandidateHiddenByShadowStep(Candidate))
 			{
 				continue;
 			}

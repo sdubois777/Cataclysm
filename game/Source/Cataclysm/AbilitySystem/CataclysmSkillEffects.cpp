@@ -38,6 +38,7 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSilence.h"
+#include "AbilitySystem/CataclysmShadowImages.h"
 // A taunt is crowd control, as a silence is. Warlord's Will's six-piece, ruled 2026-10-18 (B).
 #include "AbilitySystem/CataclysmTaunt.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -972,6 +973,10 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		return 0.0f;
 	}
 
+	// THE PERCENTAGE AS ASKED, before the level factors below multiply it: Flurry of the Dead deals the hit again
+	// through this function, which applies them again (the Death line's finishing slice E, 2026-11-26).
+	const float PercentAsAsked = DamagePercent;
+
 	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
 	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
 	if (!Source || !Defender)
@@ -1514,9 +1519,13 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 				if (UCataclysmAbilitySystemComponent* Commanders = Cast<UCataclysmAbilitySystemComponent>(
 						UCataclysmTargeting::AbilitySystemOf(UCataclysmCommand::CommanderOf(Instigator))))
 				{
-					// WITH WHAT REACHED HEALTH, as an imp's carries since window death3-w2 (the ailment rule, #917).
+					// WITH WHAT REACHED HEALTH, as an imp's carries since window death3-w2 (the ailment rule, #917; a
+					// bleed asks it). AND EVERYTHING IT LANDED, its shield's part included, which every other ailment asks
+					// above nought since the owner's ruling of 2026-11-26.
+					const float WasLanded = Commanders->SetHitBeingAnnouncedLanded(Landed->Landed());
 					Commanders->ActOnEvent(FName(TEXT("minion_hit")), &SkillTags, Landed->DealtToHealth, /*bLanded=*/true,
 										   Target);
+					Commanders->SetHitBeingAnnouncedLanded(WasLanded);
 				}
 			}
 		}
@@ -1531,12 +1540,28 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		// strike call a crow through a row's answer and that answer another. A skill gadget's or trap's cast takes the
 		// other path below and is the machine's blow, as a minion's is the minion's. Nothing for a blow that did not
 		// critically strike, which is nearly every one: the buffs are asked only then.
+		// BUT ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES IS LET THROUGH, though it is marked a row's answer: an extra strike
+		// that critically strikes calls the crows as any critical strike does, by the coordinating session's ruling of
+		// 2026-11-26 within the project owner's "yes" (Flurry's extra strikes trigger on-hit effects). The crows' own
+		// guards still hold: one a `CrowCooldownSeconds`, and a crow's own strike calls no other. Flurry's filter below
+		// still keeps the extra strike out, so it strikes no extras of its own.
 		if (Landed->bWasCritical && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker && !bAShareOnAnAlly
+			&& !Arrived.bIsDamageOverTime && !Arrived.bIsConsequenceOfADeath && !Arrived.bIsRetaliation
+			&& !Arrived.bIsAnExplosionAtAnAilmentsEnd && !Arrived.bIsAShareOfDamageDoneToAnAlly
+			&& (!Arrived.bIsARowsAnswerToAnEvent || Arrived.bIsAnExtraStrike))
+		{
+			UCataclysmSkillTemplate::NoteCriticalStrikeLanded(Instigator, Target, Arrived.Skill.Get());
+		}
+		// AND FLURRY OF THE DEAD: "Your hits strike again once for every 10 Fervour held, up to 10 extra strikes" (the Death
+		// line's finishing slice E, 2026-11-26). The same filter as the crows' above, less the critical strike: a blow the
+		// instigator struck and landed. Each extra strike is this hit again, whole, marked a row's answer to an event, so
+		// it strikes nothing again itself. Nothing for a wearer without the row, which is every creature.
+		if (bDealt && !Landed->bEvaded && !Landed->bRefusedByImmunityToAttacker && !bAShareOnAnAlly
 			&& !Arrived.bIsDamageOverTime && !Arrived.bIsConsequenceOfADeath && !Arrived.bIsRetaliation
 			&& !Arrived.bIsAnExplosionAtAnAilmentsEnd && !Arrived.bIsAShareOfDamageDoneToAnAlly
 			&& !Arrived.bIsARowsAnswerToAnEvent)
 		{
-			UCataclysmSkillTemplate::NoteCriticalStrikeLanded(Instigator, Target, Arrived.Skill.Get());
+			UCataclysmShadowImages::StrikeAgain(Instigator, Target, PercentAsAsked, SkillTags, Delivery);
 		}
 		return bDealt ? Sent : 0.0f;
 	}
@@ -1559,11 +1584,12 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	Arrived.SkillRowToCredit = CataclysmSkillEffectsLevels::RowToCredit(Instigator, Target, Arrived, bAShareOnAnAlly);
 	const bool bDealt = ApplyDirectDamage(Instigator, Target, Sent, Arrived, Result);
 	// A SKILL TRAP'S EVENT CARRIES WHAT ITS BLOW TOOK FROM HEALTH (traps layer 3, 2026-10-21), so a status row on it
-	// meets the owner's rule of a tenth (#917) with the blow's own figure: "Traps cause a bleed of 1-2 times normal
+	// meets the owner's ailment rule with the blow's own figure (a tenth of maximum health, #917, until the ruling of
+	// 2026-11-26; more than nought since, and health reached for a bleed): "Traps cause a bleed of 1-2 times normal
 	// strength in every enemy caught in their blast". A skill gadget's still carries nought, as every machine's own blow does.
 	const float TrapsBlowDealt = GadgetsPlayer ? 0.0f : Result->DealtToHealth;
-	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth (the owner,
-	// 2026-10-21: "Follow the tenth rule"). A TRAP ALREADY USED UP KEEPS NOTHING: a slow waiting for a late blow of its
+	// AND THE TRAP KEEPS WHAT ITS CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's ailment rule (the owner,
+	// 2026-10-21: "Follow the tenth rule"; more than nought dealt since the ruling of 2026-11-26). A TRAP ALREADY USED UP KEEPS NOTHING: a slow waiting for a late blow of its
 	// cast on this enemy is asked instead (ruled 2026-10-21, brief 60c), with the identity the used-up trap was found by
 	// above, so one match decides the price, the event and the slow, and each happens once for the blow.
 	if (Machine && !GadgetsPlayer)
@@ -1573,19 +1599,19 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		// TOO, with the trap's identity, as a used-up trap's does below: a shot of an earlier trigger landing while the
 		// rearmed trap stands lays the slow that trigger left waiting. A blow of a trap that never rearmed finds none,
 		// since its cast's blows land before `trap_triggered` leaves one.
-		MachinesPlayer->LayALateSkillTrapSlow(NamedCastBy, Target, Result->DealtToHealth);
+		MachinesPlayer->LayALateSkillTrapSlow(NamedCastBy, Target, Result->DealtToHealth, Result->Landed());
 	}
 	else if (!Machine)
 	{
-		MachinesPlayer->LayALateSkillTrapSlow(SpentTrap.Trap, Target, Result->DealtToHealth);
+		MachinesPlayer->LayALateSkillTrapSlow(SpentTrap.Trap, Target, Result->DealtToHealth, Result->Landed());
 	}
 	// AND "Traps deal 30%-50% of their damage as a DoT over 3 seconds to triggered enemies" (traps layer 4, F8, F9): AN
 	// EXTRA damage over time on top of this blow, which is unchanged, a share of what it took from health, on the enemy
-	// that set the trap off and no other, when the blow took a tenth of its maximum health.
+	// that set the trap off and no other, when the blow dealt more than nought (the owner's ruling of 2026-11-26).
 	if (bOnTrapsTriggeringEnemy && bDealt)
 	{
 		ACataclysmMinion::LaySkillTrapsDamageOverTime(Instigator, Target, Result->DealtToHealth,
-			UCataclysmSkillLevels::RowOfBlow(Arrived.Skill.Get(), Arrived.SkillRowWithNoSkill));
+			UCataclysmSkillLevels::RowOfBlow(Arrived.Skill.Get(), Arrived.SkillRowWithNoSkill), Result->Landed());
 	}
 	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
@@ -1831,6 +1857,7 @@ int32 UCataclysmSkillEffects::ExplodeForOverkill(AActor* Killer, const AActor* V
 
 const TCHAR* UCataclysmSkillEffects::DotExplodesAtExpiryChanceStat = TEXT("dot_explodes_at_expiry_chance");
 const TCHAR* UCataclysmSkillEffects::ExplosionAtAnAilmentsEndDataName = TEXT("Cataclysm.ExplosionAtAnAilmentsEnd");
+const TCHAR* UCataclysmSkillEffects::ExtraStrikeDataName = TEXT("Cataclysm.ExtraStrike");
 
 const TCHAR* UCataclysmSkillEffects::StruckFromSetDataName = TEXT("Cataclysm.StruckFromSet");
 const TCHAR* UCataclysmSkillEffects::StruckFromXDataName = TEXT("Cataclysm.StruckFromX");
@@ -2409,6 +2436,13 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	if (Delivery.bIsAnExplosionAtAnAilmentsEnd)
 	{
 		Spec.SetSetByCallerMagnitude(FName(ExplosionAtAnAilmentsEndDataName), 1.0f);
+	}
+
+	// AND WHETHER IT IS ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES, which fires on-hit effects as any hit does (the
+	// project owner's ruling of 2026-11-26); the mark lets a listener tell it from the hit it repeats.
+	if (Delivery.bIsAnExtraStrike)
+	{
+		Spec.SetSetByCallerMagnitude(FName(ExtraStrikeDataName), 1.0f);
 	}
 
 	// AND WHERE IT WAS STRUCK FROM, WHEN THAT WAS NOT ITS INSTIGATOR'S PLACE: a gadget's copy of its summoner's
@@ -4020,8 +4054,10 @@ bool UCataclysmSkillEffects::ApplyBurn(AActor* Instigator, AActor* Target,
 			UCataclysmVitalAttributeSet::GetHealthAttribute());
 		const float MaxHealth = Defender->GetNumericAttribute(
 			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
-		if (Health <= 0.0f || MaxHealth <= 0.0f
-			|| HitDamage < MaxHealth * StunDamageThresholdPercent / 100.0f)
+		// A BLOW THAT DEALT SOMETHING, NOT A TENTH OF MAXIMUM HEALTH: the owner's ruling of 2026-11-26 for every
+		// ailment that is not the skill's own, of which an incidental burn is one. The stun and the knockdown keep the
+		// tenth. `MaxHealth` is still asked, so a target with no health pool is not set alight.
+		if (Health <= 0.0f || MaxHealth <= 0.0f || HitDamage <= 0.0f)
 		{
 			return false;
 		}

@@ -18,7 +18,7 @@ class ACataclysmEnemyCharacter;
  * WHAT THIS ANSWERS, AND WHY IT DID NOT EXIST BEFORE. Nothing gave any creature
  * a modifier. `game/Data/EnemyModifiers.csv` held 79 rows from the design
  * workbook's import until Famine's Withering Blows made 80 (#1722),
- * `ACataclysmEnemyCharacter::ModifierRows` has held a list since issue #740 and `UCataclysmCreaturePanel` has printed it before a
+ * `ModifierRows` (on `ACataclysmCharacterBase` since issue #2899) has held a list since issue #740 and `UCataclysmCreaturePanel` has printed it before a
  * fight, and the list was empty on every creature the game ever spawned unless
  * somebody typed one in by hand. So the design's rule had never run. Issue #742.
  *
@@ -217,6 +217,18 @@ public:
 
 	/** Whether a creature carries a named modifier. */
 	static bool Carries(const TArray<FName>& Rows, const TCHAR* RowKey);
+
+	/**
+	 * Whether `Character` carries the modifier `RowKey` now, whoever it is: a row of its own list
+	 * (`ACataclysmCharacterBase::ModifierRows`), or one Wearer of the Dead has lent it and whose seconds are not spent
+	 * (`UCataclysmAbilitySystemComponent::LentModifierSecondsLeft`). Issue #2899, the owner's ruling of 2026-11-25: every
+	 * enemy modifier works on any wearer, the player included, unless it is a new button ability. What every Death
+	 * modifier asks of its wearer since 2026-11-26. False for anything that is not a character.
+	 */
+	static bool CarriedBy(const AActor* Character, const TCHAR* RowKey);
+
+	/** Every row `Character` carries now, its own list and then those lent to it, as `CarriedBy` reads them. */
+	static TArray<FName> RowsCarriedBy(const AActor* Character);
 
 	// ----------------------------------------------------------------------
 	// The numbers, each traceable to its own row's description
@@ -1002,26 +1014,33 @@ public:
 	static float RecoveryCeilingOn(const UAbilitySystemComponent& AbilitySystem);
 
 	/**
-	 * Soul Tether, on health this creature lost to `Striker`: a tenth of it is laid on the striker as damage over time
+	 * Soul Tether, on health its wearer lost to `Striker`: a tenth of it is laid on the striker as damage over time
 	 * across four seconds, ADDED to whatever of an earlier tether is still to come. Never on itself, never on its own
-	 * side, never from a medic, never on the dead.
+	 * side, never from a medic, never on the dead. Any wearer since issue #2899: `Tethered` is the body struck, a
+	 * creature or a player.
 	 *
 	 * @param HealthLost  what the blow really took from this creature's health
 	 * @return the damage newly laid on the striker, before its defences, or zero
 	 */
 	static float TetherOnHealthLost(AActor* Tethered, AActor* Striker, float HealthLost);
 
-	/** Whether Spectral Shift has this creature out of existence now, so no damage reaches it. */
+	/** Whether Spectral Shift has this character out of existence now, so no damage reaches it. Any wearer (#2899). */
 	static bool IsPhasedOut(const AActor* Character);
 
 	/**
-	 * Shadow Step: this creature has begun an attack, so it is seen now and for `ShadowStepSeenSecondsAfterAnAttack`
-	 * after. Called by the brain where it orders a swing and where an ability begins; the timed step also sees a swing
-	 * waiting, a wind-up, a charge and a channel. Safe for anything that is not a creature carrying it.
+	 * Shadow Step: this character has begun an attack, so it is seen now and for `ShadowStepSeenSecondsAfterAnAttack`
+	 * after. Called by a creature's brain where it orders a swing and where an ability begins, and for a player by
+	 * `UCataclysmCombatEvents::NoteSkillUsed` for every skill used, the basic attack included (issue #2899); the timed
+	 * step also sees a creature's swing waiting, a wind-up, a charge and a channel. Safe for anything not carrying it.
 	 */
 	static void RevealForShadowStep(AActor* Character);
 
-	/** Whether Shadow Step has hidden this creature now. */
+	/**
+	 * Whether Shadow Step has hidden this character now. A creature is hidden as the vision system hides one, not drawn
+	 * and not clickable; ANY OTHER WEARER, a player, is never hidden from its own screen and is hidden from creatures'
+	 * sight instead: `UCataclysmTargetCandidates::NearestHostile` passes it over, as it passes over a player Thin Air
+	 * hides (issue #2899, the nearest existing path the issue names). A judgement, recorded.
+	 */
 	static bool IsHiddenByShadowStep(const AActor* Character);
 
 	/**
@@ -1046,8 +1065,9 @@ public:
 	static float FinalCurseOnSkillUse(AActor* User, bool bWasTheBasicAttack);
 
 	/**
-	 * Funeral Pyre, on a hit this creature took from `Striker`: one bone pyre at the striker's feet, at most once every
-	 * `FuneralPyreCooldownSeconds`. Never from a medic, never for a dead creature, never at its own side.
+	 * Funeral Pyre, on a hit its wearer took from `Striker`: one bone pyre at the striker's feet, at most once every
+	 * `FuneralPyreCooldownSeconds`. Never from a medic, never for a dead wearer, never at its own side. Any wearer since
+	 * issue #2899: the pyre stands on the wearer's side, so a player's explodes on creatures.
 	 *
 	 * @return the pyre placed, or null
 	 */
@@ -1081,13 +1101,38 @@ public:
 	/** Half its maximum health and 50% increased damage: a creature Undying Will brought back. */
 	static void MakeUndyingWillRisen(ACataclysmEnemyCharacter* Risen);
 
+	/**
+	 * Undying Will on a wearer that is NOT A CREATURE, the player above all, as the owner ruled on 2026-11-26: "you come
+	 * back once with less health and more damage". Asked by `UCataclysmVitalAttributeSet` where a blow or a tick would
+	 * empty health, after every other save. When it answers true the wearer's one rising is spent and it is marked as
+	 * risen; the caller then sets its health to `UndyingWillHealthShare` of its maximum, the creature's half.
+	 *
+	 * ONCE FOR EACH TIME IT IS WORN: the rising stays spent while the wearer still carries the row, and is ready again
+	 * only once it has stopped carrying it (a lent Undying Will run out) and carries it afresh. A judgement, recorded:
+	 * a lending refreshed by a second Elite's kill does not give a second life.
+	 *
+	 * A CREATURE ANSWERS FALSE: it rises as a new creature the dungeon places (`UndyingWillRaises`), unchanged.
+	 */
+	static bool RiseThroughUndyingWill(AActor* Wearer);
+
+	/**
+	 * What the blows of `Striker` are multiplied by for its Undying Will: one plus `UndyingWillDamageIncreasedPercent`
+	 * for a wearer that is not a creature and has risen through it while it still carries the row, one otherwise. A
+	 * MULTIPLIER ON THE BLOW, so 50% MORE rather than the creature's 50% increased: a player's increased bucket is
+	 * rebuilt from its gear and rows and holds no part for a rule, and the owner's word is "more damage". A judgement,
+	 * recorded. Every blow, a tick included, as a risen creature's raised attack damage reaches its ticks too.
+	 */
+	static float UndyingWillDamageMultiplierFor(const AActor* Striker);
+
 	/** Half its maximum health and the copy's mark, which its hits read: a Haunting copy. */
 	static void MakeSpectralCopy(ACataclysmEnemyCharacter* Copy);
 
 	/**
 	 * Lingering Decay: how much less of each heal reaches `Healed` because it stands in a necrotic zone, in percent.
-	 * The largest zone's figure, never a sum; nought for anything not of the players' side, which is the row's "players".
-	 * `UCataclysmRegeneration::TopUp` adds it to the healing received reduction for health.
+	 * The largest zone's figure, never a sum, of the zones that reach its side: a zone a creature left reaches the
+	 * players' side, the row's "players", and one a player left reaches the creatures' (issue #2899, any wearer;
+	 * `ACataclysmGroundZone::HealingLessReachesTeamId`). `UCataclysmRegeneration::TopUp` adds it to the healing received
+	 * reduction for health.
 	 */
 	static float LingeringDecayHealingLessPercentAt(const AActor* Healed);
 

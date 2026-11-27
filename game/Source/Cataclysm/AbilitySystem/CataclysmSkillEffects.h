@@ -188,6 +188,16 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsAnExplosionAtAnAilmentsEnd = false;
 
 	/**
+	 * Whether this blow is one of Flurry of the Dead's extra strikes (`UCataclysmShadowImages::StrikeAgain`). A full hit
+	 * for damage, critical strike, ailments AND ON-HIT EFFECTS: the project owner's ruling of 2026-11-26 ("yes"), so
+	 * `ACataclysmPlayerCharacter::OnSomethingWasHit` raises `hit_dealt` and `critical_strike` for it and pays the critical
+	 * strike's Fervour as for any hit. Stamped with `UCataclysmSkillEffects::ExtraStrikeDataName`; the hit announcement
+	 * carries it as `FCataclysmHitNotice::bExtraStrike`, so a listener can tell it from the hit it repeats. WHAT STOPS
+	 * AN EXTRA STRIKE STRIKING AGAIN is not this mark but `bIsARowsAnswerToAnEvent`, which `StrikeAgain` also sets.
+	 */
+	bool bIsAnExtraStrike = false;
+
+	/**
 	 * The blow was struck in melee. Issue #1032.
 	 *
 	 * SET FROM THE SKILL'S OWN TAGS IN `ApplyHit`, the same way and in the same
@@ -1243,6 +1253,9 @@ public:
 	 */
 	static const TCHAR* ExplosionAtAnAilmentsEndDataName;
 
+	/** The stamp `FCataclysmHitDelivery::bIsAnExtraStrike` leaves on the effect (Flurry of the Dead). */
+	static const TCHAR* ExtraStrikeDataName;
+
 	/**
 	 * The stamp of where a blow was struck from, when that was not its instigator's place: three set-by-caller
 	 * figures, X, Y and Z in centimetres, and a fourth at 1 saying they are there. Written by `ApplyTypedSpec` from
@@ -1353,14 +1366,12 @@ public:
 	 * skill dealing no damage by design still sets alight what its sentence
 	 * says it does.
 	 *
-	 * THE THRESHOLD IS ON MAXIMUM HEALTH AND NOT ON THE HIT, so a scratch
-	 * against a Boss cannot ignite it while the same scratch against a Common
-	 * enemy can. That is the shape stunning already has and the reason is the
-	 * same: what matters is whether the blow was a real blow for that target.
-	 *
-	 * IT IS THE SAME NUMBER AS THE STUN'S AND READS `StunDamageThresholdPercent`
-	 * RATHER THAN DECLARING A SECOND ONE. The design states one figure and one
-	 * figure is what the code holds, so moving it moves both.
+	 * **THE TENTH OF MAXIMUM HEALTH IS GONE SINCE THE OWNER'S RULING OF
+	 * 2026-11-26** ("I agree, fix it"): an incidental burn, like every ailment
+	 * that is not the skill's own, needs a blow that dealt more than nought and
+	 * a target still alive, and no longer a tenth of its maximum health. The
+	 * stun and the knockdown keep the tenth, `StunDamageThresholdPercent`; the
+	 * paragraphs on the threshold below describe the rule as it was.
 	 *
 	 * WHAT IT DOES NOT TAKE FROM THE STUN: the five second immunity window and
 	 * boss immunity. Those belong to hard stops -- effects that completely stop

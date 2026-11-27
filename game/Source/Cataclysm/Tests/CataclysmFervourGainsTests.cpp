@@ -208,7 +208,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourGainsKillPaymentTest,
  * then stamped with its own 4 seconds, in the order the player's kill handler uses. The hold is then 4 seconds from the
  * common kill: held 3.7 seconds after it, not 4.3. A restart at the Elite's 8 on the payment would still hold. THE
  * CONTROL: a cast once that hold has run out restarts it at its full length, now the common kill's 4: held 3.7 seconds
- * later, not 4.3.
+ * later, not 4.3. AND THE PAYMENT ALONE (issue #2936): an Elite kill's payment 6 seconds into its own 8-second hold, with
+ * no stamp after it, leaves the hold to end at 8.
  */
 bool FCataclysmFervourGainsKillPaymentTest::RunTest(const FString&)
 {
@@ -241,6 +242,22 @@ bool FCataclysmFervourGainsKillPaymentTest::RunTest(const FString&)
 			 System->KillDecayIsHeld());
 	RunClock(World, 0.6f);
 	TestFalse(TEXT("and not 4.3 seconds later"), System->KillDecayIsHeld());
+
+	// AND A KILL'S PAYMENT ALONE, WITH NO STAMP AFTER IT, issue #2936. Above, the common kill's own stamp follows its
+	// payment, and a stamp that overwrote the hold rather than lengthening it (guard break B-2, applied with C4b1-1 in
+	// window death3-w4's proof A) would hide a payment that restarted the hold: that proof's C4b1-1 went unseen here.
+	// So the payment is read by itself: an Elite kill holds 8 seconds, its payment 6 seconds in restarts nothing, and the
+	// hold ends at the kill's 8, not at a restart's 6 + 8.
+	System->NoteOwnKill(/*GraceSeconds=*/8.0f);
+	RunClock(World, 6.0f);
+	Holder.SetFervour(0.0f);
+	TestEqual(TEXT("set-up: a kill's payment alone pays 1"), UCataclysmFervour::GainOnOwnKill(System, nullptr), 1.0f,
+			  0.001f);
+	RunClock(World, 1.7f);
+	TestTrue(TEXT("control: 7.7 seconds after the Elite kill its hold still runs"), System->KillDecayIsHeld());
+	RunClock(World, 0.6f);
+	TestFalse(TEXT("and 8.3 seconds after, it has ended: the payment alone restarted nothing"),
+			  System->KillDecayIsHeld());
 	return true;
 }
 

@@ -98,12 +98,15 @@ def test_the_table_holds_every_minion_type_a_skill_produces():
 
     AND ONE MORE WITH SLICE DS4: the `Wisp`, which Grave Mouth raises (N12)
     and Soul Snare's snared dead rise as, read from Grave Mouth's row.
+
+    AND ONE MACHINE WITH THE DEATH FINISH SLICE A (2026-11-26): the `Effigy`,
+    the Death Crossbow's decoy, which its row places.
     """
     assert set(minion_rows()) == {"Imp", "Mote", "BoltTurret", "Ballista",
                                   "SpikeTrap", "SkillGadget", "TyrantsMinion",
                                   "Warhound", "SkillTrap", "Shade", "Husk",
                                   "BarrowGuard", "BoneReaper", "SkeletalMage",
-                                  "Wisp"}
+                                  "Wisp", "Effigy"}
 
 
 
@@ -308,13 +311,27 @@ def test_a_deployed_machine_does_not_move_and_a_summoned_creature_does():
             assert "Type.Summon" in tags_of(row), name
 
 
+#: MACHINES WHOSE JOB IS TO BE ATTACKED, and why each draws as much as a creature.
+#: The Effigy, the Death Crossbow's decoy (the Death finish slice A, 2026-11-26):
+#: "Every enemy that comes within 8 meters of it turns on it and attacks it",
+#: and its row in the Crossbow draft gives it a threat of 100 so the nearest
+#: search seeks it; its taunt is what draws.
+DECOYS = {"Effigy"}
+
+
 def test_a_turret_draws_far_less_attention_than_a_creature():
     """The design's own example of what the threat column is for: a turret near
-    zero, an imp at 100."""
+    zero, an imp at 100. A decoy is the exception, and draws as a creature does
+    (THE CONTROL that the exception is narrow: every other machine is held)."""
     imp = float(minion_rows()["Imp"]["ThreatPercent"])
+    held = 0
     for name, row in minion_rows().items():
-        if row["Family"] == "Machine":
+        if row["Family"] == "Machine" and name not in DECOYS:
             assert float(row["ThreatPercent"]) < imp / 4, name
+            held += 1
+        elif name in DECOYS:
+            assert float(row["ThreatPercent"]) >= imp, name
+    assert held >= 5
 
 
 def test_agility_does_nothing_for_a_creature():

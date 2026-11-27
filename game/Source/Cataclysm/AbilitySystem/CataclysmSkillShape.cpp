@@ -683,6 +683,12 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.bTaunts = Number != 0.0f;
 		}
+		// The Death Crossbow draft's C4, the Death finish slice A (2026-11-26): what the row places widens its placer's
+		// Siphon (the Effigy).
+		else if (Key.Equals(TEXT("SiphonsAround"), ESearchCase::IgnoreCase))
+		{
+			Params.bSiphonsAround = Number != 0.0f;
+		}
 		// The Death draft's N1 and N11, issue #2885: a raise that stands until destroyed, and minions that lay the
 		// row's effect with their blows.
 		else if (Key.Equals(TEXT("Permanent"), ESearchCase::IgnoreCase))

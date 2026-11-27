@@ -969,8 +969,14 @@ public:
 	 * `minion_explosion_damage` multiplier, as every explosion takes; to every enemy within this minion's explosion
 	 * radius, centred on it. Not this minion's own blow, and no rider of this minion's (an imp's burn): the blast is the
 	 * skill's. With no skill, or no caster, it is `Explode`.
+	 *
+	 * AND A DETONATION'S OWN TWO, since the finishing of the Death Cataclysm, slice C (2026-11-26): the summoner's
+	 * `minion_detonation_damage` and `minion_detonation_area` (`UCataclysmDetonation`), and `ShareOfFigure` of the whole,
+	 * which Mass Grave's chain passes as 0.4. Answers the figure the blast was worth before any defender, for Lingering
+	 * Rot's share: the largest it sent, or with nothing caught what it would have sent. Nought when it fell back to
+	 * `Explode`. Every detonation goes through `UCataclysmDetonation::Detonate`, which calls this.
 	 */
-	void ExplodeSetOffBy(class UCataclysmSkillTemplate* SetOffBy);
+	float ExplodeSetOffBy(class UCataclysmSkillTemplate* SetOffBy, float ShareOfFigure = 1.0f);
 
 	/**
 	 * What a skill's detonation of a minion deals, as a percentage of the caster's weapon damage, before the skill's
@@ -1211,6 +1217,15 @@ public:
 
 	/** World time of this minion's last beat, or a negative number before its first. */
 	float LastTauntBeatAtSeconds = -1.0f;
+
+	/**
+	 * True when this machine's placer's Siphon reaches the enemies around it too: set by
+	 * `UCataclysmDeployableSkill::DeployOne` for a row stating `SiphonsAround=1` (the Effigy), and read by
+	 * `FCataclysmSiphon::Step`, which takes in every enemy within the placer's Siphon radius of each of its living
+	 * machines marked so. The Death finish slice A (2026-11-26).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	bool bWidensSummonersSiphon = false;
 
 	/** How many taunts this minion's beats have landed, placed or restarted. Read by tests. */
 	int32 TauntsLanded = 0;
@@ -1712,9 +1727,10 @@ public:
 	static bool SkillTrapsDoNotExpireFor(const AActor* Player);
 
 	/**
-	 * WHAT THIS TRAP'S CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's rule of a tenth. The owner, 2026-10-21:
+	 * WHAT THIS TRAP'S CAST TOOK FROM THE ENEMY THAT SET IT OFF, for the slow's ailment rule. The owner, 2026-10-21:
 	 * "Follow the tenth rule" — "The slow lands only if the trap's cast then hits that same enemy for at least a tenth of
-	 * its maximum health." `TriggerSkillTrap` names the enemy and clears the figure before the cast starts;
+	 * its maximum health." SINCE THE OWNER'S RULING OF 2026-11-26 the rule is a blow that dealt more than nought, its
+	 * shield's part counted, and no longer a tenth. `TriggerSkillTrap` names the enemy and clears the figure before the cast starts;
 	 * `UCataclysmSkillEffects::ApplyHit` keeps the largest blow's `DealtToHealth` on that enemy while the cast is the
 	 * trap's (`NoteSkillTrapBlowOn`); `trap_triggered` then carries it as its amount. A blow landing after the trap is
 	 * used up (a shot in flight) is not counted here: it is judged at its own blow, by
@@ -1749,8 +1765,9 @@ public:
 	 * "Traps deal 30%-50% of their damage as a DoT over 3 seconds to triggered enemies" is `TrapDamageOverTimeShareStat`:
 	 * AN EXTRA DAMAGE OVER TIME ON TOP OF THE BLOW, which is unchanged (F8), worth the share of what the blow took from
 	 * health, over `SkillTrapDamageOverTimeSeconds`. ONLY ON THE ENEMY THAT SET THE TRAP OFF; a generic damage over time,
-	 * not an ailment; refreshed, not stacked; and ONLY WHEN THE BLOW TOOK A TENTH OF THAT ENEMY'S MAXIMUM HEALTH (F9: the
-	 * owner holds the rule of a tenth, #917, for every lasting effect a trap lays on an enemy).
+	 * not an ailment; refreshed, not stacked; and ONLY WHEN THE BLOW MEETS THE AILMENT RULE (F9: the owner holds that rule
+	 * for every lasting effect a trap lays on an enemy): since the owner's ruling of 2026-11-26 a blow that dealt more
+	 * than nought, its shield's part counted; until then a tenth of that enemy's maximum health (#917).
 	 *
 	 * The fifth sentence, "Enemies killed by traps explode", is an action on `kill`:
 	 * `UCataclysmAbilitySystemComponent::ExplodeVictimForKillingBlowAction`.
@@ -1780,11 +1797,12 @@ public:
 
 	/**
 	 * Lay `Player`'s share of `DealtToHealth`, what a blow of its trap's cast took from `Struck`, the enemy that set the
-	 * trap off, on `Struck` as a generic damage over time over `SkillTrapDamageOverTimeSeconds`, when the blow took a
-	 * tenth of its maximum health. Whether anything was laid or refreshed. Asked by `UCataclysmSkillEffects::ApplyHit`.
+	 * trap off, on `Struck` as a generic damage over time over `SkillTrapDamageOverTimeSeconds`, when the blow dealt
+	 * more than nought (`Landed`, its shield's part included, when given; the owner's ruling of 2026-11-26, a tenth of
+	 * its maximum health until then). Whether anything was laid or refreshed. Asked by `UCataclysmSkillEffects::ApplyHit`.
 	 */
 	static bool LaySkillTrapsDamageOverTime(AActor* Player, AActor* Struck, float DealtToHealth,
-											FName SkillRow = NAME_None);
+											FName SkillRow = NAME_None, float Landed = -1.0f);
 
 	/** Whether this trigger's share of its enemy's maximum health has been added, by its first blow on it. */
 	mutable bool bSkillTrapGaveItsEnemysHealthShare = false;
@@ -1977,7 +1995,12 @@ public:
 	bool bStaysWhereItIsPut = false;
 
 	//~ Driven by ACataclysmEnemyController
-	virtual float AttackReachCm() const override { return ReachCm; }
+	/**
+	 * `ReachCm`, CUT TO CONTACT FOR A LIVING BOMB (the Second Rite's option 2, slice C of the Death Cataclysm's finishing,
+	 * 2026-11-26): "Your minions run at the nearest enemy and detonate on contact". See
+	 * `UCataclysmDetonation::AttackReachCmFor`.
+	 */
+	virtual float AttackReachCm() const override;
 	virtual float SightRadiusCm() const override { return NoticeRadiusCm; }
 	virtual float SecondsBetweenAttacks() const override { return AttackIntervalSeconds; }
 

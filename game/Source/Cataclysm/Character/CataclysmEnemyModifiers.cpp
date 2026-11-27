@@ -36,6 +36,8 @@
 #include "Character/CataclysmBonePyreCharacter.h"
 #include "GameFramework/PlayerController.h"
 #include "TimerManager.h"
+// For the Death modifiers on any wearer, issue #2899: the rows Wearer of the Dead lends.
+#include "AbilitySystem/CataclysmFervour.h"
 
 const TCHAR* UCataclysmEnemyModifiers::GenericCataclysm = TEXT("Generic");
 
@@ -286,6 +288,47 @@ bool UCataclysmEnemyModifiers::Carries(const TArray<FName>& Rows,
 									   const TCHAR* RowKey)
 {
 	return RowKey != nullptr && Rows.Contains(FName(RowKey));
+}
+
+bool UCataclysmEnemyModifiers::CarriedBy(const AActor* Character, const TCHAR* RowKey)
+{
+	const ACataclysmCharacterBase* Wearer = Cast<ACataclysmCharacterBase>(Character);
+	if (Wearer == nullptr || RowKey == nullptr)
+	{
+		return false;
+	}
+	const FName Row(RowKey);
+	if (Wearer->ModifierRows.Contains(Row))
+	{
+		return true;
+	}
+	// AND A ROW WEARER OF THE DEAD LENT IT, read off its ability system, which for a player is on its player state.
+	const UCataclysmAbilitySystemComponent* Lent =
+		Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Wearer));
+	return Lent != nullptr && Lent->LentModifierSecondsLeft(Row) > 0.0f;
+}
+
+TArray<FName> UCataclysmEnemyModifiers::RowsCarriedBy(const AActor* Character)
+{
+	TArray<FName> Rows;
+	const ACataclysmCharacterBase* Wearer = Cast<ACataclysmCharacterBase>(Character);
+	if (Wearer == nullptr)
+	{
+		return Rows;
+	}
+	Rows = Wearer->ModifierRows;
+	if (const UCataclysmAbilitySystemComponent* Lent =
+			Cast<const UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Wearer)))
+	{
+		for (const FName& Row : UCataclysmFervour::LentEnemyModifierRows())
+		{
+			if (Lent->LentModifierSecondsLeft(Row) > 0.0f)
+			{
+				Rows.AddUnique(Row);
+			}
+		}
+	}
+	return Rows;
 }
 
 float UCataclysmEnemyModifiers::MaxHealthMultiplier(const TArray<FName>& Rows)
@@ -1212,7 +1255,7 @@ namespace
 	bool EnemyModifiersShadowStepFor(ACataclysmEnemyCharacter* Stepping, float StepSeconds)
 	{
 		const bool bCarries =
-			UCataclysmEnemyModifiers::Carries(Stepping->ModifierRows, UCataclysmEnemyModifiers::ShadowStepRow)
+			UCataclysmEnemyModifiers::CarriedBy(Stepping, UCataclysmEnemyModifiers::ShadowStepRow)
 			&& !Stepping->TakesNoHostileAction();
 
 		// THE VISION SYSTEM SHOWED IT SINCE: the mark is stale, and the creature is not this rule's to show.
@@ -1269,6 +1312,136 @@ namespace
 	}
 
 	/**
+	 * One step of Death's Shadow Step on a wearer that is NOT A CREATURE, a player above all. Issue #2899 (2026-11-26).
+	 *
+	 * NEVER HIDDEN FROM ITS OWN SCREEN: nothing here touches what is drawn. It is hidden from creatures' sight, which
+	 * `UCataclysmEnemyModifiers::IsHiddenByShadowStep` answers from the seconds left seen, and this runs them down. Its
+	 * attacks are every skill it uses, which `UCataclysmCombatEvents::NoteSkillUsed` reveals; there is no brain to ask
+	 * about a swing waiting.
+	 *
+	 * @return whether it went from seen to hidden this step
+	 */
+	bool EnemyModifiersShadowStepForAWearer(ACataclysmCharacterBase* Stepping, float StepSeconds)
+	{
+		if (!UCataclysmEnemyModifiers::CarriedBy(Stepping, UCataclysmEnemyModifiers::ShadowStepRow)
+			|| Stepping->TakesNoHostileAction())
+		{
+			Stepping->ShadowStepSeenSecondsLeft = 0.0f;
+			return false;
+		}
+		const bool bWasSeen = Stepping->ShadowStepSeenSecondsLeft > 0.0f;
+		Stepping->ShadowStepSeenSecondsLeft = FMath::Max(0.0f, Stepping->ShadowStepSeenSecondsLeft - StepSeconds);
+		return bWasSeen && Stepping->ShadowStepSeenSecondsLeft <= 0.0f;
+	}
+
+	/** The side a necrotic zone left by `Wearer` cuts the healing of: the other one. Issue #2899. */
+	FGenericTeamId EnemyModifiersSideADecayZoneReaches(const AActor* Wearer)
+	{
+		return UCataclysmTeams::TeamOf(Wearer) == UCataclysmTeams::IdFor(ECataclysmTeam::Players)
+			? UCataclysmTeams::IdFor(ECataclysmTeam::Monsters)
+			: UCataclysmTeams::IdFor(ECataclysmTeam::Players);
+	}
+
+	/**
+	 * The Death modifiers that run on a clock of their own, on any living wearer, a creature or a player: Spectral
+	 * Shift, Shadow Step and Lingering Decay, and Undying Will's rising made ready again once it is no longer carried.
+	 * Written 2026-11-24 for creatures inside `UCataclysmEnemyModifiers::TimedStep`; its own function since issue #2899
+	 * (2026-11-26), which made each work on any wearer. Each reads its row through `UCataclysmEnemyModifiers::
+	 * CarriedBy`, so a player wearing one Wearer of the Dead lent runs it as a creature carrying it does.
+	 *
+	 * @return how many of them acted this step
+	 */
+	int32 EnemyModifiersDeathClocksFor(ACataclysmCharacterBase* Wearer, float StepSeconds)
+	{
+		int32 Acted = 0;
+
+		// -- Spectral Shift, 2026-11-24 ---------------------------------------
+		// OUT OF EXISTENCE FOR FIVE SECONDS IN EVERY FIFTEEN. Run down first, so a phase begun this step is not shortened
+		// by it. While seconds are left, `UCataclysmEnemyModifiers::IsPhasedOut` answers true and every blow is emptied
+		// where the Reaper's and a shrouded creature's are (a creature's through `ACataclysmEnemyCharacter::
+		// TakesNoDamage`). THE CLOCK STARTS AGAIN FROM NOUGHT WHEN THE ROW IS NOT CARRIED (issue #2899), so a player lent
+		// it for 20 seconds shifts out at 15 for the last 5 of them, every time it is lent; a creature always carries its
+		// own, so nothing changes for one.
+		if (Wearer->SpectralShiftSecondsLeft > 0.0f)
+		{
+			Wearer->SpectralShiftSecondsLeft = FMath::Max(0.0f, Wearer->SpectralShiftSecondsLeft - StepSeconds);
+		}
+		if (UCataclysmEnemyModifiers::CarriedBy(Wearer, UCataclysmEnemyModifiers::SpectralShiftRow))
+		{
+			Wearer->SecondsSinceSpectralShift += StepSeconds;
+			if (Wearer->SecondsSinceSpectralShift >= UCataclysmEnemyModifiers::SpectralShiftIntervalSeconds)
+			{
+				Wearer->SecondsSinceSpectralShift = 0.0f;
+				Wearer->SpectralShiftSecondsLeft = UCataclysmEnemyModifiers::SpectralShiftOutSeconds;
+				++Acted;
+				UE_LOG(LogCataclysm, Log, TEXT("%s shifted out of existence for %.0f seconds."),
+					   *Wearer->GetName(), UCataclysmEnemyModifiers::SpectralShiftOutSeconds);
+			}
+		}
+		else
+		{
+			Wearer->SecondsSinceSpectralShift = 0.0f;
+		}
+
+		// -- Shadow Step, 2026-11-24 ------------------------------------------
+		// A CREATURE IS HIDDEN FROM SIGHT; ANY OTHER WEARER FROM CREATURES' SIGHT ONLY.
+		if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Wearer))
+		{
+			if (EnemyModifiersShadowStepFor(Creature, StepSeconds))
+			{
+				++Acted;
+			}
+		}
+		else if (EnemyModifiersShadowStepForAWearer(Wearer, StepSeconds))
+		{
+			++Acted;
+		}
+
+		// -- Lingering Decay, 2026-11-24 --------------------------------------
+		// A NECROTIC ZONE EVERY FIVE SECONDS WHERE IT STANDS, on the floor under it, through the zone every creature's
+		// ground already uses, so it is drawn. It deals nothing; a heal asks whether its receiver stands in one
+		// (`LingeringDecayHealingLessPercentAt`). NOT FROM A WEARER THAT TAKES NO HOSTILE ACTION, the medic's rule
+		// (#1680). IT CUTS THE OTHER SIDE'S HEALING (issue #2899): a creature's cuts the players' side, the row's
+		// "players", and a player's cuts the creatures'.
+		if (UCataclysmEnemyModifiers::CarriedBy(Wearer, UCataclysmEnemyModifiers::LingeringDecayRow)
+			&& !Wearer->TakesNoHostileAction())
+		{
+			Wearer->SecondsSinceDecayZone += StepSeconds;
+			if (Wearer->SecondsSinceDecayZone >= UCataclysmEnemyModifiers::LingeringDecaySecondsBetweenZones)
+			{
+				Wearer->SecondsSinceDecayZone = 0.0f;
+				const FVector Feet = ACataclysmEnemyController::FloorUnder(Wearer, Wearer->GetActorLocation());
+				if (ACataclysmGroundZone* Decay = ACataclysmGroundZone::Spawn(
+						Wearer, Feet, UCataclysmEnemyModifiers::LingeringDecayRadiusCm,
+						UCataclysmEnemyModifiers::LingeringDecayZoneSeconds, /*DamagePerTick=*/0.0f))
+				{
+					Decay->HealingLessPercentInside = UCataclysmEnemyModifiers::LingeringDecayHealingLessPercent;
+					Decay->HealingLessReachesTeamId = EnemyModifiersSideADecayZoneReaches(Wearer).GetId();
+					++Acted;
+					UE_LOG(LogCataclysm, Log, TEXT("%s left a necrotic zone lasting %.0f seconds."),
+						   *Wearer->GetName(), UCataclysmEnemyModifiers::LingeringDecayZoneSeconds);
+				}
+			}
+		}
+		else
+		{
+			Wearer->SecondsSinceDecayZone = 0.0f;
+		}
+
+		// -- Undying Will, issue #2899 ----------------------------------------
+		// A WEARER THAT IS NOT A CREATURE MAY RISE ONCE FOR EACH TIME IT IS WORN: once it no longer carries the row, its
+		// rising is ready again and the damage it rose with is gone. See `RiseThroughUndyingWill`.
+		if ((Wearer->bUndyingWillSpent || Wearer->bRoseThroughUndyingWill)
+			&& !UCataclysmEnemyModifiers::CarriedBy(Wearer, UCataclysmEnemyModifiers::UndyingWillRow))
+		{
+			Wearer->bUndyingWillSpent = false;
+			Wearer->bRoseThroughUndyingWill = false;
+			++Acted;
+		}
+		return Acted;
+	}
+
+	/**
 	 * Death's Lingering Decay on a character of the players' side: `Status.Debuff.LingeringDecay` laid, or refreshed,
 	 * while it stands in a necrotic zone, so the player's effects list names the cut. Added 2026-11-25 with the
 	 * Debuffs sheet's row, which the owner accepted on 2026-11-24 ("These are fine").
@@ -1284,8 +1457,10 @@ namespace
 	 */
 	bool EnemyModifiersMarkLingeringDecay(AActor* Standing)
 	{
+		// ANY SIDE A ZONE REACHES, since issue #2899: a zone a player left cuts creatures' healing. A character of no
+		// side is reached by none.
 		if (!IsValid(Standing) || UCataclysmSkillEffects::IsDead(Standing)
-			|| UCataclysmTeams::TeamOf(Standing) != UCataclysmTeams::IdFor(ECataclysmTeam::Players))
+			|| UCataclysmTeams::TeamOf(Standing) == FGenericTeamId::NoTeam)
 		{
 			return false;
 		}
@@ -1294,13 +1469,15 @@ namespace
 		{
 			return false;
 		}
+		const uint8 StandingSide = UCataclysmTeams::TeamOf(Standing).GetId();
 
 		const ACataclysmGroundZone* Deepest = nullptr;
 		float DeepestCut = 0.0f;
 		for (TActorIterator<ACataclysmGroundZone> It(StandingWorld); It; ++It)
 		{
 			const ACataclysmGroundZone* Zone = *It;
-			if (!IsValid(Zone) || Zone->HealingLessPercentInside <= DeepestCut)
+			if (!IsValid(Zone) || Zone->HealingLessPercentInside <= DeepestCut
+				|| Zone->HealingLessReachesTeamId != StandingSide)
 			{
 				continue;
 			}
@@ -1489,19 +1666,25 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 	// not of the players' side. 2026-11-25. See `EnemyModifiersMarkLingeringDecay`.
 	int32 Acted = EnemyModifiersMarkLingeringDecay(Character) ? 1 : 0;
 
+	// THE DEATH MODIFIERS THAT RUN ON A CLOCK, ON ANY WEARER: issue #2899 (2026-11-26), the owner's rule that every enemy
+	// modifier works on any wearer, the player included. Asked of every living character this step reaches, before the
+	// test below that turns away everything but a creature carrying a modifier of its own: a player's are lent to it.
+	ACataclysmCharacterBase* Wearer = Cast<ACataclysmCharacterBase>(Character);
+	if (Wearer == nullptr || UCataclysmSkillEffects::IsDead(Wearer))
+	{
+		return Acted;
+	}
+
+	UWorld* World = Wearer->GetWorld();
+	if (World == nullptr)
+	{
+		return Acted;
+	}
+
+	Acted += EnemyModifiersDeathClocksFor(Wearer, StepSeconds);
+
 	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
 	if (Enemy == nullptr || Enemy->ModifierRows.IsEmpty())
-	{
-		return Acted;
-	}
-
-	if (UCataclysmSkillEffects::IsDead(Enemy))
-	{
-		return Acted;
-	}
-
-	UWorld* World = Enemy->GetWorld();
-	if (World == nullptr)
 	{
 		return Acted;
 	}
@@ -1513,55 +1696,6 @@ int32 UCataclysmEnemyModifiers::TimedStep(AActor* Character, float StepSeconds)
 	{
 		Enemy->SigilSecondsLeft =
 			FMath::Max(0.0f, Enemy->SigilSecondsLeft - StepSeconds);
-	}
-
-	// -- Spectral Shift, 2026-11-24 ---------------------------------------
-	// OUT OF EXISTENCE FOR FIVE SECONDS IN EVERY FIFTEEN. Run down first, as the sigil is above, so a phase begun this
-	// step is not shortened by it. While seconds are left, `ACataclysmEnemyCharacter::TakesNoDamage` answers true and
-	// every blow is emptied where the Reaper's and a shrouded creature's are.
-	if (Enemy->SpectralShiftSecondsLeft > 0.0f)
-	{
-		Enemy->SpectralShiftSecondsLeft = FMath::Max(0.0f, Enemy->SpectralShiftSecondsLeft - StepSeconds);
-	}
-	if (Carries(Enemy->ModifierRows, SpectralShiftRow))
-	{
-		Enemy->SecondsSinceSpectralShift += StepSeconds;
-		if (Enemy->SecondsSinceSpectralShift >= SpectralShiftIntervalSeconds)
-		{
-			Enemy->SecondsSinceSpectralShift = 0.0f;
-			Enemy->SpectralShiftSecondsLeft = SpectralShiftOutSeconds;
-			++Acted;
-			UE_LOG(LogCataclysm, Log, TEXT("%s shifted out of existence for %.0f seconds."),
-				   *Enemy->GetName(), SpectralShiftOutSeconds);
-		}
-	}
-
-	// -- Shadow Step, 2026-11-24 ------------------------------------------
-	if (EnemyModifiersShadowStepFor(Enemy, StepSeconds))
-	{
-		++Acted;
-	}
-
-	// -- Lingering Decay, 2026-11-24 --------------------------------------
-	// A NECROTIC ZONE EVERY FIVE SECONDS WHERE IT STANDS, on the floor under it, through the zone every creature's
-	// ground already uses, so it is drawn. It deals nothing; a heal asks whether its receiver stands in one
-	// (`LingeringDecayHealingLessPercentAt`). NOT FROM A CREATURE THAT TAKES NO HOSTILE ACTION, the medic's rule (#1680).
-	if (Carries(Enemy->ModifierRows, LingeringDecayRow) && !Enemy->TakesNoHostileAction())
-	{
-		Enemy->SecondsSinceDecayZone += StepSeconds;
-		if (Enemy->SecondsSinceDecayZone >= LingeringDecaySecondsBetweenZones)
-		{
-			Enemy->SecondsSinceDecayZone = 0.0f;
-			const FVector Feet = ACataclysmEnemyController::FloorUnder(Enemy, Enemy->GetActorLocation());
-			if (ACataclysmGroundZone* Decay = ACataclysmGroundZone::Spawn(
-					Enemy, Feet, LingeringDecayRadiusCm, LingeringDecayZoneSeconds, /*DamagePerTick=*/0.0f))
-			{
-				Decay->HealingLessPercentInside = LingeringDecayHealingLessPercent;
-				++Acted;
-				UE_LOG(LogCataclysm, Log, TEXT("%s left a necrotic zone lasting %.0f seconds."),
-					   *Enemy->GetName(), LingeringDecayZoneSeconds);
-			}
-		}
 	}
 
 	// -- Phalanx, 2026-11-25 ----------------------------------------------
@@ -2091,8 +2225,13 @@ bool UCataclysmEnemyModifiers::IgnoresEnergyShield(const TArray<FName>& Rows)
 
 bool UCataclysmEnemyModifiers::MortalReminderOnHit(AActor* Attacker, AActor* Target)
 {
-	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Attacker);
-	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, MortalReminderRow))
+	// ANY WEARER, since issue #2899: a player carrying it holds a creature it hits to the health the hit left, as a
+	// creature carrying it holds the player. The ceiling is on the struck character's ability system, which every heal of
+	// health asks (`UCataclysmRegeneration::HealthHealingCeiling`), a creature's as a player's.
+	// NEVER ON ITSELF: a player's own blow on itself (Final Curse's self hit) caps nothing. Compared by ability system,
+	// because a player's struck set names its player state and its blow its pawn.
+	if (Attacker == nullptr || !CarriedBy(Attacker, MortalReminderRow)
+		|| UCataclysmTargeting::AbilitySystemOf(Attacker) == UCataclysmTargeting::AbilitySystemOf(Target))
 	{
 		return false;
 	}
@@ -2129,7 +2268,7 @@ bool UCataclysmEnemyModifiers::MortalReminderOnHit(AActor* Attacker, AActor* Tar
 	}
 
 	UE_LOG(LogCataclysm, Log, TEXT("%s's Mortal Reminder holds %s's healing to %.0f health for %.0f seconds."),
-		   *Enemy->GetName(), *GetNameSafe(Target), Reminded->MortalReminderCeiling, MortalReminderSeconds);
+		   *Attacker->GetName(), *GetNameSafe(Target), Reminded->MortalReminderCeiling, MortalReminderSeconds);
 	return true;
 }
 
@@ -2147,10 +2286,12 @@ float UCataclysmEnemyModifiers::RecoveryCeilingOn(const UAbilitySystemComponent&
 
 float UCataclysmEnemyModifiers::TetherOnHealthLost(AActor* Tethered, AActor* Striker, float HealthLost)
 {
-	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Tethered);
-	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, SoulTetherRow) || Enemy->TakesNoHostileAction()
+	// ANY WEARER, since issue #2899: `Tethered` is the body struck, a creature or a player, and a player carrying it sends
+	// a tenth of the health a creature's blow took back to that creature.
+	ACataclysmCharacterBase* Wearer = Cast<ACataclysmCharacterBase>(Tethered);
+	if (Wearer == nullptr || !CarriedBy(Wearer, SoulTetherRow) || Wearer->TakesNoHostileAction()
 		|| HealthLost <= 0.0f || Striker == nullptr || Striker == Tethered
-		|| UCataclysmSkillEffects::IsDead(Striker) || !UCataclysmTargeting::IsHostileTo(Striker, Enemy))
+		|| UCataclysmSkillEffects::IsDead(Striker) || !UCataclysmTargeting::IsHostileTo(Striker, Wearer))
 	{
 		return 0.0f;
 	}
@@ -2178,40 +2319,48 @@ float UCataclysmEnemyModifiers::TetherOnHealthLost(AActor* Tethered, AActor* Str
 	// already the health it lost. Of the creature's own damage type, met by the striker's defences as a tick is, and
 	// a tick reaches the energy shield (#2014).
 	const float PerTick = (StillToCome + Laid) * UCataclysmSkillEffects::BaseSecondsPerTick / SoulTetherSeconds;
-	if (!UCataclysmSkillEffects::ApplyDamageOverTime(Enemy, Striker, PerTick, SoulTetherSeconds, Tether,
+	if (!UCataclysmSkillEffects::ApplyDamageOverTime(Wearer, Striker, PerTick, SoulTetherSeconds, Tether,
 													 /*bScalesWithInstigator=*/false))
 	{
 		return 0.0f;
 	}
 
 	UE_LOG(LogCataclysm, Log, TEXT("%s's Soul Tether sends %.1f of the %.1f it lost back to %s over %.0f seconds."),
-		   *Enemy->GetName(), Laid, HealthLost, *GetNameSafe(Striker), SoulTetherSeconds);
+		   *Wearer->GetName(), Laid, HealthLost, *GetNameSafe(Striker), SoulTetherSeconds);
 	return Laid;
 }
 
 bool UCataclysmEnemyModifiers::IsPhasedOut(const AActor* Character)
 {
-	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
-	return Enemy != nullptr && Enemy->SpectralShiftSecondsLeft > 0.0f;
+	const ACataclysmCharacterBase* Wearer = Cast<ACataclysmCharacterBase>(Character);
+	return Wearer != nullptr && Wearer->SpectralShiftSecondsLeft > 0.0f;
 }
 
 void UCataclysmEnemyModifiers::RevealForShadowStep(AActor* Character)
 {
-	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
-	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, ShadowStepRow))
+	ACataclysmCharacterBase* Wearer = Cast<ACataclysmCharacterBase>(Character);
+	if (Wearer == nullptr || !CarriedBy(Wearer, ShadowStepRow))
 	{
 		return;
 	}
 
-	// SEEN NOW AND FOR THE SECOND AFTER, which the timed step then runs down once no attack is under way.
-	Enemy->ShadowStepSeenSecondsLeft = ShadowStepSeenSecondsAfterAnAttack;
-	EnemyModifiersShowWhatShadowStepHid(Enemy);
+	// SEEN NOW AND FOR THE SECOND AFTER, which the timed step then runs down once no attack is under way. A creature is
+	// drawn again; a player was never hidden from its own screen.
+	Wearer->ShadowStepSeenSecondsLeft = ShadowStepSeenSecondsAfterAnAttack;
+	EnemyModifiersShowWhatShadowStepHid(Cast<ACataclysmEnemyCharacter>(Wearer));
 }
 
 bool UCataclysmEnemyModifiers::IsHiddenByShadowStep(const AActor* Character)
 {
-	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character);
-	return Enemy != nullptr && Enemy->bHiddenByShadowStep && Enemy->IsHidden();
+	if (const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Character))
+	{
+		return Enemy->bHiddenByShadowStep && Enemy->IsHidden();
+	}
+	// ANY OTHER WEARER, a player: hidden from creatures' sight while it carries the row, takes hostile action and has no
+	// seconds left seen. Never a dead one. Issue #2899.
+	const ACataclysmCharacterBase* Wearer = Cast<ACataclysmCharacterBase>(Character);
+	return Wearer != nullptr && Wearer->ShadowStepSeenSecondsLeft <= 0.0f && !Wearer->TakesNoHostileAction()
+		&& !UCataclysmSkillEffects::IsDead(Wearer) && CarriedBy(Wearer, ShadowStepRow);
 }
 
 bool UCataclysmEnemyModifiers::NoteDeathOfACarrier(AActor* Dying)
@@ -2239,14 +2388,19 @@ bool UCataclysmEnemyModifiers::NoteDeathOfACarrier(AActor* Dying)
 	// "UPON DEATH, CURSE THE PLAYER", whoever or whatever killed it and wherever the player stands: the row names no
 	// killer and no reach. The player is found as the death's other readers find them, through the first player
 	// controller. NOT A CREATURE THAT TAKES NO HOSTILE ACTION, the medic's rule (#1680).
-	if (!Carries(Enemy->ModifierRows, FinalCurseRow) || Enemy->TakesNoHostileAction())
+	//
+	// ANY CREATURE THAT WEARS IT, since issue #2899, read through `CarriedBy`; A PLAYER NEVER DOES: the owner ruled on
+	// 2026-11-26 that Final Curse and Haunting are never lent to the player, and a player's death ends the walk. AND A
+	// WEARER ON THE PLAYER'S OWN SIDE -- a thrall -- CURSES NOBODY: the player is its ally, and the row's curse is on the
+	// wearer's enemy. A judgement, recorded.
+	if (!CarriedBy(Enemy, FinalCurseRow) || Enemy->TakesNoHostileAction())
 	{
 		return false;
 	}
 	UWorld* World = Enemy->GetWorld();
 	APlayerController* Watching = World ? World->GetFirstPlayerController() : nullptr;
 	APawn* Cursed = Watching ? Watching->GetPawn() : nullptr;
-	if (Cursed == nullptr || UCataclysmSkillEffects::IsDead(Cursed))
+	if (Cursed == nullptr || UCataclysmSkillEffects::IsDead(Cursed) || !UCataclysmTargeting::IsHostileTo(Cursed, Enemy))
 	{
 		return false;
 	}
@@ -2293,6 +2447,11 @@ float UCataclysmEnemyModifiers::FinalCurseOnSkillUse(AActor* User, bool bWasTheB
 	Delivery.bCannotCriticallyStrike = true;
 	Delivery.bCannotLeech = true;
 	Delivery.bCannotBeRetaliatedAgainst = true;
+	// AND NO WEAPON SUB-TYPE, issue #2931: the curse is no swing of the user's weapon. Until 2026-11-26 the blow carried
+	// the sub-type of the weapon the user held, so a player with a slashing weapon paid 10% more to health (the
+	// sub-type's bonus in `UCataclysmDamageCalculation`): window b4-w3 read 55.00 where the curse's 5% of 1000 is 50.
+	// Retaliation and the overkill explosion leave it off for the same reason.
+	Delivery.bCarriesNoWeaponSubType = true;
 	Delivery.DamageType = FName(TEXT("Death"));
 	if (!UCataclysmSkillEffects::ApplyDirectDamage(User, User, Damage, Delivery))
 	{
@@ -2305,8 +2464,10 @@ float UCataclysmEnemyModifiers::FinalCurseOnSkillUse(AActor* User, bool bWasTheB
 
 ACataclysmBonePyreCharacter* UCataclysmEnemyModifiers::PyreWhenStruck(AActor* Struck, AActor* Striker)
 {
-	ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Struck);
-	if (Enemy == nullptr || !Carries(Enemy->ModifierRows, FuneralPyreRow) || Enemy->TakesNoHostileAction()
+	// ANY WEARER, since issue #2899: `Struck` is the body struck, a creature or a player. A player's pyre stands on the
+	// player's side and explodes on creatures.
+	ACataclysmCharacterBase* Enemy = Cast<ACataclysmCharacterBase>(Struck);
+	if (Enemy == nullptr || !CarriedBy(Enemy, FuneralPyreRow) || Enemy->TakesNoHostileAction()
 		|| UCataclysmSkillEffects::IsDead(Enemy) || Striker == nullptr || Striker == Struck
 		|| !UCataclysmTargeting::IsHostileTo(Striker, Enemy))
 	{
@@ -2345,11 +2506,16 @@ ACataclysmBonePyreCharacter* UCataclysmEnemyModifiers::PyreWhenStruck(AActor* St
 	}
 
 	// RAISED BY A RULE AND DYING UNPAID, as every floor source a rule places is: a save does not keep it, and breaking
-	// it drops nothing and grants nothing. On the creature's side, and of its damage type, so the explosion finds the
-	// creature's enemies and is met by their resistance to it.
+	// it drops nothing and grants nothing. On the wearer's side, and of a creature wearer's damage type, so the
+	// explosion finds the wearer's enemies and is met by their resistance to it. A PLAYER'S PYRE KEEPS THE PYRE'S OWN
+	// TYPE: a player's damage is untyped (`UCataclysmSkillEffects::DamageTypeOf`), and a creature meets every type with
+	// its one resistance, so which type it is changes nothing it takes.
 	Pyre->bRaisedByARule = true;
 	Pyre->bDiesUnpaid = true;
-	Pyre->DamageType = Enemy->DamageType;
+	if (const ACataclysmEnemyCharacter* CreatureWearer = Cast<ACataclysmEnemyCharacter>(Enemy))
+	{
+		Pyre->DamageType = CreatureWearer->DamageType;
+	}
 	Pyre->SetGenericTeamId(UCataclysmTeams::TeamOf(Enemy));
 
 	const UAbilitySystemComponent* Own = UCataclysmTargeting::AbilitySystemOf(Enemy);
@@ -2449,17 +2615,44 @@ bool UCataclysmEnemyModifiers::UndyingWillRaises(const AActor* Fallen)
 	// ONLY A DEATH THAT PAYS, so a creature a rule brought back -- Undying Will's own among them -- never rises again,
 	// and one resurrection is the most the row gives: the guard Dead Rising takes for its own revivals. A floor source
 	// is never one, whatever it carries.
+	// ANY CREATURE THAT WEARS IT, through `CarriedBy` (issue #2899); a wearer that is not a creature rises through
+	// `RiseThroughUndyingWill` instead, because only a creature is brought back as a new one.
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Fallen);
-	return Enemy != nullptr && Carries(Enemy->ModifierRows, UndyingWillRow) && Enemy->PaysForItsDeath()
+	return Enemy != nullptr && CarriedBy(Enemy, UndyingWillRow) && Enemy->PaysForItsDeath()
 		&& !Enemy->IsA<ACataclysmFloorSourceCharacter>();
 }
 
 bool UCataclysmEnemyModifiers::HauntingLeavesACopy(const AActor* Fallen)
 {
-	// THE SAME GUARD, so a copy never leaves a copy and a creature brought back leaves none.
+	// THE SAME GUARD, so a copy never leaves a copy and a creature brought back leaves none. ANY CREATURE THAT WEARS IT
+	// (issue #2899); never a player, which the owner ruled is never lent it (2026-11-26) and whose death ends the walk.
 	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Fallen);
-	return Enemy != nullptr && Carries(Enemy->ModifierRows, HauntingRow) && Enemy->PaysForItsDeath()
+	return Enemy != nullptr && CarriedBy(Enemy, HauntingRow) && Enemy->PaysForItsDeath()
 		&& !Enemy->IsA<ACataclysmFloorSourceCharacter>();
+}
+
+bool UCataclysmEnemyModifiers::RiseThroughUndyingWill(AActor* Wearer)
+{
+	ACataclysmCharacterBase* Rising = Cast<ACataclysmCharacterBase>(Wearer);
+	if (Rising == nullptr || Rising->IsA<ACataclysmEnemyCharacter>() || Rising->bUndyingWillSpent
+		|| !CarriedBy(Rising, UndyingWillRow))
+	{
+		return false;
+	}
+	Rising->bUndyingWillSpent = true;
+	Rising->bRoseThroughUndyingWill = true;
+	UE_LOG(LogCataclysm, Log, TEXT("%s rose through Undying Will at %.0f%% of its health, its blows %.0f%% stronger."),
+		   *Rising->GetName(), UndyingWillHealthShare * 100.0f, UndyingWillDamageIncreasedPercent);
+	return true;
+}
+
+float UCataclysmEnemyModifiers::UndyingWillDamageMultiplierFor(const AActor* Striker)
+{
+	const ACataclysmCharacterBase* Risen = Cast<ACataclysmCharacterBase>(Striker);
+	return Risen != nullptr && Risen->bRoseThroughUndyingWill && !Risen->IsA<ACataclysmEnemyCharacter>()
+		&& CarriedBy(Risen, UndyingWillRow)
+		? 1.0f + UndyingWillDamageIncreasedPercent / 100.0f
+		: 1.0f;
 }
 
 void UCataclysmEnemyModifiers::MakeUndyingWillRisen(ACataclysmEnemyCharacter* Risen)
@@ -2509,10 +2702,11 @@ void UCataclysmEnemyModifiers::MakeSpectralCopy(ACataclysmEnemyCharacter* Copy)
 
 float UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(const AActor* Healed)
 {
-	// "PLAYERS STANDING IN THEM": the players' side, which is the player and the player's minions, as Starving Aura's
-	// cut reaches both (ruled 2026-10-26). A creature standing in one is healed in full.
-	if (!IsValid(Healed)
-		|| UCataclysmTeams::TeamOf(Healed) != UCataclysmTeams::IdFor(ECataclysmTeam::Players))
+	// "PLAYERS STANDING IN THEM": a zone a creature left reaches the players' side, which is the player and the player's
+	// minions, as Starving Aura's cut reaches both (ruled 2026-10-26), and a creature standing in one is healed in full.
+	// AND A ZONE A PLAYER LEFT REACHES THE CREATURES' SIDE INSTEAD, since issue #2899 (2026-11-26): every enemy modifier
+	// works on any wearer, so it cuts the healing of the wearer's enemies. Each zone names the side it reaches.
+	if (!IsValid(Healed) || UCataclysmTeams::TeamOf(Healed) == FGenericTeamId::NoTeam)
 	{
 		return 0.0f;
 	}
@@ -2522,6 +2716,7 @@ float UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(const AActor*
 	{
 		return 0.0f;
 	}
+	const uint8 HealedSide = UCataclysmTeams::TeamOf(Healed).GetId();
 
 	// THE LARGEST, NEVER A SUM, as `ACataclysmGroundZone::RegenerationScaleFor` reads its patches: two overlapping
 	// zones are one zone to whoever stands in both. THE FIGURE BEFORE THE GEOMETRY, so every other patch in the level
@@ -2530,7 +2725,7 @@ float UCataclysmEnemyModifiers::LingeringDecayHealingLessPercentAt(const AActor*
 	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
 	{
 		const ACataclysmGroundZone* Zone = *It;
-		if (!IsValid(Zone) || Zone->HealingLessPercentInside <= Most)
+		if (!IsValid(Zone) || Zone->HealingLessPercentInside <= Most || Zone->HealingLessReachesTeamId != HealedSide)
 		{
 			continue;
 		}

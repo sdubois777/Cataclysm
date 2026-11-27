@@ -17,6 +17,7 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmCorruptedStalkerCharacter.h"
+#include "Character/CataclysmWraithCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -8012,8 +8013,14 @@ bool FCataclysmSaveLoadReaperTest::RunTest(const FString&)
 				}
 				return Standing;
 			},
-			// ITS RUNG, AND NOT ITS BEING UNABLE TO BE HURT, which the hit below reads.
-			[](const ACataclysmEnemyCharacter& One) { return One.RarityStep == Effects::TheReaperRung; },
+			// ITS RUNG, AND NOT ITS BEING UNABLE TO BE HURT, which the hit below reads. AND ITS FORM SINCE 2026-11-26: a
+			// Wraith that is the Reaper, whose slow walk and missing dash a load must put back
+			// (`ACataclysmWraithCharacter::BecomeTheReaper`).
+			[](const ACataclysmEnemyCharacter& One)
+			{
+				const ACataclysmWraithCharacter* AsWraith = Cast<const ACataclysmWraithCharacter>(&One);
+				return One.RarityStep == Effects::TheReaperRung && AsWraith && AsWraith->bIsTheReaper;
+			},
 			[this](ACataclysmDungeonGameMode& Mode, int32)
 			{
 				// A HIT FROM THE PLAYER, with nothing to evade it or shield from it, and nothing answered back.
@@ -9797,7 +9804,9 @@ namespace CataclysmSaveLoadDrawTest
  * slice 6a, ruled 2026-11-02.
  *
  * TIER 4, AS `ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt` SETS IT, so the run faces four and a list drawn from
- * anything but the character's seed agrees with its draw by chance about once in 1,680. The seed itself is drawn from
+ * anything but the character's seed agrees with its draw by chance about once in 30: the three built Cataclysms in one
+ * of six orders, then one of five unbuilt ones, since the project owner's ruling of 2026-11-26
+ * (`UCataclysmRoster::Built`). It was once in 1,680 while all eight were drawn alike. The seed itself is drawn from
  * the clock and is not predicted. Prints "NEW CHARACTER DRAW".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadNewCharacterDrawTest,
@@ -9870,7 +9879,9 @@ bool FCataclysmSaveLoadNewCharacterDrawTest::RunTest(const FString&)
  *
  * THE RECORD IS REWRITTEN TO SEED 7 AND TIER 3, naming no run, so the load takes the new-run path
  * (`ARunThatCannotBeReadStartsANewOneAndSaysSo`'s "no run named"). A list drawn from the clock instead agrees with seed
- * 7's by chance about once in 336. Prints "LOADED DRAW".
+ * 7's by chance about once in 6 on each load, once in 36 on both: since the project owner's ruling of 2026-11-26 every
+ * tier 3 list is the three built Cataclysms in one of six orders (`UCataclysmRoster::Built`). It was once in 336 while
+ * all eight were drawn alike. Prints "LOADED DRAW".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadLoadedDrawTest,
 	"Cataclysm.SaveLoad.ALoadedCharactersNewRunFacesItsOwnDrawEveryTime",

@@ -211,7 +211,17 @@ KNOWN_USED = "debuffs_carried"
 #: `max_class_resource` and `block_chance` with the War vow options' second
 #: slice (Unbridled and Titan, and Bastion), and `current_health` with the
 #: third slice's second half, V3b (Colossus Eternal).
-EXPECTED_NAMED_BY_A_ROW = 48
+#:
+#: AND 49 WHEN `minions_near_the_minion` WAS ADDED WITH ITS ROW, 2026-11-26, for
+#: the Necromancer's Close Packed (the finishing of the Death Cataclysm, slice
+#: C). Swollen's `minion_seconds_active` was already named by two enchantment rows.
+#:
+#: AND 50 WHEN SLICE D JOINED THE DEATH FINISH BUNDLE (2026-11-26): `remains_in_reach`, Mantle of Bone's armour for each
+#: of your own remains within 6 metres.
+#:
+#: AND 51 WHEN SLICE B JOINED THE DEATH FINISH BUNDLE (2026-11-26): `minion_kinds_beyond_the_first`, the
+#: Necromancer's Motley Host.
+EXPECTED_NAMED_BY_A_ROW = 51
 
 
 def scales_named_by_a_row() -> set[str]:

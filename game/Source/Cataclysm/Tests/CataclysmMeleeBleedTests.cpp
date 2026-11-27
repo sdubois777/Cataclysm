@@ -99,10 +99,11 @@ namespace CataclysmMeleeBleedTest
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
 			// TEN THOUSAND, SO THE MUTILATOR'S BLOW OF 1,500 TAKES A TENTH OF IT.
-			// Issue #1565: the bleed needs the blow to have taken a tenth of the
+			// Issue #1565: the bleed needed the blow to have taken a tenth of the
 			// target's maximum health, the owner's rule for an ailment that is not
-			// the skill's own. This was a million until then, where the same blow
-			// took 0.15%. No defender here takes more than two blows, 1,000 and
+			// the skill's own until the owner's ruling of 2026-11-26 asked only a
+			// blow that reached health. This was a million until #1565, where the
+			// same blow took 0.15%. No defender here takes more than two blows, 1,000 and
 			// 1,500, so none comes near death.
 			//
 			// THE REST OF THIS NOTE WAS WRITTEN FOR A MILLION AND STILL HOLDS:
@@ -645,14 +646,18 @@ CATACLYSM_MELEE_BLEED_TEST(FCataclysmBleedChanceIsClampedTest,
 	return true;
 }
 
-CATACLYSM_MELEE_BLEED_TEST(FCataclysmScratchDoesNotBleedTest,
-	"Cataclysm.MeleeBleed.AMeleeCriticalStrikeTakingLessThanATenthOfMaximumHealthAppliesNothing")
+CATACLYSM_MELEE_BLEED_TEST(FCataclysmScratchStillBleedsTest,
+	"Cataclysm.MeleeBleed.AMeleeCriticalStrikeTakingLessThanATenthOfMaximumHealthBleedsUnlessTheShieldTookItWhole")
 {
-	// ISSUE #1565, RULED 2026-10-01. The owner's rule of 2026-09-02 (#917): an
-	// ailment that does not come from the skill's own row needs the blow to have
-	// taken a tenth of the target's maximum health. The mutilator's blow is 1,500.
-	// Against 16,000 that is 9.4%, and against 14,000 it is 10.7%. Neither is the
-	// exact boundary, where a float comparison says nothing about the rule.
+	// ISSUE #1565, RULED 2026-10-01, AND THE OWNER'S RULING OF 2026-11-26 ("I
+	// agree, fix it"), which replaced the rule of 2026-09-02 (#917) that an
+	// ailment not from the skill's own row needs a tenth of the target's maximum
+	// health: it now needs a blow that dealt more than nought, and a bleed a blow
+	// that reached health ("bleed should be the only ailment that doesn't apply
+	// against energy shield"). The mutilator's blow is 1,500. Against 16,000 that
+	// is 9.4%, under the old tenth, and against 14,000 it is 10.7%, over it: both
+	// bleed now. THE CONTROL is the same scratch on a defender of 16,000 whose
+	// shield takes it whole, which reaches no health and lays no bleed.
 	using namespace CataclysmMeleeBleedTest;
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -665,24 +670,38 @@ CATACLYSM_MELEE_BLEED_TEST(FCataclysmScratchDoesNotBleedTest,
 		const FScopedFighter Attacker(World);
 		const FScopedFighter Scratched(World);
 		const FScopedFighter Cut(World);
+		const FScopedFighter Shielded(World);
 		MakeAMutilator(Attacker);
 		Scratched.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 16'000.0f);
 		Scratched.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 16'000.0f);
 		Cut.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 14'000.0f);
 		Cut.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 14'000.0f);
+		Shielded.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 16'000.0f);
+		Shielded.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 16'000.0f);
+		// THE MAXIMUM FIRST AND THE CURRENT SECOND, as the shielded test above explains.
+		Shielded.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 100'000.0f);
+		Shielded.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 100'000.0f);
 
 		const CataclysmTestWorld::FScopedCritRoll AlwaysCrits(0.0f);
+
+		// THE CONTROL, FIRST: THE SAME SCRATCH, TAKEN WHOLE BY A SHIELD, REACHES NO HEALTH AND LAYS NO BLEED.
+		Effects::ApplyHit(Attacker.Actor, Shielded.Actor, 100.0f, MeleeSkillTags());
+		TestEqual(TEXT("control set-up: the shield took the whole scratch and health lost nothing"),
+			Shielded.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()), 16'000.0f, 0.01f);
+		TestFalse(TEXT("control: so the melee critical strike applies no Bleeding"),
+			Shielded.IsBleeding());
+
 		Effects::ApplyHit(Attacker.Actor, Scratched.Actor, 100.0f, MeleeSkillTags());
 		const float Taken = 16'000.0f
 			- Scratched.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
 		TestTrue(TEXT("the blow reached health, but less than a tenth of 16,000"),
 			Taken > 0.0f && Taken < 1'600.0f);
-		TestFalse(TEXT("so a melee critical strike that scratches applies no Bleeding"),
+		TestTrue(TEXT("and a melee critical strike that scratches health applies Bleeding"),
 			Scratched.IsBleeding());
 
-		// THE CONTROL: THE SAME BLOW, A TENTH OR MORE OF A SMALLER MAXIMUM.
+		// AND THE SAME BLOW, A TENTH OR MORE OF A SMALLER MAXIMUM, AS BEFORE.
 		Effects::ApplyHit(Attacker.Actor, Cut.Actor, 100.0f, MeleeSkillTags());
-		TestTrue(TEXT("while the same blow taking more than a tenth of 14,000 does"),
+		TestTrue(TEXT("as does the same blow taking more than a tenth of 14,000"),
 			Cut.IsBleeding());
 	}
 

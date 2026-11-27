@@ -257,6 +257,14 @@ public:
 	 */
 	float FervourToUseOnCooldown(const UAbilitySystemComponent* AbilitySystem) const;
 
+	/**
+	 * The Fervour the last commit took from the pool as a cost: `ApplyCost`'s (an Ultimate's 50) and `ApplyCooldown`'s
+	 * (Borrowed Step's use on cooldown), added as each is taken. `UCataclysmSkillTemplate::CommitAndBegin` clears it
+	 * before it commits and reads it after, so it knows whether the use spent Fervour (the Soul Collector's Fervour
+	 * spender limb, the Death finish slice A, 2026-11-26). MUTABLE because the engine's two commit functions are const.
+	 */
+	mutable float FervourPaidThisCommit = 0.0f;
+
 	/** Mana one use costs for the character holding it, at their level: see
 	 *  `LevelForCosts`. Before any stat row; `ManaCostFor` is what is charged. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")

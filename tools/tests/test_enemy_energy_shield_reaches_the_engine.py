@@ -40,6 +40,8 @@ WARDEN_HEADER = CHARACTER_DIR / "CataclysmAbyssalWardenCharacter.h"
 SHIELDED_ARCHETYPES = {
     "Succubus": CHARACTER_DIR / "CataclysmSuccubusCharacter.h",
     "Corrupted Sentinel": CHARACTER_DIR / "CataclysmCorruptedSentinelCharacter.h",
+    # Death's caster, 2026-11-26: 30% of its health, Path of Exile 2's Desiccated Lich.
+    "Lich": CHARACTER_DIR / "CataclysmLichCharacter.h",
 }
 
 
@@ -133,6 +135,7 @@ def test_the_designed_fractions_are_the_two_the_issue_names() -> None:
 
     assert shielded["Succubus"] == pytest.approx(0.50)
     assert shielded["Corrupted Sentinel"] == pytest.approx(0.35)
+    assert shielded["Lich"] == pytest.approx(0.30)
 
 
 def test_the_wardens_designed_fraction_matches_the_model() -> None:

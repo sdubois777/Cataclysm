@@ -145,9 +145,12 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # every minion and gadget skill reserves Fervour rather than only the one
     # that takes thralls. Bolt Turret, Ballista and Iron Fortress are all
     # Deployable and all three gained the key. No enemy ability uses it.
+    # `SiphonsAround` joined on 2026-11-26 with the Death Crossbow's Effigy (the
+    # Death finish slice A): what the row places widens its placer's Siphon. No
+    # enemy ability uses it.
     "Deployable": ("Range", "Radius", "Count", "MaxActive", "Duration",
                    "Interval", "Minions", "HealthPercent", "FervourReserve",
-                   "Taunts"),
+                   "Taunts", "SiphonsAround"),
     "Aura": ("Radius", "Duration", "Interval"),
     # `SpreadWhen` and `SpreadRadius` joined on 2026-09-02 with the
     # Wand's Hex of Cinders. No enemy ability states either yet.
@@ -695,6 +698,10 @@ ATTACK_REACH: dict[str, float] = {
     # holds at, because it neither advances nor retreats. Issue #349.
     "Succubus": 8.0,
 
+    # The Lich holds at 8 metres, as the Succubus does and for the same reason:
+    # the shortest player gap-closer. 2026-11-26.
+    "Lich": 8.0,
+
     # Contact and no further: 0.42 for the player's body plus its own 0.48. A
     # Hellhound is more than half again as wide as an Imp, so only five fit
     # around one player where twenty Imps do. Its threat is the charge rather
@@ -736,6 +743,10 @@ ATTACK_REACH: dict[str, float] = {
     # is measured from the creature's centre too, so the two agree by
     # construction. Issue #354.
     "Gatekeeper": 2.0,
+
+    # 1.6 metres, which is Reap's own radius: a scythe reaches further than a
+    # bite. Death's Wraith, 2026-11-26.
+    "Wraith": 1.6,
 }
 
 #: The pack an enemy arrives in. Only swarming enemies have one.
@@ -826,6 +837,50 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
             note="Every allied enemy within 8 metres gains 20% increased "
                  "stats, for as long as the Succubus is alive. Killing it "
                  "first is the correct play, and this is what makes that true.",
+        ),
+    ),
+    "Lich": (
+        # ORDER IS PRIORITY, AS THE GAME'S `EnemyAbilities` READS IT: the raise
+        # first, the burst second, the bolt, which has no cooldown, last.
+        Ability(
+            name="Raise the Fallen",
+            shape="Summon",
+            slot="Special",
+            # Up to 3 of the most recent deaths within 10 metres of the Lich come
+            # back as Commons of their own kind at half health, worth nothing,
+            # where they fell (the owner's ruling 3, 2026-11-26). It is chosen
+            # only when one such death is near. The 10 second cooldown is PoE 2's
+            # Desiccated Lich's revive.
+            params={"Range": 10, "Count": 3},
+            cooldown=10.0,
+            note="It raises up to three of the creatures the player has just "
+                 "killed near it, at half health and worth nothing. No marker: "
+                 "it is read from the cast, and interrupting it cancels it.",
+        ),
+        Ability(
+            name="Grave Burst",
+            shape="Strike",
+            slot="Heavy",
+            # Radius 3.0 gives a wind-up of 0.4 + 3.0 / 3.5 = 1.26 seconds, the
+            # design's. At 250% of its hit (the game's `GraveBurstDamagePercent`;
+            # a Strike's parameters carry no damage figure), on an 8 second
+            # cooldown, the Brute's Stomp's: its answer to being reached, as the mortar is the
+            # Sentinel's.
+            params={"Radius": 3.0, "Angle": 360},
+            cooldown=8.0,
+            note="A ring of grave-cold bursts around it when the player comes "
+                 "within 3 metres, after a circle on the ground.",
+        ),
+        Ability(
+            name="Grave Bolt",
+            shape="Projectile",
+            slot="Basic",
+            # A quick cast, as Soulfire is: half a second, no lane, the bolt in
+            # flight is the warning.
+            params={"Range": 8, "Radius": 0.5, "Speed": 1200},
+            quick_cast=True,
+            note="A bolt of grave-cold, fired half a second after it decides "
+                 "to with no marker on the ground.",
         ),
     ),
     "Hellhound": (
@@ -1512,6 +1567,53 @@ ABILITIES: dict[str, tuple[Ability, ...]] = {
                  "Sevarog's ultimate is authored as targeting (0.87 s), a hold "
                  "loop (2.23 s) and the swing (2.63 s), which is exactly the "
                  "start-hold-release a 2 second wind-up needs.",
+        ),
+    ),
+    # DEATH'S WRAITH, 2026-11-26, the design the project owner approved that day. It phases through the player and
+    # reaps from the other side. Three abilities, the most a basic creature may have (ruled 2026-08-07).
+    "Wraith": (
+        Ability(
+            name="Reap",
+            shape="Strike",
+            slot="Basic",
+            # A scythe's arc in front, reaching 1.6 metres. PoE's Summon Reaper swings the same kind of arc.
+            params={"Radius": 1.6, "Angle": 120, "MaxTargets": 3},
+            note="A scythe swing in a 120 degree arc. Not telegraphed: its 1.25 second interval allows a marker "
+                 "of 0.79 metres, under the one metre floor.",
+        ),
+        Ability(
+            name="Phase Dash",
+            shape="Movement",
+            slot="Movement",
+            # A CHARGE THROUGH THE PLAYER AND NOT A LEAP ONTO THEM: it runs 8 metres along a fixed line, so from 4
+            # to 8 metres away it ends behind the player, and it passes through creatures but not walls.
+            #
+            # RADIUS 1.0, NOT THE DESIGN TABLE'S 0.5, so the lane is marked. The design says the dash is
+            # telegraphed, and a marker under a metre is not a telegraph by the Attack Telegraphs rules: it is
+            # smaller than the creature standing in it. 1.0 is the smallest marker those rules allow. A judgement.
+            #
+            # ONE HIT AT 100%, THE MOVEMENT SLOT'S, on what it crosses, and no shove: it goes through the player
+            # rather than knocking them aside.
+            params={"Mode": "Charge", "Range": 8, "Radius": 1.0},
+            # The Movement slot's typical cooldown in game/Data/SkillSlots.csv, and the Hellhound's.
+            cooldown=5.0,
+            note="Dashes 8 metres straight through the player along a marked lane and comes out behind them, "
+                 "hitting what it passes. Used when the player is 4 to 8 metres away.",
+        ),
+        Ability(
+            name="Soul Grab",
+            shape="Strike",
+            slot="Special",
+            # A JUDGEMENT, as the owner asked ("Design its effect yourself"): a ring of grasping hands 4 metres
+            # round the Wraith, marked for 1.54 seconds, that hits for the Special slot's 150% and pulls whoever
+            # it caught to the Wraith. It covers the ground between Reap's 1.6 metres and the dash's 4: the
+            # Wraith answers a player at any distance, and a marked ring can always be walked out of.
+            params={"Radius": 4.0, "Angle": 360, "ForcedMovement": "Pull"},
+            # Ten seconds, at the top of the Special slot's band (3 to 10 in game/Data/SkillSlots.csv), so it is
+            # an event in a fight rather than its rhythm.
+            cooldown=10.0,
+            note="Grasping hands in a marked 4 metre ring around the Wraith. Whoever is still inside when it "
+                 "lands takes a hit and is pulled to the Wraith's side.",
         ),
     ),
 }

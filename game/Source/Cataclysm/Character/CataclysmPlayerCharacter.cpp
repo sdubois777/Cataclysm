@@ -31,11 +31,14 @@
 // For the potion heal paid on each step, and its step length. Issue #806.
 #include "AbilitySystem/CataclysmPotions.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 // For who commands a killer, so The Swarm hears a kill by one of this
 // character's minions. The demonic tree rework of 2026-11-24.
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// The Shadow's Afterimage and Shadow Clone, the Death line's finishing slice E (2026-11-26).
+#include "AbilitySystem/CataclysmShadowImages.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
@@ -101,6 +104,7 @@
 #include "Save/CataclysmSaveWriter.h"
 // For Reaper's Embrace's ten-piece: a minion's own blow does not cull, and a kill spawns a minion. Ruled 2026-10-19.
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmHordeAscendant.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "Empire/CataclysmSeedMix.h"
 
@@ -1217,6 +1221,10 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
+	// BUT ONE OF FLURRY OF THE DEAD'S EXTRA STRIKES GOES ON, AS ANY HIT: the project owner's ruling of 2026-11-26 ("yes",
+	// its extra strikes do trigger on-hit effects), so each raises `hit_dealt` and `critical_strike` and pays a critical
+	// strike's Fervour. The bundle had returned here for it, by an earlier ruling the owner's replaced.
+
 	// NOR A WEARER'S SHARE OF WHAT A BLOW OF THIS CHARACTER'S DID TO THE WEARER'S ALLY. Ruled 2026-10-15, for "You take
 	// 5%-15% damage done to nearby allies": the share is not a blow this character struck, so it raises none of the
 	// three events below. Its kill is still this character's kill.
@@ -1249,7 +1257,8 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	//
 	// AND WHAT REACHED THEIR HEALTH, since issue #1833 group E part 1, ruled
 	// 2026-10-01: "Strike skills have a 15%-30% chance to apply a random debuff
-	// on hit" asks the owner's rule of #917, a tenth of maximum health. No row
+	// on hit" asks the owner's rule of #917 (a tenth of maximum health until the
+	// ruling of 2026-11-26, a blow that dealt more than nought since). No row
 	// read the amount before, measured 2026-10-01: only `health_cost` lets a row
 	// take a fraction of its event's amount, and only `health_falls_below` rows
 	// state a threshold.
@@ -1274,6 +1283,9 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	const bool bAHitThatMayBeRepeated =
 		!Notice.bDamageOverTime && !Notice.bRetaliation && !Cast<ACataclysmMinion>(Notice.DealtBy);
 	const float WasHitSent = Acting->SetHitBeingAnnouncedSent(bAHitThatMayBeRepeated ? Notice.Sent : 0.0f);
+	// AND EVERYTHING THE HIT LANDED, its shield's part included, for the rows that lay an ailment on it: the owner's
+	// ruling of 2026-11-26. Held across the three events below, which are all this hit's, and put back after them.
+	const float WasHitLanded = Acting->SetHitBeingAnnouncedLanded(Notice.Landed);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
@@ -1308,7 +1320,8 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// WITH WHO WAS STRUCK AND WHAT REACHED THEIR HEALTH, since issue #1833 group
 	// D: "Critical strikes apply a random DoT to the target" acts on the target,
 	// and the owner's rule of 2026-09-02 (#917) asks whether the blow took a
-	// tenth of its maximum health. No row read either before, measured
+	// tenth of its maximum health (until the ruling of 2026-11-26; since then
+	// whether it dealt more than nought). No row read either before, measured
 	// 2026-09-30: no critical_strike row takes a fraction of its event's amount,
 	// and none carries a condition on the target.
 	if (Notice.bCritical)
@@ -1333,6 +1346,7 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		FCataclysmWarFervour::SkullSplitterOnCriticalStrike(Acting, Notice.Target, CritTags);
 		FCataclysmWarFervour::DeathmarkOnCriticalStrike(Acting, Notice.Target, CritTags);
 	}
+	Acting->SetHitBeingAnnouncedLanded(WasHitLanded);
 
 	// AND EVERY Nth LANDED HIT OF THE CHARACTER'S OWN ON A BOSS COUNTS AS A KILL OF IT: Death by Inches, the Death trees'
 	// slice C4d2 (2026-11-25). After the hit's own rows, so the kill's rows act on a hit already heard. A minion's hit is
@@ -1395,6 +1409,24 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 			}));
 		}
 
+		// AND THE SHADOW'S AFTERIMAGE (the Death line's finishing slice E, 2026-11-26): "A shadow of you stays where your
+		// movement skill started and repeats your next attack." A paid use of the movement skill leaves it where the use
+		// started, which is where the character stood as the use was announced; the next paid use of a SKILL that is an
+		// attack gives it that attack (never a basic swing: the coordinating session's ruling of 2026-11-26 at the
+		// bundle's assembly), and it repeats it on the next tick, for the reason the repeats above wait. A free start sends no notice, so neither the afterimage's repeat nor a clone's swing reaches here.
+		if (UCataclysmShadowImages::IsAMovementSkillUse(this, Notice))
+		{
+			UCataclysmShadowImages::LeaveAfterimage(this, Notice.Location,
+													Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+		}
+		else if (UCataclysmShadowImages::GiveTheAttackToTheAfterimage(this, Notice, bBasicAttack))
+		{
+			GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				UCataclysmShadowImages::MakeAfterimageRepeats(this);
+			}));
+		}
+
 		// AND THE LAST SKILL ITS GADGETS COPY IS RECORDED. Ruled 2026-10-14, for "Gadgets copy the last skill you
 		// used and fire it at their target once every 2 seconds": the last skill whose use sent this notice and that
 		// a row may cast again, `UCataclysmTriggeredSkill::RepeatsFromARow`, found among the skills this character
@@ -1423,6 +1455,18 @@ void ACataclysmPlayerCharacter::OnSkillWasUsed(
 					{
 						Eldest->CastSkillCopy(Used);
 					}
+				}));
+			}
+
+			// AND THE HORDE ASCENDANT: every follower within 10 metres casts it too, at 10% of its damage (the
+			// Necromancer's Final Rite, option 3, built as written by the coordinating session's ruling of 2026-11-26).
+			// Magnum Opus's skills, and ON THE NEXT TICK for its reason; who is near is asked then.
+			if (UCataclysmHordeAscendant::Holds(this))
+			{
+				const FVector Aimed = Notice.Aim;
+				GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this, Used, Aimed]()
+				{
+					UCataclysmHordeAscendant::EveryFollowerNearCasts(this, Used, Aimed);
 				}));
 			}
 		}
@@ -1548,6 +1592,9 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			UCataclysmFervour::MarkNearAKill(Acting, Notice.Victim, Notice.Location);
 			// AND WEARER OF THE DEAD'S MODIFIERS, from an Elite or stronger body, the Death trees' slice C4d3 (2026-11-25).
 			UCataclysmFervour::WearTheModifiersOf(Acting, Notice.Victim);
+			// AND SHADOW CLONE'S COUNT, every third Elite or stronger kill leaving a clone (the Death line's finishing slice
+			// E, 2026-11-26). Every kill credited here counts, a row's and a clone's own included.
+			UCataclysmShadowImages::NoteKillForShadowClone(this, Notice.Victim);
 			// THE KILL CARRIES WHO WAS KILLED AND ITS MAXIMUM HEALTH, as the event's
 			// target and amount. Ruled 2026-10-07, so that a row can be sized by the
 			// slain enemy. No row read either on this event before; a row that takes
@@ -1772,6 +1819,11 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 				Acting, FVector::Dist(GetActorLocation(), Notice.Location) / 100.0f);
 		}
 	}
+
+	// AND THE NECROMANCER'S REMAINS, FOR ANY ENEMY'S DEATH, WHOEVER KILLED IT, and the Abomination's tally of this
+	// character's kills and its followers': the Death finish's slice D (2026-11-26). Before the killer test below, which
+	// returns for a death this character did not cause. `UCataclysmRemains::HearDeath` asks the team itself.
+	UCataclysmRemains::HearDeath(this, Notice);
 
 	// THIS CHARACTER HAS TO BE THE KILLER. The node says "when YOU kill the
 	// enemy that applied it", so a creature dying to anything else changes

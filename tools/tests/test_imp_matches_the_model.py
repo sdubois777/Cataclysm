@@ -400,19 +400,28 @@ def test_its_armour_share_is_exactly_zero_and_it_is_the_only_one():
         f"none at all and makes 25% evasion its defence, and the sandbox "
         f"spawner deliberately does not call SetArmour because of it.")
 
+    # AMONG THE SEVEN DEMONIC ENEMIES, which is what the Imp's comments compare
+    # it with. Death's Wraith (2026-11-26) has no armour either, by its own
+    # design: evasion is its defence too.
     others = [name for name, a in ARCHETYPES.items()
-              if name not in ("Baseline", "Imp") and a.armor_share == 0.0]
+              if name not in ("Baseline", "Imp") and a.cataclysm == "Demonic"
+              and a.armor_share == 0.0]
     assert not others, (
         f"something other than the Imp now has no armour at all: {others}. That "
         f"is fine, and the comments saying the Imp is the only one need "
         f"changing.")
+    assert ARCHETYPES["Wraith"].armor_share == 0.0, (
+        "CONTROL: the Wraith, outside the Demonic seven, has none either, so the "
+        "filter above is what keeps it out of the comparison")
 
 
 def test_it_has_the_highest_evasion_in_the_slice():
+    """THE DEMONIC SLICE: the seven Demonic enemies. Death's Wraith (2026-11-26)
+    has more, 30%, and is not one of them."""
     from cataclysm_sim.enemy_stats import ARCHETYPES
 
     highest = max((a.evasion, name) for name, a in ARCHETYPES.items()
-                  if name != "Baseline")
+                  if name != "Baseline" and a.cataclysm == "Demonic")
 
     assert highest[1] == "Imp", (
         f"{highest[1]} now has the highest evasion in the roster at "

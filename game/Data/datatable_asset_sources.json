@@ -77,7 +77,7 @@
       "asset": "DT_EnchantmentEffects",
       "csv": "EnchantmentEffects.csv",
       "rows": 709,
-      "csv_sha256": "4e454da2d0152616764b7a60f41fb113bab2aa92086ccc5d8fb26682d060fe2c"
+      "csv_sha256": "9d61760887bbe333f7ee2d89752da1e3348a6e03a224bc409f5b9f2e5cb28807"
     },
     {
       "asset": "DT_EnchantmentsNegative",
@@ -89,13 +89,13 @@
       "asset": "DT_EnchantmentsPositive",
       "csv": "EnchantmentsPositive.csv",
       "rows": 379,
-      "csv_sha256": "fde7eda2d78d7a4f22efdf54741a40e1a6110cd08da6122cad1ed01246f69326"
+      "csv_sha256": "ef4fcf0d5873352754146544a729efa183231820f8e165f42e3655be7458357c"
     },
     {
       "asset": "DT_EnemyArchetypes",
       "csv": "EnemyArchetypes.csv",
-      "rows": 8,
-      "csv_sha256": "c21538c6346b429ffb55d88f3c56958cde619405e8fb690c4fe2f5038ea0c381"
+      "rows": 10,
+      "csv_sha256": "5e7876d70325af0780ad4231d303b3fee49281e64582705c888244dfa7e9858f"
     },
     {
       "asset": "DT_EnemyDrops",
@@ -148,8 +148,8 @@
     {
       "asset": "DT_MinionTypes",
       "csv": "MinionTypes.csv",
-      "rows": 15,
-      "csv_sha256": "d1710f0d556a16c4100bc722876cee8ea25589aeb3832b9480549a79ff0e1be4"
+      "rows": 16,
+      "csv_sha256": "afe12a74a3f82243610d7663d799df530ee538cd9ca1f56082973e5605f98d65"
     },
     {
       "asset": "DT_MaterialTiers",
@@ -172,14 +172,14 @@
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 899,
-      "csv_sha256": "e34cbb80b2ceac26f203b692f5da14ee19e8a2159a85b663c9714781ef619d11"
+      "rows": 998,
+      "csv_sha256": "01959b3f15564bb6edf617e34947bbb4f9761051091b69170f8a4d214b23db22"
     },
     {
       "asset": "DT_PassiveNodes",
       "csv": "PassiveNodes.csv",
       "rows": 661,
-      "csv_sha256": "3ac401211c4accd7450a6dd4d8adce7d91bf97b04851f47d27895598de4a9ccd"
+      "csv_sha256": "8e08a904db77317ab808b0075fac4459d04bbe6c88f7fc8952ab2e4d9e2e7a4c"
     },
     {
       "asset": "DT_SkillSlots",
@@ -203,7 +203,7 @@
       "asset": "DT_WeaponSkills",
       "csv": "WeaponSkills.csv",
       "rows": 408,
-      "csv_sha256": "9298f7895888d066abb6b15491158ccb8a08b85ece1800345425ff659566bd18"
+      "csv_sha256": "294cbc08729ee2e16c41ea498fc811c034b0df06ba809f2e9a11463c45dd6ca2"
     }
   ]
 }

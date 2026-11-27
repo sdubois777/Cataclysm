@@ -253,11 +253,13 @@ public:
 	 * Roll every chance a blow carried, now that it has landed, and apply what
 	 * the rolls give.
 	 *
-	 * THE BLOW MUST HAVE TAKEN A TENTH OF THE TARGET'S MAXIMUM HEALTH, the project
-	 * owner's rule for an ailment that does not come from the skill's own row
-	 * (#917). The threshold and the figure it is measured against, damage dealt
-	 * to health, are the ones the incidental stun has always used. So an evaded
-	 * blow, a blow a shield took, and a blow that scratched apply nothing.
+	 * THE BLOW MUST HAVE DEALT MORE THAN NOUGHT, its shield's part counted
+	 * (`BlowCanCarryAnAilment` with `Landed`), the project owner's ruling of
+	 * 2026-11-26 for an ailment that does not come from the skill's own row. A
+	 * bleed asks for health reached as well (`BlowCanCarryABleed`). The stun and
+	 * the knockdown keep their tenth of maximum health. So an evaded blow and a
+	 * blow mitigated to nought apply nothing. Until that ruling every ailment
+	 * asked the stun's tenth of maximum health, dealt to health (#917).
 	 *
 	 * A BLOW THAT KILLED APPLIES NOTHING, as `UCataclysmSkillEffects::ApplyBurn`
 	 * already refuses to set a corpse alight.
@@ -274,19 +276,39 @@ public:
 	 * @return how many ailments were applied
 	 */
 	static int32 RollOnLandedBlow(const FGameplayEffectSpec& Spec, AActor* Defender,
-								  float DealtToHealth, bool bIsBlunt, bool bCritical = false);
+								  float DealtToHealth, float Landed, bool bIsBlunt, bool bCritical = false);
 
 	/**
-	 * Whether a blow that took this much health from this defender may leave an
-	 * ailment on it: the defender is still alive, and the blow took at least a
-	 * tenth of its maximum health.
+	 * Whether a blow that landed this much on this defender may leave an ailment that is not the skill's own on it:
+	 * the defender is still alive, and the blow dealt more than nought.
 	 *
-	 * THE OWNER'S RULE OF 2026-09-02 (#917), for every ailment that does not
-	 * come from the skill's own row. `RollOnLandedBlow` asks it, and so does an
-	 * enchantment row that applies a random damage over time (issue #1833 group
-	 * D), so the two cannot hold different rules.
+	 * `Landed` IS EVERYTHING THE BLOW DEALT AFTER EVERY MITIGATION STEP: what its energy shield, its mana and a
+	 * temporary barrier absorbed, and what reached its health (`FCataclysmDamageResult::Landed`). So a blow the shield
+	 * absorbed whole may poison, burn or curse, and a blow armour or resistance took to nought applies nothing.
+	 *
+	 * THE OWNER'S RULING OF 2026-11-26: "I agree, fix it", to dropping the tenth of maximum health that #917
+	 * (2026-09-02) asked of these ailments and keeping "the hit landed and dealt more than 0 damage". THE STUN AND THE
+	 * KNOCKDOWN KEEP THEIR TENTH (`UCataclysmSkillEffects::StunDamageThresholdPercent`): they are hard stops, and the
+	 * design states the tenth for the stun. A BLEED ASKS MORE: see `BlowCanCarryABleed`.
+	 *
+	 * `RollOnLandedBlow` asks it, and so does every row action that lays an ailment, so they cannot hold different
+	 * rules.
 	 */
-	static bool BlowCanCarryAnAilment(const AActor* Defender, float DealtToHealth);
+	static bool BlowCanCarryAnAilment(const AActor* Defender, float Landed);
+
+	/**
+	 * Whether a blow may leave a BLEED on this defender: it is alive and the blow dealt damage to its HEALTH. The
+	 * owner, 2026-11-26: "bleed should be the only ailment that doesn't apply against energy shield", and of a shielded
+	 * target "you'd need to hit actual health". So a blow the shield absorbed whole lays no bleed, stated or not.
+	 *
+	 * `DealtToHealth` BELOW NOUGHT MEANS THE CALLER DOES NOT KNOW IT, and the defender's energy shield answers instead:
+	 * a shield absorbs before health, so a blow that reached health left it empty. Every caller that has the blow's
+	 * result passes its figure.
+	 */
+	static bool BlowCanCarryABleed(const AActor* Defender, float DealtToHealth);
+
+	/** Whether this kind is Bleed, the one ailment a shield keeps out. */
+	static bool IsBleed(const FCataclysmAilmentKind& Kind);
 
 	/**
 	 * The ailments an enchantment row's random damage over time chooses among,
@@ -305,7 +327,7 @@ public:
 	 * @return the ailment applied, or null when none was
 	 */
 	static const FCataclysmAilmentKind* ApplyRandomDamageOverTime(AActor* Instigator,
-																  AActor* Target);
+																  AActor* Target, bool bBleedMayBeChosen = true);
 
 	/**
 	 * The debuffs an enchantment row's random debuff chooses among, equally

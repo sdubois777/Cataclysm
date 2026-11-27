@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmRegeneration.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBoneGiants.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
@@ -78,7 +79,9 @@
 #include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmHellhoundCharacter.h"
+#include "Character/CataclysmWraithCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
+#include "Character/CataclysmLichCharacter.h"
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Components/CapsuleComponent.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
@@ -1902,8 +1905,12 @@ TSubclassOf<ACataclysmEnemyCharacter> ACataclysmDungeonGameMode::ClassFor(
 		return ACataclysmCorruptedSentinelCharacter::StaticClass();
 	case ECataclysmDungeonCreature::Succubus:
 		return ACataclysmSuccubusCharacter::StaticClass();
+	case ECataclysmDungeonCreature::Lich:
+		return ACataclysmLichCharacter::StaticClass();
 	case ECataclysmDungeonCreature::Gatekeeper:
 		return ACataclysmGatekeeperCharacter::StaticClass();
+	case ECataclysmDungeonCreature::Wraith:
+		return ACataclysmWraithCharacter::StaticClass();
 	default:
 		// NOT A FALLBACK TO SOMETHING SPAWNABLE, deliberately. A creature added
 		// to the enum and forgotten here should show up as a creature that never
@@ -2005,10 +2012,18 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Build(SuccubusRarityStep, SuccubusHealth, SuccubusAttackDamage, &SuccubusArmour);
 		break;
 
+	case ECataclysmDungeonCreature::Lich:
+		Build(LichRarityStep, LichHealth, LichAttackDamage, &LichArmour);
+		break;
+
 	// THE BOSS. Its fixed figures are `ACataclysmGameMode::GatekeeperHealth` and the two beside it, which the
 	// sandbox's `SpawnGatekeepers` uses; on a dungeon floor it is built from the score like every other creature.
 	case ECataclysmDungeonCreature::Gatekeeper:
 		Build(GatekeeperRarityStep, GatekeeperHealth, GatekeeperAttackDamage, &GatekeeperArmour);
+		break;
+
+	case ECataclysmDungeonCreature::Wraith:
+		Build(WraithRarityStep, WraithHealth, WraithAttackDamage, &WraithArmour);
 		break;
 
 	default:
@@ -2451,6 +2466,14 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// what makes "10% or less of the previous wave" a question about one wave.
 	CurrentWave.Reset();
 
+	// AND ON AN ARENA CARVED FOR THIS FLOOR, THE ABOMINATION'S TALLY BEGINS AGAIN: the Death finish's slice D
+	// (2026-11-26). What this population puts down is what "the creatures the floor started with" counts; a kept Horde
+	// arena's later wave is a rule that keeps sending, and its creatures are not noted.
+	if (!bKeptTheArena)
+	{
+		UCataclysmBoneGiants::BeginFloor(World);
+	}
+
 	// WHAT THE WAVE HAS PUT ON THE FLOOR, WHICH ONCE ALL OF IT HAS ARRIVED IS THE
 	// DENOMINATOR OF THE OWNER'S RULE. Counted up as creatures arrive rather than
 	// set once, because since issue #1544 a wave arrives over several frames;
@@ -2522,6 +2545,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 				Enemy->FloorSection = FloorSections.SectionOf(CurrentFloor->GetPlan(), Placement.Cell);
 				FloorEnemies.Add(Enemy);
 				CurrentWave.Add(Enemy);
+				// ONE OF THE CREATURES THE FLOOR STARTED WITH, on an arena carved for it (the Death finish's slice D).
+				if (!bKeptTheArena)
+				{
+					UCataclysmBoneGiants::NoteStartedWith(Enemy);
+				}
 				++Spawned;
 			}
 		}
@@ -2582,7 +2610,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		TEXT("Put %d creatures on the dungeon floor now and %d more arrive over "
 			 "the next %d frames, %d in all, in %d groups: %d Imps, %d "
 			 "Hellhounds, %d Brutes, %d Abyssal Wardens, %d Corrupted Sentinels, "
-			 "%d Succubi and %d Gatekeepers. The floor has %d walkable cells and "
+			 "%d Succubi, %d Gatekeepers, %d Wraiths and %d Liches. The floor has %d walkable cells and "
 			 "the density asked for %d. No creature stands within %d cells of "
 			 "where the player arrives. It is %s, and its modifiers are worth "
 			 "%.1f. It is wave %d of this arena, it notices from %.1f times the "
@@ -2597,6 +2625,8 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		Population.HowMany(ECataclysmDungeonCreature::CorruptedSentinel),
 		Population.HowMany(ECataclysmDungeonCreature::Succubus),
 		Population.HowMany(ECataclysmDungeonCreature::Gatekeeper),
+		Population.HowMany(ECataclysmDungeonCreature::Wraith),
+		Population.HowMany(ECataclysmDungeonCreature::Lich),
 		CurrentFloor->GetPlan().FloorCount(), Population.Wanted,
 		FCataclysmFloorPopulator::LeastCellsFromEntrance,
 		FloorBrief.bWaveWalksIn
@@ -2948,6 +2978,12 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 			NoteThePack(Enemy, WaveStillToArrive[Index]);
 			FloorEnemies.Add(Enemy);
 			CurrentWave.Add(Enemy);
+			// ONE OF THE CREATURES THE FLOOR STARTED WITH, when the wave is the first on an arena carved for it (the
+			// Death finish's slice D).
+			if (!bKeptTheArena)
+			{
+				UCataclysmBoneGiants::NoteStartedWith(Enemy);
+			}
 			++WaveSpawned;
 			++Arrived;
 		}
@@ -3271,17 +3307,22 @@ void ACataclysmDungeonGameMode::RaiseTheReaper()
 		return;
 	}
 
-	// AN ABYSSAL WARDEN AT THE ENTRANCE, AT THE COMMON RUNG, the way Unstable Portal
-	// raises its Warden at the exit. The rung is set before its modifiers are drawn;
-	// see `SpawnPlacedCreature`.
+	// A WRAITH AT THE ENTRANCE, AT THE COMMON RUNG, the way Unstable Portal raises its Warden at the exit. The rung is
+	// set before its modifiers are drawn; see `SpawnPlacedCreature`. A WRAITH SINCE 2026-11-26, the owner's ruling that
+	// the Wraith art plays The Reaper; an Abyssal Warden until then. It walks at the Warden's 2.8 metres a second and
+	// neither dashes nor grabs (`ACataclysmWraithCharacter::BecomeTheReaper`), so "slowly stalks" stays true.
 	FCataclysmEnemyPlacement Placement;
 	Placement.Cell = CurrentFloor->CellOfWorld(CurrentFloor->EntranceWorld());
-	Placement.Creature = ECataclysmDungeonCreature::AbyssalWarden;
+	Placement.Creature = ECataclysmDungeonCreature::Wraith;
 	ACataclysmEnemyCharacter* Reaper = SpawnPlacedCreature(
 		Placement, Effects::TheReaperSightMultiplier, Effects::TheReaperRung);
 	if (!Reaper)
 	{
 		return;
+	}
+	if (ACataclysmWraithCharacter* AsWraith = Cast<ACataclysmWraithCharacter>(Reaper))
+	{
+		AsWraith->BecomeTheReaper();
 	}
 	Reaper->bCannotBeHurt = true;
 	FloorEnemies.Add(Reaper);
@@ -4175,6 +4216,98 @@ void ACataclysmDungeonGameMode::NoteDeathForEchoesOfThePast(const FCataclysmDeat
 	Dead.Rung = Fallen->RarityStep;
 	Dead.Attack = Fallen->LastAttackUsed;
 	EchoesThisFloor.Add(Dead);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForRaiseTheFallen(const FCataclysmDeathNotice& Notice,
+															bool bAnotherRuleRaisedIt)
+{
+	// A DEATH IS RAISED AT MOST ONCE, whichever rule raises it: the owner's terms of 2026-11-26.
+	if (bAnotherRuleRaisedIt)
+	{
+		return;
+	}
+	// NOTHING WORTH NOTHING (a creature already risen, an echo, a spectral copy), nothing that cannot be hurt, NO LICH,
+	// so a Lich cannot raise another and nothing loops, and NO GATEKEEPER, so the Cataclysm Boss and every boss floor's
+	// keeper are refused by their class whatever rung they stand on.
+	const ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!IsValid(Fallen) || !Fallen->PaysForItsDeath() || Fallen->bCannotBeHurt
+		|| Fallen->IsA<ACataclysmLichCharacter>() || Fallen->IsA<ACataclysmGatekeeperCharacter>()
+		|| Fallen == CataclysmBoss.Get())
+	{
+		return;
+	}
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
+	if (Kind == ECataclysmDungeonCreature::Count || Kind == ECataclysmDungeonCreature::Lich
+		|| Kind == ECataclysmDungeonCreature::Gatekeeper)
+	{
+		return;
+	}
+	const UWorld* World = GetWorld();
+	FFallenToRaise Dead;
+	Dead.Kind = Kind;
+	Dead.Where = Notice.Location;
+	Dead.DiedAtSeconds = World ? World->GetTimeSeconds() : 0.0f;
+	FallenThisFloor.Add(Dead);
+}
+
+int32 ACataclysmDungeonGameMode::FallenToRaiseNear(const FVector& At, float RadiusCm) const
+{
+	int32 Near = 0;
+	for (const FFallenToRaise& Dead : FallenThisFloor)
+	{
+		if (!Dead.bRaised && FVector::DistSquared2D(Dead.Where, At) <= FMath::Square(RadiusCm))
+		{
+			++Near;
+		}
+	}
+	return Near;
+}
+
+int32 ACataclysmDungeonGameMode::RaiseTheFallenNear(ACataclysmEnemyCharacter* Raiser, const FVector& At,
+													 float RadiusCm, int32 Most)
+{
+	if (!CurrentFloor || !CurrentFloor->IsBuilt() || Most <= 0)
+	{
+		return 0;
+	}
+	int32 Raised = 0;
+	// THE MOST RECENT FIRST, a judgement (J2): the record is in the order the deaths came, so it is read from its end.
+	// No time limit: a death stays raisable until the floor ends.
+	for (int32 Which = FallenThisFloor.Num() - 1; Which >= 0 && Raised < Most; --Which)
+	{
+		FFallenToRaise& Dead = FallenThisFloor[Which];
+		if (Dead.bRaised || FVector::DistSquared2D(Dead.Where, At) > FMath::Square(RadiusCm))
+		{
+			continue;
+		}
+		// SPENT BEFORE THE SPAWN, so a death whose spawn fails is not tried again on every later cast.
+		Dead.bRaised = true;
+		FCataclysmEnemyPlacement Placement;
+		Placement.Cell = CurrentFloor->CellOfWorld(Dead.Where);
+		Placement.Creature = Dead.Kind;
+		// A COMMON OF ITS OWN KIND, WHERE IT FELL: the owner's ruling 3 of 2026-11-26, Haunting's terms.
+		ACataclysmEnemyCharacter* Risen =
+			SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, /*FixedRung=*/0);
+		if (!Risen)
+		{
+			continue;
+		}
+		// WORTH NOTHING: the creature it was paid when it died.
+		Risen->bRisenFromTheDead = true;
+		if (UAbilitySystemComponent* System = Risen->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+					* ACataclysmLichCharacter::RaisedHealthShare);
+		}
+		FloorEnemies.Add(Risen);
+		++Raised;
+		UE_LOG(LogCataclysm, Log, TEXT("Raise the Fallen: %s raised a %s at %.0f%% health"),
+			   Raiser ? *Raiser->GetName() : TEXT("nobody"), CataclysmDungeonCreatureName(Dead.Kind),
+			   ACataclysmLichCharacter::RaisedHealthShare * 100.0f);
+	}
+	return Raised;
 }
 
 void ACataclysmDungeonGameMode::DismissTheEchoes()
@@ -9058,6 +9191,15 @@ TSet<FIntPoint> ACataclysmDungeonGameMode::CellsTheFloorHolds() const
 		for (const FDivineResurgenceGrave& Grave : DivineResurgenceGraves)
 		{
 			HoldWhere(Grave.Location);
+		}
+		// THE LICH'S DEAD NOT YET RAISED, as Divine Resurgence's graves: a raise stands each where it fell, later, and
+		// spawns whatever is in the way, so no obstacle may close that cell first. 2026-11-26.
+		for (const FFallenToRaise& Dead : FallenThisFloor)
+		{
+			if (!Dead.bRaised)
+			{
+				HoldWhere(Dead.Where);
+			}
 		}
 	}
 	Held.Append(RealityRiftCells);
@@ -17020,6 +17162,9 @@ void ACataclysmDungeonGameMode::RestoreCreatureRoles(ACataclysmEnemyCharacter& C
 			Creature.bCannotBeHurt = true; // A load's: the Reaper cannot be hurt.
 			TheReaper = &Creature; // A load's: the Reaper.
 			bTheReaperRaised = true; // A load's: the Reaper has come.
+			// AND IT WALKS SLOWLY AND NEITHER DASHES NOR GRABS AGAIN, since it is a Wraith (2026-11-26): the class comes
+			// back from its archetype row as an ordinary Wraith, so the Reaper's form is put back on.
+			if (ACataclysmWraithCharacter* AsWraith = Cast<ACataclysmWraithCharacter>(&Creature)) { AsWraith->BecomeTheReaper(); } // A load's: the Reaper's form.
 		}
 		else if (Saved.RaisedBy == FName(RaisedPortalUnleashing) && VoidPortals.IsValidIndex(Saved.RaisedGroup))
 		{
@@ -17934,6 +18079,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// AND NO DEATH OF THIS DUNGEON ECHOES INTO THE NEXT. Issues #1820 and #41.
 	EchoesThisFloor.Reset();
 	EchoesFromLastFloor.Reset();
+	FallenThisFloor.Reset();
 	ForgetThePlagueHarbingers();
 	ForgetTheChoruses();
 	ForgetTheBlooms();
@@ -20700,11 +20846,15 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForMarchOfProgress(Notice);
 	// AND DEATH'S TWO ENEMY MODIFIERS THAT PUT A CREATURE BACK, 2026-11-24, before Dead Rising and Divine Resurgence for
 	// the reason that line gives: what they raise is already standing and marked when those rules look.
+	const int32 StandingBeforeTheRaisers = FloorEnemies.Num();
 	NoteDeathForUndyingWill(Notice);
 	NoteDeathForHaunting(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
 	NoteDeathForDeadRising(Notice);
+	// AND THE LICH'S RECORD, after the three rules that raise a death at once: a death one of them got back up has had
+	// its second life, and a Lich does not give it a third. Each of the three adds what it raised to `FloorEnemies`.
+	NoteDeathForRaiseTheFallen(Notice, FloorEnemies.Num() > StandingBeforeTheRaisers);
 	NoteDeathForBloodGates(Notice);
 	NoteDeathForRuleOfChaos(Notice);
 	NoteDeathForNothingIsForgotten(Notice);
@@ -21307,9 +21457,12 @@ void ACataclysmDungeonGameMode::NoteDeathForVengefulWraiths(
 		return;
 	}
 
+	// AND WHAT RISES IS A WRAITH, since 2026-11-26: the owner's ruling that the Wraith art plays Vengeful Wraiths. The
+	// slain creature's kind still decides whether anything rises at all (the refusal above), and the figures are the
+	// Wraith's own raised by the row, as they were the slain kind's raised by it before.
 	FCataclysmEnemyPlacement Placement;
 	Placement.Cell = CurrentFloor->CellOfWorld(Notice.Location);
-	Placement.Creature = Kind;
+	Placement.Creature = ECataclysmDungeonCreature::Wraith;
 
 	// THE SIGHT MULTIPLIER IS GIVEN AT THE SPAWN, not written afterwards, because that is
 	// the parameter `SpawnPlacedCreature` already takes and the floor's own creatures get
@@ -26823,6 +26976,8 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// pawn this did not reach (issue #2858). Issues #1820 and #41.
 	EchoesFromLastFloor = MoveTemp(EchoesThisFloor);
 	EchoesThisFloor.Reset();
+	// THE LICH RAISES ONLY THIS FLOOR'S DEAD: a death on the floor before lies where nobody can stand now.
+	FallenThisFloor.Reset();
 
 	// AND WHETHER THE CORRUPTED DOUBLE HUNTS THIS FLOOR, FROM THE MARK AS THE FLOOR IS ENTERED: a Horde wave too (J6, as
 	// the Stalker treats a wave). Here and not in `ApplyFloorRulesToPlayer`, which leaving a dungeon runs. Issue #2688.

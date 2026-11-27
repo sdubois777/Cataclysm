@@ -611,26 +611,39 @@ public:
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Whether this character's energy shield absorbs a BLEED. Issue #1515, then
-	 * #2014.
+	 * Whether a bleed on this character is not stopped by its energy shield: its
+	 * ticks come off the shield one for one, then off health. Issue #1515, then
+	 * #2014, then the coordinating session's ruling of 2026-11-26.
+	 *
+	 * The drawback "Energy shield can now be effected by bleed" grants it, and
+	 * nothing else does. Without it a bleed deals nothing while the shield
+	 * stands, the owner's rule of 2026-11-26, so with it the row stays a drawback.
+	 *
+	 * RENAMED ON 2026-11-26 from `ShieldAbsorbsDamageOverTime`, whose name had
+	 * not been true since issue #2014. Nothing saves it: a character's stats are
+	 * rebuilt from its passive points and its items' enchantments on load.
+	 *
+	 * ONE SITE READS IT, step 8 of `UCataclysmDamageCalculation::Resolve`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_BleedDrainsEnergyShield)
+	FGameplayAttributeData BleedDrainsEnergyShield;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, BleedDrainsEnergyShield)
+
+	/**
+	 * Whether this character's energy shield takes a blow or tick that would
+	 * bypass it, a bleed excepted: a Void Splinter's tick and a Soul Eater
+	 * creature's blow (`FCataclysmIncomingHit::bIgnoresEnergyShield`).
 	 *
 	 * `Ritualist_keystone_c_kA` Warded is the node: "Your Energy Shield absorbs
-	 * damage over time as well as hits." The drawback "Energy shield can now be
-	 * effected by bleed" grants it too.
+	 * damage that would bypass it." The owner's choice of 2026-11-26, which
+	 * replaced "absorbs damage over time as well as hits" once every kind of
+	 * damage over time but bleed reached the shield anyway.
 	 *
-	 * THE NAME IS OLDER THAN WHAT IT DOES. Until issue #2014 no tick reached the
-	 * shield and this let every kind in. Since then every kind but bleed reaches
-	 * it anyway, the project owner's rule of 2026-09-18, so this decides bleed
-	 * and nothing else. Kept under its name, by a ruling under the owner's
-	 * delegation, rather than renamed across the data and saved characters.
-	 *
-	 * ONE SITE READS IT. `UCataclysmDamageCalculation::Resolve` decides whether
-	 * the shield applies to a hit, and that is the only place in the module
-	 * where damage over time and the energy shield meet.
+	 * ONE SITE READS IT, step 8 of `UCataclysmDamageCalculation::Resolve`.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ShieldAbsorbsDamageOverTime)
-	FGameplayAttributeData ShieldAbsorbsDamageOverTime;
-	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ShieldAbsorbsWhatBypassesIt)
+	FGameplayAttributeData ShieldAbsorbsWhatBypassesIt;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ShieldAbsorbsWhatBypassesIt)
 
 	/**
 	 * Whether this character's energy shield recharges before the wait after
@@ -1232,7 +1245,8 @@ protected:
 	UFUNCTION() void OnRep_WeakenMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_PossessionThresholdBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MinionReserveReduction(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_ShieldAbsorbsDamageOverTime(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_BleedDrainsEnergyShield(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ShieldAbsorbsWhatBypassesIt(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargesWhileDamaged(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargeHasNoDelay(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AurasEndAtDeath(const FGameplayAttributeData& OldValue);

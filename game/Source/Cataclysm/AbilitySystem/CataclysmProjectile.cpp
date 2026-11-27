@@ -787,7 +787,10 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 		// `UCataclysmSkillTemplate::ApplyStatedAilmentTo` lays it for every blow that passes through `HitTargets`.
 		if (!StatedAilment.IsEmpty() && !Resolved.bEvaded && SpentMoreMultiplier > 0.0f)
 		{
-			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(StatedAilment))
+			const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(StatedAilment);
+			// A STATED BLEED STILL NEEDS HEALTH (the owner, 2026-11-26), as `ApplyStatedAilmentTo` asks.
+			if (Kind && (!UCataclysmAilments::IsBleed(*Kind)
+						 || UCataclysmAilments::BlowCanCarryABleed(Target, Resolved.DealtToHealth)))
 			{
 				UCataclysmAilments::Apply(Firer, Target, *Kind, /*Magnitude=*/1.0f, FiringSkill.Get(),
 					/*DamageType=*/NAME_None, /*Seconds=*/0.0f, /*SkillTagsWithNoSkill=*/nullptr,

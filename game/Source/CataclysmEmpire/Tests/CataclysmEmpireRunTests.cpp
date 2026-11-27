@@ -1184,13 +1184,37 @@ bool FCataclysmEmpireRunSiegeBitesDailyTest::RunTest(const FString& Parameters)
 {
 	using namespace CataclysmEmpireRunTest;
 
+	// THE CATACLYSM PINNED TO DEMONIC, whose Quest dungeons are Rifts and not Sieges, so every Siege here bites at the
+	// full share this test states. Since the project owner's ruling of 2026-11-26 that a character draws the built
+	// Cataclysms first (`UCataclysmRoster::OrderFor`), seed 1 faces War instead of Pestilence, and War's Quest dungeons
+	// are Sieges that bite at `FCataclysmDungeon::QuestSiegeBiteShare`, a quarter: window dfb-w1 read exactly a quarter
+	// of every figure below. The siege code is unchanged; the test had relied on which Cataclysm seed 1 happened to draw.
+	int32 OrderSeed = INDEX_NONE;
+	for (int32 Candidate = 1; Candidate <= 100 && OrderSeed == INDEX_NONE; ++Candidate)
+	{
+		if (UCataclysmRoster::OrderFor(Candidate)[0] == ECataclysmType::Demonic)
+		{
+			OrderSeed = Candidate;
+		}
+	}
+	if (!TestTrue(TEXT("set-up: an order seed drawing Demonic first was found"), OrderSeed != INDEX_NONE))
+	{
+		return false;
+	}
+	const auto MakePinnedRun = [OrderSeed](int32 Seed)
+	{
+		UCataclysmEmpireRun* Pinned = NewObject<UCataclysmEmpireRun>();
+		Pinned->BeginForCharacter(Seed, OrderSeed);
+		return Pinned;
+	};
+
 	// A SEED WHOSE FIRST WAVE CONTAINS A SIEGE, found by looking. Most seeds
 	// have one, but not all: the first wave is 12 dungeons since 2026-10-20,
 	// and this comment said "four" and "10 in 100" from earlier still.
 	int32 SiegeSeed = INDEX_NONE;
 	for (int32 Seed = 1; Seed <= 200 && SiegeSeed == INDEX_NONE; ++Seed)
 	{
-		UCataclysmEmpireRun* Trial = MakeRun(Seed);
+		UCataclysmEmpireRun* Trial = MakePinnedRun(Seed);
 		Trial->AdvanceDay();
 
 		for (const FCataclysmDungeon& Dungeon : Trial->Dungeons)
@@ -1209,7 +1233,7 @@ bool FCataclysmEmpireRunSiegeBitesDailyTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UCataclysmEmpireRun* Run = MakeRun(SiegeSeed);
+	UCataclysmEmpireRun* Run = MakePinnedRun(SiegeSeed);
 	Run->AdvanceDay();
 
 	// WHICH CITIES ARE BESIEGED, AND WHICH HOLD ONLY ORDINARY DUNGEONS. The

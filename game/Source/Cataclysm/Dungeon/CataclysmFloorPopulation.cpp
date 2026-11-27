@@ -16,9 +16,16 @@ const TCHAR* CataclysmDungeonCreatureName(ECataclysmDungeonCreature Creature)
 	case ECataclysmDungeonCreature::AbyssalWarden:		return TEXT("AbyssalWarden");
 	case ECataclysmDungeonCreature::CorruptedSentinel:	return TEXT("CorruptedSentinel");
 	case ECataclysmDungeonCreature::Succubus:			return TEXT("Succubus");
+	case ECataclysmDungeonCreature::Lich:				return TEXT("Lich");
 	case ECataclysmDungeonCreature::Gatekeeper:			return TEXT("Gatekeeper");
+	case ECataclysmDungeonCreature::Wraith:				return TEXT("Wraith");
 	default:											return TEXT("Unknown");
 	}
+}
+
+ECataclysmDungeonCreature FCataclysmFloorPopulator::EscortFor(ECataclysmType Cataclysm)
+{
+	return Cataclysm == ECataclysmType::Death ? ECataclysmDungeonCreature::Lich : ECataclysmDungeonCreature::Succubus;
 }
 
 int32 FCataclysmFloorPopulation::HowMany(ECataclysmDungeonCreature Creature) const
@@ -63,10 +70,28 @@ const TArray<FCataclysmFloorPopulator::FPackKind>& FCataclysmFloorPopulator::Pac
 	return Kinds;
 }
 
-const TArray<FCataclysmFloorPopulator::FPackKind>& FCataclysmFloorPopulator::PackKindsFor(ECataclysmType /*Cataclysm*/)
+const TArray<FCataclysmFloorPopulator::FPackKind>& FCataclysmFloorPopulator::PackKindsFor(ECataclysmType Cataclysm)
 {
-	// EVERY CATACLYSM POINTS AT THE DEMONIC SEVEN UNTIL ITS OWN ROSTER EXISTS: the same array, so no floor changes. See
-	// the header. Slice B37 gives Death and War theirs.
+	// DEATH HAS THE WRAITH WHERE THE OTHERS HAVE THE HELLHOUND, a group of three, the project owner's ruling of
+	// 2026-11-26 ("for 4. yes use the wraith"). The same weights and the same order otherwise, so a Death floor draws
+	// exactly the floor any other Cataclysm would with that one kind changed. Every other Cataclysm still points at
+	// the Demonic seven until its own roster exists. A FUNCTION-LOCAL STATIC, for the unity-build reason `PackKinds`
+	// gives.
+	if (Cataclysm == ECataclysmType::Death)
+	{
+		static const TArray<FPackKind> DeathKinds = [] {
+			TArray<FPackKind> Kinds = PackKinds();
+			for (FPackKind& Kind : Kinds)
+			{
+				if (Kind.Creature == ECataclysmDungeonCreature::Hellhound)
+				{
+					Kind.Creature = ECataclysmDungeonCreature::Wraith;
+				}
+			}
+			return Kinds;
+		}();
+		return DeathKinds;
+	}
 	return PackKinds();
 }
 
@@ -499,7 +524,8 @@ FCataclysmFloorPopulation FCataclysmFloorPopulator::Populate(
 		{
 			FCataclysmEnemyPlacement Escort;
 			Escort.Cell = Plan.CellAt(Nearby[Spare].Value);
-			Escort.Creature = ECataclysmDungeonCreature::Succubus;
+			// THE SENDING CATACLYSM'S ESCORT: the Lich for Death, the Succubus otherwise. 2026-11-26.
+			Escort.Creature = EscortFor(Brief.Cataclysm);
 			Escort.Pack = Pack;
 
 			Out.Enemies.Add(Escort);

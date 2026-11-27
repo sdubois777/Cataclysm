@@ -346,7 +346,10 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 		// being long gone. Nothing for a weapon whose row states none, which is Harrower's.
 		if (!Carried.StatedAilment.IsEmpty() && Dealt > 0.0f && !Resolved.bEvaded && !bKilledIt)
 		{
-			if (const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(Carried.StatedAilment))
+			const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamedInASkillRow(Carried.StatedAilment);
+			// A STATED BLEED STILL NEEDS HEALTH (the owner, 2026-11-26), as `ApplyStatedAilmentTo` asks.
+			if (Kind && (!UCataclysmAilments::IsBleed(*Kind)
+						 || UCataclysmAilments::BlowCanCarryABleed(NextHost, Resolved.DealtToHealth)))
 			{
 				UCataclysmAilments::Apply(Credited, NextHost, *Kind, /*Magnitude=*/1.0f, /*Skill=*/nullptr,
 					/*DamageType=*/NAME_None, /*Seconds=*/0.0f, /*SkillTagsWithNoSkill=*/&Carried.SkillTags,

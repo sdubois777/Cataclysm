@@ -102,7 +102,11 @@ RESERVE_KEY = "FervourReserve"
 #:
 #: ELEVEN SINCE SLICE DS4 THE SAME DAY: Grave Mouth, 2 for each wisp, written
 #: whole once N12 was built. The Effigy still waits, and brings it to twelve.
-RESERVING_SKILLS = 11
+#:
+#: TWELVE SINCE THE DEATH FINISH SLICE A (2026-11-26): the Effigy, 5 while it
+#: stands, written whole once C4 was built and issue #1934 had made a placed
+#: machine hold its reserve.
+RESERVING_SKILLS = 12
 
 
 def skills() -> list[dict]:

@@ -419,7 +419,7 @@ Ritualist_basic_c_b1,Ritualist,basic_c_b1,basic,Steady Hand,+2% increased Spell 
 Ritualist_basic_c_b2,Ritualist,basic_c_b2,basic,Held Together,+3% increased Energy Shield Regeneration per point.,8,0,490.8,825.0,,,,,,
 Ritualist_basic_c_c0,Ritualist,basic_c_c0,basic,Unhurried,+2 Crowd Control Resistance per point.,8,0,687.3,132.7,,,,,,
 Ritualist_basic_c_c1,Ritualist,basic_c_c1,basic,Reserve,+2% increased maximum Fervour per point.,6,0,574.4,50.7,,,,,,
-Ritualist_keystone_c_kA,Ritualist,keystone_c_kA,keystone,Warded,Your Energy Shield absorbs damage over time as well as hits.,1,0,942.4,-183.2,,,,,,
+Ritualist_keystone_c_kA,Ritualist,keystone_c_kA,keystone,Warded,Your Energy Shield absorbs damage that would bypass it.,1,0,942.4,-183.2,,,,,,
 Ritualist_keystone_c_kB,Ritualist,keystone_c_kB,keystone,Ablative,"Your Energy Shield recharges while you are taking damage, at half its usual rate.",1,0,280.7,918.1,,,,,,
 Ritualist_keystone_c_kC,Ritualist,keystone_c_kC,keystone,Sacrificial Ward,"Damage that would break your Energy Shield instead destroys the minion with the least health remaining, no more than once every 3 seconds.",1,0,461.6,-31.3,,,,,,
 Ritualist_capstone_25,Ritualist,capstone_25,capstone,The First Pact,Unlocks at 25 points spent. Choose one. The choice is permanent.,1,25,-1408.2,960.0,Bound Servants,Your minions deal 5% increased damage and have 5% increased health for each minion you have.,Warded Flesh,"Each time one of your minions dies, you regain 10% of your Maximum Energy Shield.",Open Channel,An enemy that dies carrying your curse raises two imps rather than one.

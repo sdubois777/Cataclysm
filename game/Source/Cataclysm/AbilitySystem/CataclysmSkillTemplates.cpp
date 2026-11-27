@@ -1,12 +1,14 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmDetonation.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 // For a buried axe's row, captured when it is thrown. Issue #2764, slice 2a.
 #include "Character/CataclysmSkillLevels.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmMovement.h"
+#include "AbilitySystem/CataclysmNecromancerArmy.h"
 // The bodies a trade fits into each other's places. Issue #2792.
 #include "Components/PrimitiveComponent.h"
 // For the allies inside a point-blank skill's area, struck for a share of its blow. Ruled 2026-10-15.
@@ -39,6 +41,7 @@
 // For Summon Imp's kind, made for a commander that holds no summon skill: a Wand
 // Ritualist's Press-Ganged replacement and The Swarm's minion at a kill. The
 // demonic tree rework of 2026-11-24.
+#include "AbilitySystem/CataclysmRemains.h"
 #include "AbilitySystem/CataclysmRisenImps.h"
 // For whether a kill's victim was an enemy of the commander's. The same rework.
 #include "AbilitySystem/CataclysmTeams.h"
@@ -49,6 +52,8 @@
 // For the flee step Compel's order asks. Issue #2560.
 #include "AbilitySystem/CataclysmFear.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// Shadow Step's target, the Death line's finishing slice E (2026-11-26).
+#include "AbilitySystem/CataclysmShadowImages.h"
 // For telling a player character's throw from any other, where Cripple is read. Issue #2273.
 #include "Character/CataclysmPlayerCharacter.h"
 // For a thrall's Compel strike, ordered as a rule's. Issue #783.
@@ -139,9 +144,11 @@ namespace
 		// `UCataclysmCommand::ThrallReserveScaleFor` scales it. One for anything else: no creature named, a row that does
 		// not possess, and a creature that is not a designed one.
 		const float ByRarity = Params.bPossess ? UCataclysmCommand::ThrallReserveScaleFor(Taken) : 1.0f;
+		// AND ASKED WITH `Minion.Permanent` WHEN THE ROW MAKES A PERMANENT MINION OR TAKES A THRALL, so the Necromancer's
+		// Lighter Bones and Lone Revenant reach that reserve and no other (the Death line's finishing slice B, 2026-11-26).
 		return UCataclysmCommand::ReserveFor(
 			Self, Params.FervourReserve * static_cast<float>(UCataclysmSkillLevels::CostFactorOf(Skill)) * ByRarity,
-			SkillTags);
+			UCataclysmNecromancerArmy::TagsOfARaise(SkillTags, Params.bPermanent || Params.bPossess));
 	}
 }
 
@@ -175,6 +182,11 @@ void UCataclysmStrikeSkill::ActivateAbility(
 		UAbilitySystemComponent* Spender = GetAbilitySystemComponentFromActorInfo();
 		const float Rest = UCataclysmFervour::SpendAll(Spender);
 		FervourSpentThisUse = FervourCostFor(Spender) + Rest;
+
+		// AND THE REST IS PART OF WHAT THIS USE SPENT IN ALL, beside the cost `CommitAndBegin` counted: Pyre sizes the wave
+		// by every Fervour it spent (the Death finish slice A, 2026-11-26).
+		FervourSpentByThisUse += Rest;
+		MarkTheUseAsSpendingFervour();
 
 		// AND THE REST IS A SPEND, recorded as `ApplyCost` records the cost: the clock, `fervour_spent` with the
 		// amount and this skill's tags, Cinders Kept's share, and the War classes' count of Fervour spent. The Death
@@ -550,7 +562,8 @@ int32 UCataclysmStrikeSkill::SwingOnce(float DamagePercent)
 	//
 	// THE SAME AREA THE ENEMIES WERE FOUND IN, the cone at the apex, or every direction when a row rolled that this use
 	// hits all around (`ThisUseHitsAllWithinCm`); a cone of 360 degrees is a ring.
-	if (Params.bDetonates)
+	// ASKED OF EVERY SWING since the finishing of the Death Cataclysm (2026-11-26): whether its minions go off is asked
+	// inside `DetonateOwnMinionsWhere` (the row's key, or Lit Fuse).
 	{
 		const bool bAllAround = ThisUseHitsAllWithinCm > 0.0f;
 		const float Reach = bAllAround ? FMath::Max(ThisUseHitsAllWithinCm, ScaledRadiusCm()) : ScaledRadiusCm();
@@ -1742,11 +1755,9 @@ void UCataclysmProjectileSkill::OnProjectileFinished(
 		// N3: the Staff's Marrow Lance, "every minion of yours on the line explodes". ONCE, AS IT FINISHES, ALONG THE
 		// WHOLE FLIGHT, a judgement of slice DS2: the line is known only now, as the ground's is above, and a lance
 		// stopped by a wall detonates nothing beyond it. Its own radius is the line's width, so the circle a shot that
-		// stops on its first enemy lands in is the line's far end.
-		if (Params.bDetonates)
-		{
-			DetonateOwnMinionsAlong(Projectile->StartedAt, Projectile->FurthestReached, ScaledRadiusCm());
-		}
+		// stops on its first enemy lands in is the line's far end. ASKED OF EVERY SHOT since the finishing of the Death
+		// Cataclysm (2026-11-26); `DetonateOwnMinionsWhere` asks the key, or Lit Fuse.
+		DetonateOwnMinionsAlong(Projectile->StartedAt, Projectile->FurthestReached, ScaledRadiusCm());
 
 		// AND THE CURSES ON WHAT IT STRUCK ARE COPIED OUTWARD. The Wand's
 		// Malefice: "copying every curse it already carries onto the two nearest
@@ -2333,17 +2344,15 @@ int32 UCataclysmProjectileSkill::Land()
 
 	// AND THE CASTER'S OWN MINIONS IN THE BEAM'S AREA EXPLODE, IF THE ROW SAYS SO: its line when it pierces, the
 	// circle it lands in when it does not, the two searches above. Issue #2885, the Death draft's N3. A shot with a
-	// speed detonates when it finishes, along the line it flew (`OnProjectileFinished`).
-	if (Params.bDetonates)
+	// speed detonates when it finishes, along the line it flew (`OnProjectileFinished`). ASKED OF EVERY SHOT since the
+	// finishing of the Death Cataclysm (2026-11-26); `DetonateOwnMinionsWhere` asks the key, or Lit Fuse.
+	if (Pierces > 0)
 	{
-		if (Pierces > 0)
-		{
-			DetonateOwnMinionsAlong(Origin, Destination, ScaledRadiusCm());
-		}
-		else
-		{
-			DetonateOwnMinionsAround(Destination, ScaledRadiusCm());
-		}
+		DetonateOwnMinionsAlong(Origin, Destination, ScaledRadiusCm());
+	}
+	else
+	{
+		DetonateOwnMinionsAround(Destination, ScaledRadiusCm());
 	}
 
 	// AND EVERYTHING THE CASTER COMMANDS STRIKES THE SAME ENEMY, IF THE ROW SAYS
@@ -3495,11 +3504,8 @@ void UCataclysmMovementSkill::LayTheRowsEffectsOn(const TArray<AActor*>& Struck)
 
 void UCataclysmMovementSkill::DetonateWhereItArrived(const FVector& Start, const FVector& End)
 {
-	if (!Params.bDetonates)
-	{
-		return;
-	}
-
+	// ASKED OF EVERY MOVE since the finishing of the Death Cataclysm (2026-11-26): `DetonateOwnMinionsWhere` asks the
+	// row's key, or Lit Fuse, around the minions.
 	// MODE BY MODE, THE SEARCH `ActivateAbility` MADE FOR THE ENEMIES, so a minion is exploded exactly where an enemy
 	// standing in its place would have been struck.
 	const float Reach = ScaledRadiusCm();
@@ -3913,6 +3919,23 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// your axe in the FIRST enemy within 12 meters and haul yourself to it".
 	FVector End = ConditionalDestination(Start);
 
+	// AND SHADOW STEP TAKES IT BEHIND AN ENEMY AIMED AT: "Your movement skill can target any enemy within 15 metres that
+	// you can see and puts you behind it" (the Death line's finishing slice E, 2026-11-26). Only a move that goes where
+	// the player pointed (a leap, a blink, a charge that arrives once), as the random direction below: a move whose
+	// `Requires` names its creature, a return, a trade, a flicker and a walked charge each have their own destination.
+	// Aimed at no such enemy, the move is as it was: "can".
+	AActor* SteppedBehind = nullptr;
+	if ((Params.MovementMode == ECataclysmMovementMode::Leap || Params.MovementMode == ECataclysmMovementMode::Blink
+		 || Params.MovementMode == ECataclysmMovementMode::Charge)
+		&& !RequiresCondition(TEXT("Burning")) && !RequiresCondition(TEXT("Target")))
+	{
+		SteppedBehind = UCataclysmShadowImages::ShadowStepTarget(Self, AimPoint(), SkillTags);
+		if (SteppedBehind)
+		{
+			End = UCataclysmMovement::SpotBehind(Self, SteppedBehind);
+		}
+	}
+
 	// AND A ROW MAY SEND IT IN A RANDOM DIRECTION INSTEAD: "Your movement abilities now move you in a random
 	// direction". Ruled 2026-10-07. ONLY A MOVE THAT GOES WHERE THE PLAYER POINTED. One that travels to a creature
 	// its `Requires` names takes a target and not a direction, and a return and a trade replace the end point
@@ -3922,7 +3945,7 @@ void UCataclysmMovementSkill::ActivateAbility(
 	if (Params.MovementMode != ECataclysmMovementMode::Recall
 		&& Params.MovementMode != ECataclysmMovementMode::Swap
 		&& !RequiresCondition(TEXT("Burning")) && !RequiresCondition(TEXT("Target"))
-		&& RolledDirection(RolledWay))
+		&& !SteppedBehind && RolledDirection(RolledWay))
 	{
 		End = Start + RolledWay * FVector::Dist2D(Start, End);
 	}
@@ -3939,6 +3962,32 @@ void UCataclysmMovementSkill::ActivateAbility(
 	{
 		End = MarkedAt;
 		MarkExpiresAt = 0.0;
+	}
+
+	// AND GRAVE SWAP, the Necromancer's Second Rite's first option: "Your movement skill can swap places with any of your
+	// minions". A move aimed at one of the mover's own minions, within the skill's range, trades places with it instead of
+	// going to the point; the move's own blows, ground and effects land where it arrives, as for any arrival. Aimed
+	// anywhere else, it moves as it always did. Vesselstep trades already, and a return goes to its mark, so neither
+	// asks. The Death line's finishing slice B (2026-11-26).
+	bool bGraveSwapped = false;
+	if (Params.MovementMode != ECataclysmMovementMode::Recall && Params.MovementMode != ECataclysmMovementMode::Swap)
+	{
+		AActor* GraveSwapPartner = nullptr;
+		FVector GraveSwapSelfTo = FVector::ZeroVector;
+		FVector GraveSwapPartnerTo = FVector::ZeroVector;
+		if (UCataclysmNecromancerArmy::ChooseGraveSwapPartner(Self, AimPoint(), ScaledRangeCm(), GraveSwapPartner,
+															  GraveSwapSelfTo, GraveSwapPartnerTo))
+		{
+			const FVector GraveSwapPartnerWas = GraveSwapPartner->GetActorLocation();
+			End = GraveSwapSelfTo;
+			GraveSwapPartner->TeleportTo(GraveSwapPartnerTo, GraveSwapPartner->GetActorRotation(), /*bIsATest=*/false,
+										  /*bNoCheck=*/true);
+			UCataclysmMovement::NoteRelocatedInstantly(GraveSwapPartner, GraveSwapPartnerWas);
+			SwappedWith = GraveSwapPartner;
+			bGraveSwapped = true;
+			UE_LOG(LogCataclysm, Log, TEXT("GRAVE SWAP: '%s' traded %s's place with %s."), *SkillName,
+				   *GetNameSafe(Self), *GetNameSafe(GraveSwapPartner));
+		}
 	}
 
 	// AND A TRADE GOES WHERE ONE OF THE CASTER'S OWN CREATURES IS STANDING, AND
@@ -4070,11 +4119,18 @@ void UCataclysmMovementSkill::ActivateAbility(
 	// HOLLOW STEP: the move passes through enemies, for the move only, and never ends inside one (the Death trees'
 	// slice C6e). A Swap's teleport is not stopped by anything, so it only gains the line hit below.
 	const bool bThroughEnemies = PassesThroughEnemies();
-	if (Params.MovementMode == ECataclysmMovementMode::Swap)
+	// AND A GRAVE SWAP'S HALF THE SAME WAY, its fit asked by `UCataclysmNecromancerArmy::ChooseGraveSwapPartner`.
+	if (Params.MovementMode == ECataclysmMovementMode::Swap || bGraveSwapped)
 	{
 		// THE CASTER'S HALF OF THE EXCHANGE: unswept, and unchecked because `ChooseTradePartner` asked the fit.
 		// Issue #2792.
 		Self->TeleportTo(End, Self->GetActorRotation(), /*bIsATest=*/false, /*bNoCheck=*/true);
+	}
+	else if (SteppedBehind)
+	{
+		// SHADOW STEP'S ARRIVAL: put behind the creature, unswept, as Thousand Cuts puts the wearer beside one, since a
+		// sweep would stop against the creature it is going round.
+		UCataclysmMovement::PlaceBehind(Self, SteppedBehind);
 	}
 	else
 	{
@@ -4107,9 +4163,12 @@ void UCataclysmMovementSkill::ActivateAbility(
 
 	// A BLINK, A TRADE AND A RETURN ARE INSTANT RELOCATIONS; A LEAP AND A CHARGE TRAVEL, and stay counted as
 	// ground moved, which is the 2026-09-12 judgement that a movement skill that travels is movement. Issue #2388.
+	// AND A SHADOW STEP IS ONE, whatever the skill's mode.
 	if (Params.MovementMode == ECataclysmMovementMode::Blink
 		|| Params.MovementMode == ECataclysmMovementMode::Swap
-		|| Params.MovementMode == ECataclysmMovementMode::Recall)
+		|| Params.MovementMode == ECataclysmMovementMode::Recall
+		|| SteppedBehind
+		|| bGraveSwapped)
 	{
 		UCataclysmMovement::NoteRelocatedInstantly(Self, SelfWas);
 	}
@@ -4873,6 +4932,11 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 			Machine->BeginTaunting(Params.RadiusCm, Params.Interval);
 		}
 
+		// AND IT WIDENS ITS PLACER'S SIPHON, WHEN THE ROW SAYS SO: the Effigy, "If you have the Siphon keystone, the effigy
+		// siphons the enemies around it too" (the Crossbow draft's C4, the Death finish slice A, 2026-11-26). Marked here
+		// whatever the placer holds; `FCataclysmSiphon::Step` reads it only for a placer with a Siphon.
+		Machine->bWidensSummonersSiphon = Params.bSiphonsAround;
+
 		// AND THE SABOTEUR'S FERVOUR FOR PLACING IT, "Placing a trap or a gadget generates Fervour". Slice C, 2026-11-24.
 		// A MACHINE THAT IS A TRAP earns the trap-placed rate and raises no event: `trap_placed` is the skill traps'
 		// event (`ACataclysmMinion::PlaceSkillTrap`), and a War trap never raised it, so raising it here would reach
@@ -5156,10 +5220,15 @@ void UCataclysmSummonSkill::RecordTheSkillOn(ACataclysmMinion* Minion) const
 	// Choir, "fight beside you until they are destroyed". `Spawn` refuses a lifetime of nought, so it was given the
 	// summon's own and loses it here; the engine's `SetLifeSpan(0)` is "never expires", as a skill gadget's is
 	// (`PlaceSkillGadget`). Its reserve is held while it stands and is what limits the army, as a thrall's is.
+	// AND IT CARRIES `Minion.Permanent`, WITH ITS HEALTH KEPT LIVE FROM ITS TYPE ROW: the Necromancer's Legion rows require
+	// the tag, and their health reaches it as they change (the Death line's finishing slice B, 2026-11-26).
 	if (Params.bPermanent)
 	{
-		Minion->SetLifeSpan(0.0f);
+		UCataclysmNecromancerArmy::MakePermanent(Minion);
 	}
+
+	// AND WHETHER IT ROSE FROM THE DEAD, which a Death summon skill's minion did and Second Death asks (slice B).
+	UCataclysmNecromancerArmy::NoteMadeBy(Minion, SkillTags);
 
 	// AND ITS BLOWS LAY THE ROW'S EFFECT, WHEN THE ROW SAYS SO. Issue #2885, the Death draft's N11: Bone Choir's mages,
 	// "every bolt they throw Cripple what they hit, 20% slower for 2 seconds". Each effect the skill itself would lay,
@@ -5648,7 +5717,16 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	// "Summoning a fourth destroys the oldest, which explodes" with it ("Drop it with the cap"). The pool is the
 	// limit: a press is refused, with nothing made and nothing destroyed, when it cannot hold the new imp's reserve
 	// (issue #1934, ruling R1).
-	const float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
+	//
+	// AND GRAVEFINDER'S REMAINS, CHOSEN BEFORE THE RESERVE IS ASKED: the Death finish's slice D (2026-11-26). The nearest
+	// of the caster's own remains within its reach of where this rises; the minion rises on them, and Bone-Bound lowers
+	// what it reserves, so a raise on remains can fit where one off them would not.
+	ACataclysmRemainsMarker* RisesOn = UCataclysmRemains::ChooseToRaiseOn(Self, RiftLocation);
+	float Reserve = FervourReserveFor(Self, Params, SkillTags, this);
+	if (RisesOn)
+	{
+		Reserve = UCataclysmRemains::ReserveOnRemains(Self, Reserve);
+	}
 	if (!UCataclysmCommand::HasRoomToReserve(Self, Reserve))
 	{
 		UE_LOG(LogCataclysm, Verbose,
@@ -5673,7 +5751,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
 
 	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
-		Self, RiftLocation, Lifetime, Params.bBurns, SummonedType);
+		Self, RisesOn ? RisesOn->GetActorLocation() : RiftLocation, Lifetime, Params.bBurns, SummonedType);
 	if (Minion)
 	{
 		// WHAT ITS DEATH WOULD EXPLODE FOR, TOLD NOW WHILE THE ROW IS IN HAND.
@@ -5689,6 +5767,13 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		// Offering's spend (the Death trees' slice C3b).
 		UCataclysmCommand::HoldReserve(Self, Minion, Reserve, &SkillTags);
 
+		// AND RAISED ON THE REMAINS GRAVEFINDER CHOSE: its tag (Raised on Bones), the event (Bone Fuse's and Grave
+		// Robber's Fervour) and the remains consumed unless Two From One keeps them. The Death finish's slice D.
+		if (RisesOn)
+		{
+			UCataclysmRemains::RaiseOn(Self, Minion, RisesOn);
+		}
+
 		// AND IT TAUNTS THE ENEMIES NEAR IT, WHEN THE ROW SAYS SO, from the moment it rises and once a second after.
 		// Issue #2885, C3: Shallow Graves' husks, "every enemy within 4 meters of a husk turns on it and attacks it".
 		// The row's own radius, as the explosion radius above is.
@@ -5696,8 +5781,60 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		{
 			Minion->BeginTaunting(Params.RadiusCm, ACataclysmMinion::RowTauntEverySeconds);
 		}
+
+		// AND THE USE MAY RAISE ONE MORE: Teeming Grave (the finishing of the Death Cataclysm), ROLLED ONCE A USE, at the
+		// first minion the use raises, as the coordinating session ruled at the bundle's assembly on 2026-11-26: "Each
+		// time a summon skill raises minions ... one more".
+		if (!bExtraRaiseRolledThisUse && !bRaisingOneMore)
+		{
+			bExtraRaiseRolledThisUse = true;
+			RaiseOneMoreIfRolled(Minion);
+		}
+
+		// AND RISE TOGETHER'S ROLL FOR A SECOND BESIDE IT, for a permanent minion: the Death line's finishing slice B
+		// (2026-11-26). Nothing for any other row or a commander with no such row.
+		UCataclysmNecromancerArmy::RollToRaiseASecond(Self, this, Minion);
 	}
 	return Minion;
+}
+
+ACataclysmMinion* UCataclysmSummonSkill::RaiseOneMoreIfRolled(const ACataclysmMinion* Raised)
+{
+	// ONE MORE AND NO CHAIN: the one this raises does not roll again, or a high chance would raise without end.
+	if (bRaisingOneMore || !IsValid(Raised))
+	{
+		return nullptr;
+	}
+	AActor* Self = Avatar();
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Self));
+	if (!Mine)
+	{
+		return nullptr;
+	}
+
+	// THE SKILL'S TAGS AND THE RAISED MINION'S, so a row naming a kind of minion reaches only it. Teeming Grave ("Each
+	// time a summon skill raises minions, it has an 8% chance per point to raise one more"), ROLLED ONCE A USE: the
+	// caller, `SummonOne`, asks only at the first minion each use raises. The coordinating session's ruling of
+	// 2026-11-26 at the bundle's assembly; see `docs/DECISIONS.md`.
+	FGameplayTagContainer Asked = SkillTags;
+	Asked.AppendTags(Raised->TypeTags);
+	const float Chance = Mine->StatForSkill(FName(UCataclysmDetonation::ExtraRaiseChanceStat), Asked, 0.0f);
+	if (Chance <= 0.0f || (Chance < 100.0f && FMath::FRand() * 100.0f >= Chance))
+	{
+		return nullptr;
+	}
+
+	// RAISED AS THE FIRST WAS, so the pool must hold its reserve too; a refusal raises nothing.
+	TGuardValue<bool> Guard(bRaisingOneMore, true);
+	ACataclysmMinion* More = SummonOne();
+	if (More)
+	{
+		++ExtraMinionsRaised;
+		UE_LOG(LogCataclysm, Display, TEXT("'%s' raised one more %s (a %.0f%% chance)."), *SkillName, *More->TypeName,
+			   Chance);
+	}
+	return More;
 }
 
 void UCataclysmSummonSkill::ActivateAbility(
@@ -5710,6 +5847,9 @@ void UCataclysmSummonSkill::ActivateAbility(
 	{
 		return;
 	}
+
+	// A NEW USE, WHICH MAY ROLL ONCE FOR ONE MORE (Teeming Grave; `RaiseOneMoreIfRolled`).
+	bExtraRaiseRolledThisUse = false;
 
 	AActor* Self = Avatar();
 	if (!Self)
@@ -5767,10 +5907,23 @@ void UCataclysmSummonSkill::ActivateAbility(
 		return;
 	}
 
+	int32 Raised = 0;
+	bool bNoRoom = false;
 	for (int32 Index = 0; Index < FMath::Max(1, Params.Count); ++Index)
 	{
-		SummonOne();
+		if (SummonOne())
+		{
+			++Raised;
+		}
+		else
+		{
+			bNoRoom = !UCataclysmCommand::HasRoomToReserve(Self, FervourReserveFor(Self, Params, SkillTags, this));
+		}
 	}
+
+	// AND WHAT THE NECROMANCER'S LEGION DOES AFTER A PRESS OF A PERMANENT SUMMON: Bone Lord's two more when it raised any,
+	// Reforged's heal when the pool had no room. Nothing for any other row (the Death line's finishing slice B).
+	UCataclysmNecromancerArmy::AfterASummon(Self, this, Raised, bNoRoom);
 
 	// DELIBERATELY NOT ENDED. The ability instance is what holds the minion
 	// list, and ending it is fine -- the list lives on the instance, which is

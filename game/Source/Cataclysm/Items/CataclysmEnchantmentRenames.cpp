@@ -110,7 +110,7 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		{TEXT("Positive_Each_void_splinter_stack_on_an_enemy_increases_y"),
 		 TEXT("Positive_You_deal_3_5_more_damage_to_an_enemy_carrying")},
 		{TEXT("Positive_Your_energy_shield_absorbs_10_20_of_HP_damage"),
-		 TEXT("Positive_10_20_of_bleed_damage_you_take_is_taken_from_y")},
+		 TEXT("Positive_You_take_10_20_less_damage_from_bleeding")},
 		{TEXT("Positive_Your_movement_abilities_no_longer_share_a_cooldo"),
 		 TEXT("Positive_Your_movement_ability_has_2_charges")},
 		{TEXT("Positive_Your_melee_skills_have_20_40_increased_reach"),
@@ -199,6 +199,15 @@ const TMap<FName, FName>& FCataclysmEnchantmentRenames::Aliases()
 		 TEXT("Negative_Point_blank_AOE_skills_have_a_1_2_second_cast_de")},
 		{TEXT("Negative_Critical_strikes_trigger_a_0_5_1_second_global_c"),
 		 TEXT("Negative_Critical_strikes_trigger_a_1_2_second_global_coo")},
+		//
+		// AND ONE ON 2026-11-26, the owner's choice: "10%-20% of bleed damage you
+		// take is taken from your energy shield instead of your health" became "You
+		// take 10%-20% less damage from bleeding", because under the owner's rule of
+		// the same day a bleed deals nothing while the shield stands, so the old row
+		// could do nothing. The row it had been renamed from (above) now points at
+		// the new name too, so nothing chains.
+		{TEXT("Positive_10_20_of_bleed_damage_you_take_is_taken_from_y"),
+		 TEXT("Positive_You_take_10_20_less_damage_from_bleeding")},
 	};
 	return Table;
 }
