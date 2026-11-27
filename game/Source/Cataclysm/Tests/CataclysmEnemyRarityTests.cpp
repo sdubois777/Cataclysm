@@ -525,4 +525,58 @@ bool FCataclysmRarityBodyScaleTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// How big a body is for its health, on the rarity steps' own ladder. The owner, 2026-11-27, of the Bone Colossus: "it
+// should start larger, and grow with the same scale as enemies".
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRarityBodyScaleForHealthTest,
+	"Cataclysm.EnemyRarity.ABodyWithARungsHealthIsDrawnAtThatRungsSize",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRarityBodyScaleForHealthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnemyRarityTest;
+
+	const UDataTable* Table = FRarity::LoadEnemyRarityTable();
+	if (!TestNotNull(TEXT("the enemy rarity table loads"), Table))
+	{
+		return false;
+	}
+
+	// EVERY RUNG: a body with that rung's health multiple of a Common's is drawn at that rung's size.
+	TArray<float> Multiples;
+	for (int32 Step = 0; Step <= 5; ++Step)
+	{
+		float Health = 1.0f;
+		float Damage = 1.0f;
+		float Armour = 1.0f;
+		FRarity::ScalingFromCommon(Table, Step, Health, Damage, Armour);
+		Multiples.Add(Health);
+		TestEqual(FString::Printf(TEXT("step %d's health multiple %.4f is drawn at step %d's size"), Step, Health, Step),
+			FRarity::BodyScaleForHealthMultiple(Table, Health), FRarity::BodyScaleForStep(Table, Step), 0.001f);
+	}
+
+	// BETWEEN TWO RUNGS, on the same ladder: halfway up in log terms is halfway up in size, in log terms.
+	const float BetweenEliteAndLegendary = FMath::Sqrt(Multiples[1] * Multiples[2]);
+	TestEqual(TEXT("between Elite and Legendary, the geometric middle of their sizes"),
+		FRarity::BodyScaleForHealthMultiple(Table, BetweenEliteAndLegendary),
+		FMath::Sqrt(FRarity::BodyScaleForStep(Table, 1) * FRarity::BodyScaleForStep(Table, 2)), 0.001f);
+
+	// ABOVE THE TOP RUNG, the top rung's size; BELOW COMMON, smaller than a Common and still above nothing.
+	TestEqual(TEXT("ten times a Cataclysm Boss's health is drawn at a Cataclysm Boss's size"),
+		FRarity::BodyScaleForHealthMultiple(Table, Multiples[5] * 10.0f), FRarity::BodyScaleForStep(Table, 5), 0.001f);
+	const float Hurt = FRarity::BodyScaleForHealthMultiple(Table, 0.5f);
+	TestTrue(FString::Printf(TEXT("half a Common's health is drawn smaller than a Common (%.4f)"), Hurt),
+		Hurt < 1.0f && Hurt > 0.0f);
+
+	// CONTROL: the rule this replaced, the cube root of the multiple, does not give a Legendary a Legendary's size.
+	TestFalse(TEXT("CONTROL: the cube root of a Legendary's health multiple is not a Legendary's size"),
+		FMath::IsNearlyEqual(FMath::Pow(Multiples[2], 1.0f / 3.0f), FRarity::BodyScaleForStep(Table, 2), 0.001f));
+	// AND WITH NO TABLE, its own size.
+	TestEqual(TEXT("with no table, a body is its own size"), FRarity::BodyScaleForHealthMultiple(nullptr, 3.0f), 1.0f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
