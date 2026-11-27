@@ -18,10 +18,10 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT BUILT, NOT RUN IN UNREAL AND NOT SEEN.** Automation tests do not render. The owner is asked to look at the
-  Greatsword, Sword, Dagger and Warhammer in the hand, and at the Spear, Crossbow and Shield, which were not changed.
-- **`DT_WeaponMeshes` must be rebuilt in the editor** before the game reads the new columns; until then
-  `test_every_csv_still_hashes_to_what_was_recorded` fails in Python, and the new table test fails in Unreal.
+- **WINDOW grip-w1 PASSED IN UNREAL ON `b5836f16e`, AND NOTHING HAS BEEN SEEN.** Automation tests do not render. The
+  owner is asked to look at the Greatsword, Sword, Dagger and Warhammer in the hand, and at the Spear, Crossbow and
+  Shield, which were not changed.
+- **`DT_WeaponMeshes` was rebuilt in the window's editor step**: "Imported DataTable 'DT_WeaponMeshes' - 0 Problems".
 - **This branch carries a workbook edit**, which git cannot merge with another branch's.
 
 ### The owner's report, verbatim
@@ -51,6 +51,21 @@ The figures for all nine meshes are in `game/docs/weapon-source-assets.md`.
 - **Left as they were, and named for the owner to look at:** the Spear is held at its butt end; which way the
   Crossbow's stock points and where the Shield's strap is were not read.
 - No genre research applies: this is where a piece of art sits in a hand, not a formula or a mechanic.
+
+### Window grip-w1, on `b5836f16e`
+
+- Build: "Succeeded - 99 actions, 89 files compiled".
+- `Cataclysm.WeaponMesh.` alone: "13 tests performed, 13 succeeded, 0 failed"; 9 skipped part of what they check,
+  because the weapons pack is not in a worktree, `AnEquippedGreatswordIsHeldByItsGripAndTheNextWeaponIsNotTurned`
+  among them. "Test saves: 0 written and deleted, 0 left behind".
+- The whole suite: "6141 tests performed, 6141 succeeded, 0 failed", the base's 6138 and this branch's 3; 62 skipped
+  part of what they check; "Test saves: 895 written and deleted, 0 left behind".
+- Python beside it: "9721 passed, 10 skipped"; JUnit 9,731 tests, 0 failures. ruff: all checks passed.
+- C++ proof, prefix `Cataclysm.WeaponMesh.`: in `GripFrom`, `Location` set to nought unless `Drawn < 0`. PROVED: with
+  the break in, "13 tests performed, 11 succeeded, 2 failed: AGripPointIsPutOnTheHandSocket,
+  TheGreatswordsRowHoldsItByItsGripAndTheAxesByItsOrigin", the two predicted; restored, the run passed.
+- Python proof, in a `git archive` copy: `DrawWeaponsInHands` set back to `SetRelativeScale3D(FVector(Scale))`.
+  PROVED: `test_the_hand_is_placed_by_the_grip` failed with it in; restored, "12 passed, 1 skipped".
 
 ---
 
