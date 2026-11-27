@@ -4374,8 +4374,11 @@ void ACataclysmDungeonGameMode::RaiseTheEchoes(const ACataclysmPlayerCharacter* 
 		FCataclysmEnemyPlacement Placement;
 		Placement.Creature = Dead.Kind;
 		Placement.Cell = Population.Enemies[Chosen[Index]].Cell;
-		// A SIGHT MULTIPLIER OF ONE, so it notices from its own kind's distance and not the floor's widened one. R3.
-		ACataclysmEnemyCharacter* Echo = SpawnPlacedCreature(Placement, 1.0f, Dead.Rung);
+		// THE FLOOR'S SIGHT MULTIPLIER, which is one everywhere but a Horde dungeon: there it notices as the Horde's
+		// own creatures do, from afar. The owner, 2026-11-27: "they just need to follow the mob aggro rules for hordes
+		// if it's a horde dungeon". Until then a multiplier of one in every dungeon (R3), so a Horde arena's echoes
+		// waited.
+		ACataclysmEnemyCharacter* Echo = SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, Dead.Rung);
 		if (!Echo)
 		{
 			// IT CANNOT STAND ON THIS FLOOR, so it is not left to come.
@@ -4454,14 +4457,22 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 			continue;
 		}
 
-		// WAITING: IT NOTICES THE PLAYER AT ITS OWN KIND'S NOTICE DISTANCE, along the floor (R3), and from then on
+		// WAITING: IT NOTICES THE PLAYER AT ITS OWN KIND'S NOTICE DISTANCE, along the floor (R3; a Horde dungeon's
+		// widened distance there, below), and from then on
 		// moves in to its reach of them, held to `EchoesMostAwayCm` (R4). The reach is `ReachAgainstCm`, the brain's
 		// own, so a rarer and so bigger echo, or a Brute's whose reach is its contact distance, can still come within it.
 		// AN ECHO THAT CANNOT WALK -- its designed walk speed is nought, the Corrupted Sentinel -- STRIKES FROM ITS FULL
 		// REACH instead, as the coordinating session ruled on 2026-11-18; see `EchoesStrikeWithinCm`.
+		// IN A HORDE DUNGEON IT NOTICES FROM THE FLOOR'S WIDENED DISTANCE (`NoticesFromCm`, its sight multiplier
+		// being the floor's) AND ITS GIVE-UP CLOCK RUNS ONLY WITHIN ITS OWN KIND'S NOTICE DISTANCE, so it walks in from
+		// anywhere and keeps R4's ten seconds from where it would ordinarily have noticed. Ruled by the coordinating
+		// session on 2026-11-27 for the owner, who wants Horde echoes to "come attack you". Elsewhere the two
+		// distances are one.
+		const float OwnNoticeCm = Echo->NoticeRadiusCm;
+		const float ApartCm = FVector::Dist2D(Echo->GetActorLocation(), Feet);
 		if (One.SecondsSinceNoticed < 0.0f)
 		{
-			if (FVector::Dist2D(Echo->GetActorLocation(), Feet) > Echo->NoticeRadiusCm)
+			if (ApartCm > Echo->NoticesFromCm())
 			{
 				continue;
 			}
@@ -4470,12 +4481,13 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 			Echo->EchoMovesInToCm = Effects::EchoesStrikeWithinCm(
 				ACataclysmEnemyController::ReachAgainstCm(Echo, Player), Echo->DesignedWalkSpeedCmPerSecond > 0.0f);
 		}
-		else
+		else if (DungeonSubType != ECataclysmDungeonSubType::Horde || ApartCm <= OwnNoticeCm)
 		{
 			One.SecondsSinceNoticed += BeatSeconds;
 		}
 
 		// GIVEN UP: `EchoesGiveUpAfterSeconds` AFTER NOTICING, NOT HAVING STRUCK, IT VANISHES WITHOUT STRIKING. R4.
+		// In a Horde dungeon, counted only while within its own kind's notice distance; see above.
 		if (One.SecondsSinceNoticed >= Effects::EchoesGiveUpAfterSeconds)
 		{
 			Spend(One.Which);

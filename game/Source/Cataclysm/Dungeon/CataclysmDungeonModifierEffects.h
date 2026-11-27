@@ -2737,7 +2737,10 @@ public:
 	 *   `EchoesVanishAfterSeconds` later. Its ordinary attack is its own swing, measured against its reach when it
 	 *   lands, so a player who steps out of it is not struck; the strike is spent either way. One that has not struck
 	 *   `EchoesGiveUpAfterSeconds` after noticing vanishes without striking. Each echo runs its own clock. The two
-	 *   rulings in this item are the coordinating session's of 2026-11-18, after phase 1.
+	 *   rulings in this item are the coordinating session's of 2026-11-18, after phase 1. IN A HORDE DUNGEON it
+	 *   notices from the floor's widened distance, as the Horde's own creatures do (`NoticesFromCm`), and its give-up
+	 *   clock runs only within its own kind's notice distance: the owner's play test and the coordinating session's
+	 *   ruling of 2026-11-27.
 	 * - AN ECHO CANNOT BE HURT, PAYS NOTHING, IS RAISED BY THE RULE AND TAKES NO HOSTILE ACTION OF ITS OWN: its brain
 	 *   only stands it still and walks it in (`ACataclysmEnemyCharacter::bIsAnEchoOfThePast`), and the game mode
 	 *   makes its one attack.

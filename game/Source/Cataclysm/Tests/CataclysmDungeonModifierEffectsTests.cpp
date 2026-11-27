@@ -28842,6 +28842,130 @@ bool FCataclysmEchoesStrikeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// IN A HORDE DUNGEON AN ECHO NOTICES THE PLAYER AS THE HORDE'S OWN CREATURES DO, from the floor's widened distance, so
+// it comes for a player standing five times its own notice distance away, AND IS STILL STANDING WHEN IT REACHES ITS
+// OWN KIND'S NOTICE DISTANCE: its ten-second give-up clock (R4) starts there. ANYWHERE ELSE IT WAITS at that distance
+// until the player is within its own, and the clock starts at noticing, as before (the control). The owner's play test
+// of 2026-11-27: "the echoes don't come attack you, they wait till you get into their aggro range ... they just need
+// to follow the mob aggro rules for hordes if it's a horde dungeon". The clock rule is the coordinating session's
+// ruling of the same day.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesHordeAggroTest,
+	"Cataclysm.DungeonModifierEffects.InAHordeDungeonAnEchoComesForThePlayerFromAfarAndElsewhereItWaits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesHordeAggroTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// What one floor showed: whether the first echo moved in on a player five times its own notice distance away,
+	// whether it still stood after longer than its give-up time out there, and, once the player was within its own
+	// notice distance, whether it stood a beat short of the give-up time and was gone at it.
+	struct FWhatItDid
+	{
+		bool bMovedInFromAfar = false;
+		bool bStandingAfterTheWalk = false;
+		bool bStandingABeatShort = false;
+		bool bGoneOnTime = false;
+		float Multiplier = 0.0f;
+		float EchoMultiplier = 0.0f;
+		float NoticeCm = 0.0f;
+	};
+
+	// THE SAME FLOORS TWICE, A HORDE DUNGEON'S AND AN ORDINARY ONE'S: floor 2's two deaths, then floor 3 carrying the
+	// row. A beat does not move a creature, so the echo stays where it stands while the player is far: the walk in is
+	// that stretch of time.
+	constexpr float TimesItsOwnNotice = 5.0f;
+	const auto OneFloor = [this](bool bHorde, FWhatItDid& Out) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a test world was created"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPossessedPlayer Player(World);
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TwoDieOnFloorTwo(*this, World, Player, Mode) || !GiveThePlayerHealthForTypedDamage(*this, Player))
+		{
+			return false;
+		}
+		if (bHorde)
+		{
+			Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+		}
+		Mode->DungeonModifiers = {EchoesRow};
+		if (!TestTrue(TEXT("set-up: floor 3 was reached"), Mode->GoToFloor(3)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
+		if (!TestEqual(TEXT("set-up: two echoes stand"), Echoes.Num(), 2))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* const First = Echoes[0];
+		const auto Stands = [First]() { return IsValid(First) && !First->IsActorBeingDestroyed(); };
+		Out.Multiplier = Mode->FloorBrief.SightRadiusMultiplier;
+		Out.EchoMultiplier = First->SightRadiusMultiplier;
+		Out.NoticeCm = First->NoticeRadiusCm;
+
+		// FAR: five times its own notice distance.
+		StandThePlayerFrom(Player, First, Echoes[1], Out.NoticeCm * TimesItsOwnNotice);
+		Beat(Mode, 1);
+		Out.bMovedInFromAfar = First->EchoMovesInOn.Get() == Player.Character;
+		Beat(Mode, BeatsFor(Effects::EchoesGiveUpAfterSeconds) + 2);
+		Out.bStandingAfterTheWalk = Stands();
+
+		// WITHIN ITS OWN NOTICE DISTANCE, short of where it strikes. Not if it is already gone.
+		if (!Out.bStandingAfterTheWalk)
+		{
+			return true;
+		}
+		StandThePlayerFrom(Player, First, First, Out.NoticeCm - 100.0f);
+		Beat(Mode, 1);
+		Beat(Mode, BeatsFor(Effects::EchoesGiveUpAfterSeconds) - 1);
+		Out.bStandingABeatShort = Stands();
+		Beat(Mode, 1);
+		Out.bGoneOnTime = !Stands();
+		return true;
+	};
+
+	FWhatItDid InTheHorde;
+	FWhatItDid Elsewhere;
+	if (!OneFloor(/*bHorde=*/true, InTheHorde) || !OneFloor(/*bHorde=*/false, Elsewhere))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("ECHOES AND HORDE AGGRO: the floor's multiplier %.0f in the Horde, %.0f elsewhere; "
+								 "the echo's own notice %.0f cm; the player stood %.0f cm away"),
+							InTheHorde.Multiplier, Elsewhere.Multiplier, InTheHorde.NoticeCm,
+							InTheHorde.NoticeCm * TimesItsOwnNotice));
+	TestEqual(TEXT("set-up: a Horde floor's creatures notice from thirty times their own distance"),
+			  InTheHorde.Multiplier, FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier, 0.001f);
+	TestEqual(TEXT("set-up: an ordinary floor's from their own"), Elsewhere.Multiplier, 1.0f, 0.001f);
+	TestEqual(TEXT("A HORDE FLOOR'S ECHO IS RAISED WITH THE FLOOR'S MULTIPLIER"), InTheHorde.EchoMultiplier,
+			  InTheHorde.Multiplier, 0.001f);
+	TestEqual(TEXT("CONTROL: an ordinary floor's with one"), Elsewhere.EchoMultiplier, 1.0f, 0.001f);
+
+	TestTrue(TEXT("IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY"),
+			 InTheHorde.bMovedInFromAfar);
+	TestTrue(TEXT("AND IS STILL STANDING WHEN IT REACHES ITS KIND'S NOTICE DISTANCE, longer than its give-up time on"),
+			 InTheHorde.bStandingAfterTheWalk);
+	TestTrue(TEXT("its clock starts there: a beat short of ten seconds within it, it still stands"),
+			 InTheHorde.bStandingABeatShort);
+	TestTrue(TEXT("and at ten it is gone"), InTheHorde.bGoneOnTime);
+
+	TestFalse(TEXT("CONTROL: elsewhere it waits at that distance"), Elsewhere.bMovedInFromAfar);
+	TestTrue(TEXT("CONTROL: waiting, it still stands"), Elsewhere.bStandingAfterTheWalk);
+	TestTrue(TEXT("CONTROL: its clock starts at noticing: a beat short of ten seconds, it still stands"),
+			 Elsewhere.bStandingABeatShort);
+	TestTrue(TEXT("CONTROL: and at ten it is gone"), Elsewhere.bGoneOnTime);
+	return true;
+}
+
 // WHAT IS RECORDED: NOT A DEATH THAT PAYS NOTHING; EVERY OTHER DEATH, NO LIMIT; THE RECORD COVERS ONE FLOOR; A FLOOR
 // WITHOUT THE ROW BRINGS NONE; HORDE WAVES BRING THEM; LEAVING THE DUNGEON FORGETS THEM. Until issue #2740 only the last
 // six were kept.

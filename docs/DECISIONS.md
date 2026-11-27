@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — In a Horde dungeon Echoes of the Past come for the player from afar, as the Horde's own creatures do, and their ten-second give-up clock starts only at their own kind's notice distance
+
+**Said first:**
+
+- **The owner's play test, 2026-11-27:** "I just had the echoes of the past modifier on a horde dungeon. And the echoes
+  don't come attack you, they wait till you get into their aggro range. So that means you have to run around the
+  entire outside of the map until they all attack in order to clear the map. It's an easy thing to miss, they just
+  need to follow the mob aggro rules for hordes if it's a horde dungeon".
+- **The cause, from the code:** a Horde dungeon's creatures notice the player from thirty times their own distance
+  (`FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier`, given to each by `FloorBrief.SightRadiusMultiplier` when
+  it is placed). The echoes were raised with a multiplier of one in every dungeon, and
+  `StepEchoesOfThePast` compared the player's distance with the echo's own `NoticeRadiusCm`. Both were R3 of issue
+  #2740. So in a Horde arena every echo waited for the player to come near.
+
+### What changed
+
+- **`ACataclysmDungeonGameMode::RaiseTheEchoes`**: an echo is raised with the floor's sight multiplier,
+  `FloorBrief.SightRadiusMultiplier`, which is one everywhere but a Horde dungeon.
+- **`ACataclysmDungeonGameMode::StepEchoesOfThePast`**: an echo notices the player from `NoticesFromCm()`, its own
+  distance times that multiplier. **Its give-up clock (R4, `EchoesGiveUpAfterSeconds`, ten seconds) runs, in a Horde
+  dungeon, only while the player is within the echo's own kind's notice distance**, so it walks in from anywhere and
+  keeps R4's ten seconds from where it would ordinarily have noticed. **Everywhere else nothing changes**: the two
+  distances are one, and the clock starts at noticing.
+- **Ruled by the coordinating session on 2026-11-27**: "In a Horde dungeon, the 10 s give-up clock (R4) starts only
+  once the echo is within its own kind's notice distance. It walks in from anywhere and keeps R4's 10 s from there.
+  Everywhere else, nothing changes." The spawn and notice changes were approved in the same message, **overriding R3
+  in Horde dungeons only**.
+- **A test**, `Cataclysm.DungeonModifierEffects.InAHordeDungeonAnEchoComesForThePlayerFromAfarAndElsewhereItWaits`:
+  the same floors in a Horde dungeon and an ordinary one, the player five times the echo's own notice distance away.
+  In the Horde the echo is raised with the floor's multiplier, moves in, and still stands after longer than its
+  give-up time out there; within its own notice distance it stands a beat short of ten seconds and is gone at ten.
+  The control, elsewhere: it is raised with one, waits, and its clock starts at noticing, as before.
+- An echo that cannot walk (the Corrupted Sentinel) notices from afar in a Horde dungeon and cannot come; its clock
+  starts when the player comes within its own notice distance, so it waits as it did before.
+
+### The other modifiers: swept, none changed
+
+Every creature a modifier places was checked for the sight multiplier it is given and for whether anything compares
+its distance with `NoticeRadiusCm` directly. **Only Echoes of the Past did both.**
+
+- **Thirty, always:** the Reaper, the Wraiths, the Vampire Lord, the Angelic Wardens, the Abyssal Rifts' hunter, the
+  Corrupted Stalker, and the waves of Pandora's Box, the War Banner, Battlefield Relics, Forced Tithes and the Grim
+  Totems.
+- **The floor's, so thirty in a Horde dungeon:** Morale Break, Luxury Hoarders, Infested Veins, the Unstable Portal,
+  Cryptquake and the raised dead.
+- **One, and not affected:** the Demonic Guide, which never attacks.
+
+### Registered for window eh-w1
+
+- **The base is window bc-w1's whole-suite engine log** (`bc_whole_engine.log`, `ab09edba1`, whose tree is
+  development `efd26843a`'s but for this log): 6105 performed, all succeeding, 62 skipped halves, 893 test saves
+  written and deleted, 0 left behind. Counted from the tree: the base declares 6054 tests and this branch 6055, the one
+  new test above; the run's gap of 51 above the declared count stays.
+- **The whole suite: 6106 performed, all succeeding**, 62 skipped halves, 0 test saves left behind; the number written
+  is not predicted. The Python suite beside it.
+- **No group alone**: the new test joins `Cataclysm.DungeonModifierEffects.`, which is not new.
+- **Three C++ guard proofs**, in one `prove_cpp_guard` call each, against the new test:
+  - **EHS**: `RaiseTheEchoes`' `SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, Dead.Rung)` becomes
+    `SpawnPlacedCreature(Placement, 1.0f, Dead.Rung)`, the spawn as it was. Must fail "A HORDE FLOOR'S ECHO IS RAISED
+    WITH THE FLOOR'S MULTIPLIER" and "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE
+    AWAY", and nothing else.
+  - **EHN**: `if (ApartCm > Echo->NoticesFromCm())` becomes `if (ApartCm > Echo->NoticeRadiusCm)`, the notice as it
+    was. Must fail "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY", and nothing
+    else.
+  - **EHC**: `else if (DungeonSubType != ECataclysmDungeonSubType::Horde || ApartCm <= OwnNoticeCm)` becomes `else`,
+    the clock as it was. Must fail "AND IS STILL STANDING WHEN IT REACHES ITS KIND'S NOTICE DISTANCE", "its clock
+    starts there" and "and at ten it is gone" (a gone echo is not walked in further), and nothing else.
+
+---
+
 ## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
 
 **Affects:**
