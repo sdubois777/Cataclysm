@@ -73,6 +73,135 @@ stops generation (`EMPIRE_TREE_DECORATION_KINDS`). The file's `viewport` (the bu
 
 ---
 
+## 2026-11-27 — Enemy Corrupted Sentinels walk: toward the player at 2.5 m/s, planting to fire once they have a clear shot within their bolt's range
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.h` and `.cpp`: `DesignedWalkSpeedCmPerSecond`
+  250 (it was 0); `HasAClearShotAt`, a trace on the visibility channel.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`: `HasAClearShotAt`, true for every character that does not
+  say otherwise.
+- `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`: `Think` uses no ability and makes no attack on a
+  target it has no clear shot at, and closes on it instead.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`: `CreatureCannotMove` asks for a floor source or
+  a creature designed not to walk; the rift hunters' and the echoes' comments give reasons true now.
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`: the same two comments.
+- `sim/cataclysm_sim/enemy_stats.py` (`move_speed` 2.5, a new role) and `game/Data/EnemyArchetypes.csv`, regenerated.
+- `docs/Cataclysm_GDD_v2.md`: the Corrupted Sentinel's section, its role, and the archetype sentence.
+- Tests: four new in `Cataclysm.Sentinel.`; `CataclysmCorruptedSentinelTests.cpp`'s walking speed; the `#2793` follow
+  test, the Echoes test, the three "cannot move" tests and the floor sections test's comment; three Python checks.
+
+### SAID FIRST
+
+- **BUILT AND RUN IN WINDOW cs-w1, 2026-11-27; NOT SEEN IN PLAY.** Nobody has watched a Sentinel walk on a real floor.
+  A world built for a test has no navigation system, so the tests show what the brain orders, not a walk across a
+  floor (see "Window cs-w1" below).
+- **`DT_EnemyArchetypes` was rebuilt in the window's editor step** (10 rows), so
+  `test_every_csv_still_hashes_to_what_was_recorded` passes again.
+- **THE WHOLE SUITE FOUND TWO TESTS THE BRANCH HAD NOT MOVED**, both fixed and re-run before this entry was written:
+  `Cataclysm.Enemy.CommanderReachesEveryCreatureThatCanBeBuffed` still held a buffed Sentinel at walk speed 0 (it is
+  now 3 m/s, its 2.5 m/s times the buff's 1.2, and still below the slowest class's 3.5); and
+  `Cataclysm.DungeonModifierEffects.AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound` failed three runs of three on
+  a draw no test pinned. Since #2943 what rises under Vengeful Wraiths is a Wraith, which draws its own rung
+  (`WraithRarityStep`, -1 by default), and it drew Herald, then Boss, past Volatile Evolution's ceiling of Herald. The
+  test helper `AFloorCarryingTheWraithsRow` now pins it to 0 beside the Imp's pin. **Not shown: that this branch could
+  not have made that draw likelier.** The test passed once in the Bone Colossus window earlier the same day.
+- **The design already said "the Sentinel does not fire without line of sight"; the game did not check.** Until this
+  change the brain fired any ability whose target was in range, walls or not; only the bolt's flight was stopped by
+  geometry. The Sentinel now checks.
+- **IT NOTICES AT 16 METRES, NOT 14.** At its range alone it noticed only a player it could already shoot, so on an
+  ordinary floor it would have walked only to get round a wall. The coordinating session ruled 17.5 metres, the
+  Succubus's ratio of notice to range, then **corrected it to 16 metres, the Succubus's 2 metre margin, because 17.5
+  broke the spacing rule**: groups stand `LeastCellsBetweenPacks` cells apart (1600 cm) and must stand further apart
+  than any creature notices, or walking into one pulls the next, and 5 cells would have thinned every floor
+  (the session's own correction, recorded at its request).
+
+### The owner's words, verbatim
+
+"same thing with corrupted sentinels. I thought we decided they should be able to move" (2026-11-27, after a
+Horde-style quest dungeon). Asked to choose, the owner picked **"Walk everywhere"**: enemy Sentinels always walk slowly
+toward the player and plant to fire. That replaced the design's "The Corrupted Sentinel never moves at any rarity" and
+"Stationary ranged. Forces the player to stay mobile".
+
+### What it does
+
+- **It walks at 2.5 m/s**, a judgement the coordinating session stated to the owner: slower than every class (3.5, 4.0
+  and 4.6), so a player can always walk away from one. In the data: `move_speed` in `sim/cataclysm_sim/enemy_stats.py`,
+  which makes `game/Data/EnemyArchetypes.csv`; `tools/tests/test_sentinel_matches_the_model.py` holds the C++ constant
+  to it, as for every creature.
+- **Once it has noticed the player it walks toward them, stops where it has a clear shot within its bolt's range, and
+  fires.** It walks again when the player breaks its line of sight or leaves its range. It never retreats, and it does
+  not wander (`SentinelRoamRadiusCm` stays 0).
+- **It never fires while moving**: the brain stops it before any wind-up begins (`UseAbilitiesOn`), and without a clear
+  shot it begins none.
+- **The clear shot** is a trace from its middle to the target's on the visibility channel, both bodies left out, the
+  trace a projectile's flight and `UCataclysmCommand::ThingsCommandedInSightOf` make. Pawns do not block it.
+- **It plays its jog walking and its rooted pose planted**, as a taken Sentinel already did (#2793), at the unmeasured
+  rate of 1.0.
+- **It notices a player at 16 metres** (`SentinelNoticeRadiusCm`, 1400 until now), two metres beyond its range, so it
+  walks in to fire on any floor. The sandbox's Sentinel moved from 1500 to 1850 cm, beyond it.
+- **Its mortar and bolt are unchanged.** The Gatekeeper's mortar, "exactly as the Sentinel's", is unaffected: the
+  Gatekeeper does not ask for a clear shot (a test holds it).
+
+### The coordinating session's rulings, 2026-11-27, on what was built on "it cannot walk"
+
+1. **ECHOES OF THE PAST**: a Sentinel's echo moves in like any walker's, held to 6 metres, as the Lich's and the
+   Succubus's are. The rule is keyed on a designed walk speed above 0, so this followed by itself; the test that used
+   the Sentinel as its echo that cannot walk now shows it walking in. The "cannot walk" branch stays as a guard no
+   creature uses today. **Only comment lines of `StepEchoesOfThePast` changed**, not its notice or give-up clock lines.
+2. **ABYSSAL RIFTS' HUNTERS** keep the Sentinel out: a hunter's job is to close on the player, and at 2.5 m/s a Sentinel
+   catches nobody. The stated reason became "kinds that can close on a player"; no behaviour changed.
+3. **`CreatureCannotMove`** (Shadowy Enemies and Necrotic Ground, #2334) no longer lists the Sentinel: it walks to the
+   player and can be led out of the dark or the fog. It now asks for a floor source or a creature designed not to walk,
+   which no creature but a floor source is. Tested: a ring of Sentinels no longer stops Necrotic Ground's fog, and a
+   ring of plague beacons still does.
+4. **FLOOR SECTIONS** keep their rule that no Sentinel is placed outside a section; the test's comment no longer gives
+   "never moves" as its reason.
+5. **THE STALE COMMENTS** that said it never moves are corrected in this branch: `CataclysmCharacterBase.h`,
+   `CataclysmEnemyCharacter.h` and `.cpp`, `CataclysmSuccubusCharacter.h`, `CataclysmFloorBrief.h`,
+   `CataclysmDataRows.h`, `CataclysmGameMode.h` (the Succubus's, the Sentinel's and the Gatekeeper's spawn notes) and
+   `CataclysmFloorPopulationTests.cpp`.
+6. **THE GATEKEEPER CHECK** (`tools/tests/test_gatekeeper_matches_the_model.py`) looked for two constants by names that
+   do not exist, `AbyssalWardenNoticeRadiusCm` and `CorruptedSentinelNoticeRadiusCm`, so it never compared the Warden
+   or the Sentinel. The names are fixed and its claim is now "furthest except the Corrupted Sentinel, which walks in".
+
+### Window cs-w1, 2026-11-27
+
+| Step | Result |
+|---|---|
+| Build, merge head `a7ed4d5c6` | Succeeded - 98 actions, 88 files compiled |
+| Editor step | `DT_EnemyArchetypes` rebuilt, 10 rows; committed as `dc0031e51` |
+| `Cataclysm.Sentinel.` alone, first run | 10 performed, 8 succeeded: `ItCarriesItsDesignedProfile` still held the notice to the bolt's 14 m, and `ItDoesNotFireWhileItWalks` read a walk status of idle |
+| The same, after both were fixed (`2cb8a24ec`) | 10 performed, 10 succeeded |
+| Whole suite, `2cb8a24ec` | **6109 performed**, 6107 succeeded, 2 failed (the two tests above); 893 saves written and deleted, 0 left behind |
+| Python beside it, `2cb8a24ec` | 9672 passed, 10 skipped; JUnit: 9682 tests, 0 failures, 0 errors, 10 skipped. Ruff: all checks passed |
+| After both were fixed (`25c582599`) | `Cataclysm.DungeonModifierEffects.` 788 of 788; `Cataclysm.Enemy.` 19 of 19 |
+| C++ guard proof, `Cataclysm.Sentinel.` | **PROVED.** `HasAClearShotAt` made to answer yes always: 10 performed, 1 failed, `ItWalksAgainWhenItsLineOfSightBreaksAndTheGatekeepersMortarDoesNotAsk`, the one predicted; restored, 10 of 10 |
+
+The whole suite was not run again after the last two tests changed; only their two groups were.
+
+**THE WALKING TEST READS WHAT THE BRAIN ORDERED, NOT A WALK'S STATUS.** A world built for a test has no navigation
+system, so `GetMoveStatus` never reports moving there. As the coordinating session ruled for that case, the test reads
+`ACataclysmEnemyController::MovesOrdered`, a new count of walks ordered through `MoveTo` whether or not they could be
+made: while walking it ordered a walk and began no ability; planted, it ordered no further walk and began a wind-up.
+
+### Unreal tests
+
+New, in `Cataclysm.Sentinel.`:
+- `Cataclysm.Sentinel.ItClosesFromBeyondItsRangeAndPlantsToFire`
+- `Cataclysm.Sentinel.ItDoesNotFireWhileItWalks`
+- `Cataclysm.Sentinel.ItWalksAgainWhenItsLineOfSightBreaksAndTheGatekeepersMortarDoesNotAsk`
+- `Cataclysm.Sentinel.ItNoticesAPlayerAtSixteenMetresAndWalksInToFireButNotAtEighteen`
+
+Renamed, because their names stopped being true:
+- `...MinionFollowSpeed.ATakenSentinelWalksAtItsCommandersPaceAndNobodysStaysRooted` to
+  `...AndNobodysAtItsOwn`;
+- `...DungeonModifierEffects.AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn` to
+  `...ASentinelsEchoNowWalksInToSixMetresAsASuccubussDoes`;
+- `...DungeonModifierEffects.ACorruptedSentinelAndAFloorSourceCannotMoveAndAnImpCan` to
+  `...AFloorSourceCannotMoveAndACorruptedSentinelAndAnImpCan`.
+
+---
+
 ## 2026-11-27 — The Soul Collector's keystones use Fervour and the dead rather than keep Fervour: eight keystones and eleven small nodes rewritten
 
 **Affects:**

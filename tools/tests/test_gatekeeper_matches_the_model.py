@@ -1333,12 +1333,12 @@ def test_it_notices_further_than_anything_else_in_the_sandbox():
     for name, header_name, cpp_name in (
             ("the Brute", "CataclysmBruteCharacter.h", "BruteNoticeRadiusCm"),
             ("the Abyssal Warden", "CataclysmAbyssalWardenCharacter.h",
-             "AbyssalWardenNoticeRadiusCm"),
+             "WardenNoticeRadiusCm"),
             ("the Hellhound", "CataclysmHellhoundCharacter.h",
              "HellhoundNoticeRadiusCm"),
             ("the Imp", "CataclysmImpCharacter.h", "ImpNoticeRadiusCm"),
             ("the Corrupted Sentinel", "CataclysmCorruptedSentinelCharacter.h",
-             "CorruptedSentinelNoticeRadiusCm"),
+             "SentinelNoticeRadiusCm"),
             ("the Succubus", "CataclysmSuccubusCharacter.h",
              "SuccubusNoticeRadiusCm")):
         path = CHARACTER_DIR / header_name
@@ -1354,12 +1354,21 @@ def test_it_notices_further_than_anything_else_in_the_sandbox():
             "this test knows, so there is nothing to compare against. A skip "
             "means this did not run, not that it passed.")
 
+    # THE TWO NAMES ABOVE WERE WRONG UNTIL 2026-11-27, so the Warden and the
+    # Sentinel were never compared. FURTHEST EXCEPT THE CORRUPTED SENTINEL, which
+    # walks in from 16 metres since then: the coordinating session's wording.
+    assert {"the Abyssal Warden", "the Corrupted Sentinel"} <= set(radii), (
+        f"the Warden's or the Sentinel's notice constant was not found: {radii}")
+    sentinel = radii.pop("the Corrupted Sentinel")
     mine = constant("GatekeeperNoticeRadiusCm")
     assert mine > max(radii.values()), (
-        f"the Gatekeeper notices at {mine} cm and something else notices "
-        f"further: {radii}. Both the header and CataclysmGameMode.h say this "
-        f"is the largest in the game, and the spawn distance was chosen "
-        f"because of it.")
+        f"the Gatekeeper notices at {mine} cm and something other than the "
+        f"Corrupted Sentinel notices further: {radii}. CataclysmGameMode.h says "
+        f"it is the largest but the Sentinel's, and the spawn distance was "
+        f"chosen because of it.")
+    assert sentinel > mine, (
+        f"CONTROL: the Corrupted Sentinel notices at {sentinel} cm, no further "
+        f"than the Gatekeeper's {mine}; the exception is no longer one.")
 
 
 def test_no_creature_stands_inside_its_notice_radius():

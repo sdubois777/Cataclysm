@@ -3121,7 +3121,8 @@ public:
 	 *   `AbyssalRiftsHealthMultiplier`. No brain, no attack, no modifier; it pays nothing itself and is not one of the
 	 *   floor's creatures.
 	 * - FROM THE FLOOR'S START, EVERY `AbyssalRiftsSecondsBetweenHunters` A RIFT SENDS ONE HUNTER, a creature of the
-	 *   floor's kinds that walk -- not the Corrupted Sentinel, which cannot move, nor the Gatekeeper, the floor's boss --
+	 *   floor's kinds that can close on a player -- not the Corrupted Sentinel, too slow to catch anyone since it began
+	 *   to walk (2026-11-27), nor the Gatekeeper, the floor's boss --
 	 *   at Common onto a cell within `AbyssalRiftsZoneRadiusCm`, while fewer than
 	 *   `AbyssalRiftsMostHuntersPerRift` of its own stand. A hunter notices the player from
 	 *   `AbyssalRiftsHunterSightMultiplier` times its own sight, which covers the largest floor, so it walks to the
@@ -8475,8 +8476,9 @@ public:
 	 *
 	 * AN ECHO THAT WALKS MOVES IN TO ITS REACH HELD TO `EchoesMostAwayCm` (R4). AN ECHO THAT CANNOT WALK STRIKES FROM
 	 * ITS KIND'S OWN FULL REACH: ruled by the coordinating session on 2026-11-18, a labelled judgement, because "moves
-	 * in" cannot apply to a creature that cannot walk (the Corrupted Sentinel, whose attack is a long-range one), and
-	 * the six-metre hold existed only to keep the old ring of echoes close to the player. Never below nought.
+	 * in" cannot apply to a creature that cannot walk, and the six-metre hold existed only to keep the old ring of
+	 * echoes close to the player. Never below nought. KEPT AS A GUARD: no creature uses it today. It was for the
+	 * Corrupted Sentinel, which walks since 2026-11-27, so its echo moves in like any walker's (ruled that day).
 	 */
 	static float EchoesStrikeWithinCm(float ReachAgainstCm, bool bWalks);
 
