@@ -23,6 +23,12 @@ Intermediate/
 Saved/
 Build/
 
+# The packaged game tools/package_game.py writes into the main checkout, and
+# the staging and previous copies it swaps through.
+/Packaged/
+/Packaged.staging/
+/Packaged.previous/
+
 # Visual Studio solution and project files: regenerate with
 #   dotnet <engine>/Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll \
 #     -projectfiles -project=game/Cataclysm.uproject -game -rocket -progress

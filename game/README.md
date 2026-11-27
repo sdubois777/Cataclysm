@@ -587,6 +587,66 @@ grep -E "Automation Test Queue Empty" Saved/Logs/Cataclysm.log
 binaries and the build refuses to start. Close the editor, build, run the tests,
 reopen it.
 
+## Packaging a playable build
+
+A packaged build is an ordinary `.exe`. Playing it holds no binaries, so builds
+and test runs carry on while it is open, which they cannot while the editor is.
+
+```bash
+python tools/package_game.py --dry-run   # the command it would run, and the cook-list checks
+python tools/package_game.py             # build, cook, package, and swap the new package in
+```
+
+Run it from any checkout or worktree: it always packages **the main checkout**
+(`C:\Projects\Cataclysm`), because the art packs are gitignored and exist only
+there. Close the editor first, and make sure the main checkout is at the code you
+want to play. The script refuses to start while an `UnrealEditor` process is
+running or a session holds `tools/unreal_lock.py`'s lock, takes that lock as
+`package` while it runs, and releases it at the end.
+
+It runs the engine's `RunUAT BuildCookRun` for the `Cataclysm` game target,
+Win64, **Development** (so the `~` console and commands such as
+`Cataclysm.GrantExperience` work), with no time limit. It prints how long each
+stage took, the package size and the path of the game. The full output is in
+`Saved/Logs/PackageGame.log`.
+
+| | |
+|---|---|
+| The game | `C:\Projects\Cataclysm\Packaged\Windows\Cataclysm.exe` |
+| Its log | `C:\Projects\Cataclysm\Packaged\Windows\Cataclysm\Saved\Logs\Cataclysm.log` |
+| Its saves | `C:\Projects\Cataclysm\Packaged\Windows\Cataclysm\Saved\SaveGames\` |
+
+**A Development build keeps its saves and its log inside the package, not under
+`%LOCALAPPDATA%`.** That is the engine's rule, read from its source rather than
+measured from a running package, which nobody has made yet. `FPaths::ProjectUserDir`
+(`Runtime/Core/Private/Misc/Paths.cpp`) is the project's own folder unless
+`ShouldSaveToUserDir` is true, which needs `FApp::IsInstalled` (true for a
+Shipping build), `-SaveToUserDir` on the command line, or a `-userdir=`; only then
+is it `%LOCALAPPDATA%\Cataclysm\`. The log is `ProjectSavedDir()/Logs` on
+Windows, and with no `SaveGameSystemModule` configured the save system is the
+engine's `FGenericSaveGameSystem` (`Runtime/Engine/Public/SaveGameSystem.h`),
+which writes `ProjectSavedDir()/SaveGames/<slot>.sav`.
+
+**Each run replaces the previous package, but only after the new one succeeded.**
+The new package is archived into `Packaged.staging` and moved into place only if
+BuildCookRun exited 0 and the `.exe` is there; a failed run leaves the old package
+playable. Because the saves live inside the package, the swap carries the old
+package's `Saved` folder into the new one. If the game is still running when the
+swap comes, Windows refuses to move its folder: the old package is put back, the
+new one waits in `Packaged.staging`, and `python tools/package_game.py --swap-only`
+finishes the job once the game is closed.
+
+**What gets cooked.** The cooker cooks the maps it is told to and what they
+reference, and the game loads most of its art by a path written as text, which
+the cooker cannot follow. `Config/DefaultGame.ini` therefore lists each folder
+those paths point into under `DirectoriesToAlwaysCook`, and the four maps under
+`MapsToCook`. `tools/tests/test_package_game.py` sweeps `Source/` (less the
+tests and `CataclysmEditor`), `Data/` and `Config/` for every `/Game/` and
+`/Engine/` path, and fails when one falls outside them. **A new creature, weapon
+or screen loaded by path needs its folder added there**, or it is missing from the
+package while every editor test passes. The script refuses to start when that
+check fails, or when a listed folder or map does not exist in the main checkout.
+
 ## Regenerating the content the workbook produces
 
 Two kinds of asset in `Content/` are generated rather than authored, and both
