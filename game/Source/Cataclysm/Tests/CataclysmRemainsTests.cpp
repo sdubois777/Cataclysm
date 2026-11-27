@@ -1747,9 +1747,17 @@ bool FCataclysmRemainsColossusHordeFloorTest::RunTest(const FString&)
 		return false;
 	}
 
-	// ITS COLOSSUS, AND AN ORDINARY MINION OF THE PLAYER'S BESIDE IT.
+	// ITS COLOSSUS, AND AN ORDINARY MINION OF THE PLAYER'S BESIDE IT. THE CREATURES ARE SPAWNED WHATEVER STANDS THERE:
+	// the arena's own geometry refused one at 3 m in window bc-w1, which `RemainsCreatureAt` does not ask about.
+	const auto CreatureOnTheArena = [World](const FVector& Where)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		return World->SpawnActor<ACataclysmEnemyCharacter>(ACataclysmEnemyCharacter::StaticClass(), Where,
+														  FRotator::ZeroRotator, Spawn);
+	};
 	Player.Hold({}, FirstRite, 2);
-	ACataclysmEnemyCharacter* First = RemainsCreatureAt(World, FVector(3 * M, 0, 0));
+	ACataclysmEnemyCharacter* First = CreatureOnTheArena(FVector(3 * M, 0, 0));
 	if (!TestNotNull(TEXT("set-up"), First))
 	{
 		return false;
@@ -1774,7 +1782,7 @@ bool FCataclysmRemainsColossusHordeFloorTest::RunTest(const FString&)
 			 IsValid(Imp) && !Imp->IsActorBeingDestroyed());
 
 	// AND THE NEXT REMAINS RAISE A NEW ONE ON THAT FLOOR.
-	ACataclysmEnemyCharacter* OnFloorTwo = RemainsCreatureAt(World, FVector(3 * M, 3 * M, 0));
+	ACataclysmEnemyCharacter* OnFloorTwo = CreatureOnTheArena(FVector(3 * M, 3 * M, 0));
 	if (TestNotNull(TEXT("set-up"), OnFloorTwo))
 	{
 		Player.Kill(OnFloorTwo);
