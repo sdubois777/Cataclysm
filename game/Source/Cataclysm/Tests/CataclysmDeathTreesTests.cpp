@@ -406,6 +406,13 @@ bool FCataclysmDeathTreesScreenTest::RunTest(const FString&)
 
 	TestTrue(TEXT("the Soul Collector's tree can be shown"), Screen->ShowTree(TEXT("Soul Collector")));
 	TestEqual(TEXT("and it is the one shown"), Screen->GetShownTree(), FString(TEXT("Soul Collector")));
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the passive node table loads"), NodeTable))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: the table holds nodes for the Soul Collector"),
+			 UCataclysmPassiveTree::NodesIn(NodeTable, TEXT("Soul Collector")).Num() > 0);
 	TestEqual(TEXT("with every one of its nodes, as many as the table holds for it"), Screen->ShownNodes().Num(),
 			  UCataclysmPassiveTree::NodesIn(NodeTable, TEXT("Soul Collector")).Num());
 
