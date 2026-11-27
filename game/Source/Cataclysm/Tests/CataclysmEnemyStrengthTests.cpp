@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 // For a floor-built Boss Brute's melee critical on a level 6 character. Issue #2874.
+#include "Empire/CataclysmRoster.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -444,6 +445,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemyStrengthABulwarksWalk,
 
 bool FCataclysmEnemyStrengthABulwarksWalk::RunTest(const FString& Parameters)
 {
+	// THE BUILT LIST THIS TEST WAS WRITTEN AGAINST, Demonic, Death and War: its fixed seed faced War, and since War left
+	// the built list (2026-11-26) the same seed faces Demonic or Death, whose waves, Quest dungeons and modifiers follow
+	// their own rules. See `FCataclysmBuiltCataclysmsForTests`.
+	const FCataclysmBuiltCataclysmsForTests WarAsWhenWritten(
+		{ECataclysmType::Demonic, ECataclysmType::Death, ECataclysmType::War});
 	using namespace CataclysmEnemyStrengthTest;
 
 	// THE WHOLE ROUTE: the empire dungeon's ring, carried across the module line by `BindEmpireDungeon`, read back by

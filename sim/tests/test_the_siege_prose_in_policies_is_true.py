@@ -578,7 +578,9 @@ STATED_MIX = re.compile(
 #: more campaigns. Since the project owner's ruling of 2026-11-26 that a
 #: character draws the built Cataclysms first, War among them, seeds 0 to 319
 #: give 46.19% Basic and 49.28% Quest against 50.38% and 45.24% over all 10,000;
-#: the disjoint blocks were not re-measured.
+#: the disjoint blocks were not re-measured. SINCE WAR LEFT THE BUILT CATACLYSMS
+#: THE SAME DAY no Quest dungeon is a Siege at tier 1, and seeds 0 to 319 give
+#: 94.63% Basic against 94.89% over all 10,000.
 SHARE_TOLERANCE_POINTS = 7.0
 
 
@@ -730,7 +732,7 @@ class TestTheCopiesOfTheMedianWalk:
         words = {11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
                  15: "fifteen", 16: "sixteen", 17: "seventeen",
                  18: "eighteen", 19: "nineteen", 20: "twenty",
-                 21: "twenty-one", 22: "twenty-two"}
+                 21: "twenty-one", 22: "twenty-two", 23: "twenty-three"}
         missing = [day for day in slack if day not in words]
         assert not missing, (
             f"the slack is now {slack} days and this check can only spell "

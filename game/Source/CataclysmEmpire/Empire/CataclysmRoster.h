@@ -97,6 +97,11 @@ public:
 	 * to test stuff that isn't even in the game." Until it, `OrderFor` shuffled all eight alike, so a new character
 	 * usually began against a Cataclysm with nothing behind it -- the owner's Death character drew Famine.
 	 *
+	 * DEMONIC AND DEATH ARE BUILT. War was in the list as first built and was taken out the same day, the owner
+	 * play-testing: "it put me in the war cataclysm, which as far as i'm aware is not built yet". It has no creatures of
+	 * its own, and its enemy modifiers work only on enemies (#2899). A saved run keeps the Cataclysms its record stores;
+	 * a character's next new run draws from this list, since `OrderFor` reads it each time.
+	 *
 	 * ADDING ONE WHEN IT IS BUILT IS ONE LINE in `CataclysmRoster.cpp`'s list. `config.BUILT_CATACLYSMS` in
 	 * `sim/cataclysm_sim/config.py` is the model's copy, and
 	 * `tools/tests/test_only_built_cataclysms_are_drawn_first.py` holds the two equal.
@@ -278,4 +283,29 @@ public:
 	 * with what it measures. `CataclysmStream` carries the argument in full.
 	 */
 	static constexpr int32 ModifierSalt = 3;
+};
+
+/**
+ * FOR TESTS ONLY: `UCataclysmRoster::Built` answers `Instead` while one of these is alive, and its own list again once
+ * the last is gone. Nothing in the game makes one.
+ *
+ * WHY IT EXISTS. A test that begins a run from a fixed seed faces whatever that seed draws, and the built list decides
+ * the draw's front. When War left the built list (the owner, 2026-11-26: "it put me in the war cataclysm, which as far
+ * as i'm aware is not built yet"), nine tests whose seeds had faced War began facing Demonic or Death, whose waves,
+ * Quest dungeons and modifiers follow their own rules, and failed on things that have nothing to do with what they
+ * measure. Each now holds one of these naming the list it was written against, so its run is the one it checked.
+ *
+ * Nested scopes restore in order: each remembers the list it replaced.
+ */
+struct CATACLYSMEMPIRE_API FCataclysmBuiltCataclysmsForTests
+{
+	explicit FCataclysmBuiltCataclysmsForTests(const TArray<ECataclysmType>& InInstead);
+	~FCataclysmBuiltCataclysmsForTests();
+
+	FCataclysmBuiltCataclysmsForTests(const FCataclysmBuiltCataclysmsForTests&) = delete;
+	FCataclysmBuiltCataclysmsForTests& operator=(const FCataclysmBuiltCataclysmsForTests&) = delete;
+
+private:
+	TArray<ECataclysmType> Instead;
+	const TArray<ECataclysmType>* Replaced = nullptr;
 };

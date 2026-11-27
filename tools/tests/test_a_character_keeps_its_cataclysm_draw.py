@@ -228,11 +228,12 @@ def test_the_copy_reads_some_built_cataclysms_and_only_real_ones():
 
 def test_the_seeds_the_unreal_tests_chose_draw_what_their_comments_say():
     """Since the ruling of 2026-11-26. The lists before it are what `whole_roster_shuffle` gives, checked below."""
-    assert order_for(24681357)[:3] == ["Demonic", "War", "Death"]
-    assert order_for(11)[:3] == ["Death", "Demonic", "War"]
-    assert order_for(12)[:3] == ["War", "Demonic", "Death"]
-    assert order_for(7)[:4] == ["Death", "Demonic", "War", "Celestial"]
-    assert order_for(8)[:4] == ["Demonic", "Death", "War", "Void"]
+    # TWO BUILT SINCE THE OWNER TOOK WAR OFF THE LIST, play-testing on 2026-11-26.
+    assert order_for(24681357)[:3] == ["Demonic", "Death", "Pestilence"]
+    assert order_for(11)[:3] == ["Death", "Demonic", "Chaos"]
+    assert order_for(12)[:3] == ["Demonic", "Death", "War"]
+    assert order_for(7)[:4] == ["Death", "Demonic", "Celestial", "Void"]
+    assert order_for(8)[:4] == ["Demonic", "Death", "Void", "Chaos"]
 
 
 def test_the_lists_before_the_ruling_are_what_the_comments_say_they_were():
@@ -249,8 +250,9 @@ def test_every_order_the_copy_draws_is_the_whole_roster():
 
 
 def test_the_figures_the_roster_tests_quote_are_what_the_copy_gives():
-    """`Cataclysm.Roster.AdjacentSeedsDrawUnrelatedOrders` quotes 130 and 105 shared firsts in 400 neighbouring pairs:
-    the first Cataclysm, and the first unbuilt one."""
+    """`Cataclysm.Roster.AdjacentSeedsDrawUnrelatedOrders` quotes 205 and 84 shared firsts in 400 neighbouring pairs:
+    the first Cataclysm, and the first unbuilt one. With two built (Demonic and Death, since 2026-11-26); 130 and 105
+    with the three first built."""
     built = len(BUILT)
-    assert sum(order_for(s)[0] == order_for(s + 1)[0] for s in range(400)) == 130
-    assert sum(order_for(s)[built] == order_for(s + 1)[built] for s in range(400)) == 105
+    assert sum(order_for(s)[0] == order_for(s + 1)[0] for s in range(400)) == 205
+    assert sum(order_for(s)[built] == order_for(s + 1)[built] for s in range(400)) == 84

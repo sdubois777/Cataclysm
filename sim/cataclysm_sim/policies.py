@@ -167,16 +167,25 @@ def siege_daily_damage(sim, d, city) -> float:
     `_roll_subtype` runs for every `_make_dungeon` but a surge's Quest
     dungeon, and since 2026-10-16 that one takes its Cataclysm's fixed
     sub-type (`TuningConfig.QUEST_SUBTYPE_BY_CATACLYSM`), which for War is the
-    Siege, at most two made a day. Measured on 2026-11-26 over 10,000 campaigns
-    (seeds 0 to 9999, 1,939,224 dungeons, each recorded when it was made) at the
-    settings `siege_urgency` names below, by the method of
+    Siege, at most two made a day. Measured on 2026-11-26, after War left the
+    built Cataclysms, over 10,000 campaigns (seeds 0 to 9999, 1,955,187
+    dungeons, each recorded when it was made) at the settings `siege_urgency`
+    names below, by the method of
     `sim/tests/test_the_siege_prose_in_policies_is_true.py`, with an ordinary
     dungeon leaving after it hits its city (`dungeon_persists_after_resolve`
-    False), the 181,681 Sieges that reached the map were 50% Basic, 45% Quest,
-    4% Fallen City and 0% Cataclysm, about 18.17 a campaign. That is why the
+    False), the 120,293 Sieges that reached the map were 95% Basic, 0% Quest,
+    5% Fallen City and 0% Cataclysm, about 12.03 a campaign. That is why the
     callers below apply this in all three scoring branches instead of only the
     ordinary one.
-    UNTIL 2026-11-26 THIS SAID 107,735 Sieges at 67 / 29 / 5 / 0 and 10.77 a
+    EARLIER ON 2026-11-26 THIS SAID 181,681 Sieges at 50 / 45 / 4 / 0 and
+    18.17 a campaign, over 1,939,224 dungeons, while War was one of the built
+    Cataclysms. NO QUEST DUNGEON CARRIES A SIEGE NOW: War is the only Cataclysm
+    whose Quest dungeons are Sieges, and a tier 1 campaign faces Demonic or
+    Death since the owner took War off the list ("it put me in the war
+    cataclysm, which as far as i'm aware is not built yet"). The shares before
+    rounding are 94.89 / 0.00 / 5.11 / 0.00; seeds 0 to 319, which the test
+    reads, give 94.63 / 0.00 / 5.37 / 0.00.
+    BEFORE THAT, UNTIL 2026-11-26, THIS SAID 107,735 Sieges at 67 / 29 / 5 / 0 and 10.77 a
     campaign, measured on 2026-11-25 over 1,343,372 dungeons. THE QUEST SHARE
     AND THE RATE ROSE with the project owner's ruling of 2026-11-26 that a
     character draws the built Cataclysms first (`TuningConfig.BUILT_CATACLYSMS`):
@@ -344,11 +353,13 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
 
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
     difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
-    and static surges of five dungeons every 120 days, the median walk is 8
-    days to an Outpost, 23 to a Bulwark, 37 to a Sanctuary and 125 to the
+    and static surges of five dungeons every 120 days, the median walk is 6
+    days to an Outpost, 19 to a Bulwark, 32 to a Sanctuary and 125 to the
     Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
-    sizes, the slack is 17 / 16 / 18 days. Measured on 2026-11-24 over 10,000
-    campaigns (seeds 0 to 9999) and 1,343,305 dungeons, each recorded at the
+    sizes, the slack is 19 / 20 / 23 days. Measured on 2026-11-26, after War
+    left the built Cataclysms so that a tier 1 campaign faces Demonic or Death,
+    over 10,000 campaigns (seeds 0 to 9999) and 1,955,187 dungeons, each
+    recorded at the
     moment it was made, with an ordinary dungeon leaving after it hits its city
     (`dungeon_persists_after_resolve` False, the default since 2026-10-12),
     each Cataclysm's Quest dungeons one fixed sub-type, War's at most two a
@@ -358,8 +369,11 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     four larger, every city's fall brings one), and Demonic's Rifts (issue #51:
     a four-floor Quest dungeon that opens anywhere but the Pillar and sends a
     Basic dungeon every 5 days), which ship on since 2026-11-24. Of the
-    dungeons, 250,790 were made on a Bulwark and 67,360 on a Sanctuary. THE
-    SAME 10,000 CAMPAIGNS WITH THE RIFTS OFF give 8 / 24 / 40 / 125 over
+    dungeons, 381,575 were made on a Bulwark and 93,210 on a Sanctuary.
+    UNTIL 2026-11-26 THIS SAID 8 / 23 / 37 / 125 AND A SLACK OF 17 / 16 / 18,
+    measured on 2026-11-24 over 1,343,305 dungeons, of which 250,790 were made on
+    a Bulwark and 67,360 on a Sanctuary; on that day THE SAME 10,000 CAMPAIGNS
+    WITH THE RIFTS OFF gave 8 / 24 / 40 / 125 over
     1,215,787 dungeons: issue #2865's surges moved the Outpost and the Bulwark
     by a day each, and the Rifts the Bulwark by one more and the Sanctuary by
     three. Measured with `sim/tests/test_the_siege_prose_in_policies_is_true.py`'s

@@ -126,10 +126,18 @@ def test_no_other_code_makes_a_run_that_would_miss_the_opening_surge() -> None:
 
 def test_the_model_still_lands_its_opening_wave_on_day_1() -> None:
     """THE KNOWN DIFFERENCE, held so a change to the model is noticed. See the module docstring."""
+    from dataclasses import replace
+
     from cataclysm_sim.config import TuningConfig
     from cataclysm_sim.engine import Simulation
 
-    cfg = TuningConfig()
+    # EVERY CATACLYSM COUNTED AS BUILT, so seed 7 faces War, whose wave size multiplier (`count_mult` in
+    # `sim/cataclysm_sim/patterns.py`) is 1.0, so its opening wave is exactly `surge_opening_count`. The two built ones
+    # size their waves by design: a wave is `surge_opening_count` times `count_mult` to the power
+    # `cataclysm_volume_exponent` (0.7), rounded, so Death's 1.8 gives 18 (seeds 1, 2, 4) and Demonic's 0.9 gives 11
+    # (seeds 3, 7, 8). Measured 2026-11-26 when War left the built list and seed 7 began facing Demonic. This test is
+    # about the day the wave lands, not its size.
+    cfg = replace(TuningConfig(), BUILT_CATACLYSMS=TuningConfig().CATACLYSM_ROSTER)
     simulation = Simulation(cfg, seed=7)
     standing_at_start = len(simulation.dungeons)
     simulation._empire_day()

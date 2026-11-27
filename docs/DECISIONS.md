@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — War is not built: a character draws Demonic and Death first, and no longer War
+
+**Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmRoster.cpp` (`UCataclysmRoster::Built`) and its header;
+`sim/cataclysm_sim/config.py` (`BUILT_CATACLYSMS`); `docs/Cataclysm_GDD_v2.md` (the draw's sentence under the first
+Cataclysm); the figures and lists quoted in `tools/tests/test_only_built_cataclysms_are_drawn_first.py`,
+`tools/tests/test_a_character_keeps_its_cataclysm_draw.py`,
+`sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py`, and in the comments of
+`CataclysmRosterTests.cpp`, `CataclysmCataclysmDrawTests.cpp` and `CataclysmSaveLoadTests.cpp`.
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The owner has the editor open and is play-testing; the window waits for clearance.
+
+### The owner, verbatim
+
+> it put me in the war cataclysm, which as far as i'm aware is not built yet
+
+The roster ruling earlier the same day ("yeah only draw the ones that are built") was built with Demonic, Death and War
+in the built list. The owner counts War as not built: it has no creatures of its own, and its eight enemy modifiers
+still work only on enemies (#2899). So the built list is Demonic and Death.
+
+### What changes, and what does not
+
+- A new character's first two Cataclysms are Demonic and Death in a random order; a tier that needs a third adds the
+  unbuilt ones, War among them, after them in a random order.
+- **Nothing in a save is rewritten.** A run already saved keeps the Cataclysms its run record stores, War included.
+  A character's order seed is unchanged too, but its order is worked out from the seed and the built list when a run
+  begins, so its next new run draws from the new list: a character whose first Cataclysm was War now begins against
+  Demonic or Death.
+- The Unreal roster and draw tests read the built list rather than a count, so their assertions hold. The quoted
+  figures moved: neighbouring seeds share a first Cataclysm 205 times in 400, not 130, and a first unbuilt one 84
+  times, not 105 (the Python copy of the generator). The roster test's limits, twice the chance figure (400 and 133),
+  still tell a mixed generator from an unmixed one.
+- `Cataclysm.EmpireRun.ASiegeTakesItsShareEveryDayAndOtherDungeonsTakeNone` searches for a seed that draws Demonic
+  first, so it is unaffected.
+
+### Nine Unreal tests that had faced War, and the override that keeps them as written
+
+Window rost-w1's first whole suite on `f3aeeea10` failed 9 of 6138: "6138 tests performed, 6129 succeeded, 9 failed".
+Each begins a run from a fixed seed that, with War built, faced War. The same seed now faces Demonic or Death, whose waves,
+Quest dungeons and modifiers follow their own rules. For example, a Demonic Quest dungeon is a Rift and opens behind the
+front line, which fails "dungeon 0 landed on an Outpost". None measures which Cataclysm is faced:
+
+- `Cataclysm.EmpireRun.ARunBeginsWithAnIntactEmpireAndASurgeDue`
+- `Cataclysm.EmpireTreeWalk.FloorsAreAddedWhenADungeonIsMadeAndNotToItsHit` and `...InfiniteDepthsCountsActiveTypesAndFloorsNeverGoBelowOne`
+- `Cataclysm.EnemyStrength.AWalkInADungeonRolledOnABulwarkBuildsItsCreaturesWithTheBulwarksDamage`
+- `Cataclysm.BossFloor.OnlyTheLastFloorOfACataclysmDungeonPlacesTheCataclysmBoss`
+- `Cataclysm.DungeonMode.TheDungeonBeingWalkedIsTheOneTimerThatStops`
+- `Cataclysm.DungeonModifierEffects.TheLastFloorsWayOutIsNotAPortal`, `...TheLastFloorsWayOutIsNotSealed` and
+  `...ThoseInTheDarkTheLastFloorHasNoChasm`
+
+Each now holds `FCataclysmBuiltCataclysmsForTests` (`CataclysmRoster.h`), naming Demonic, Death and War, so its run is the
+one it checked when those were the built list. `UCataclysmRoster::Built` answers the override's list while one is alive.
+Nothing in the game makes one. Setting the run's `ActiveCataclysms` after `Begin` was not used, because `Begin` already
+reads the list for the tree's added floors and the quest objectives. A judgement by the writing session.
+`Cataclysm.Roster.TheBuiltCataclysmsAreDemonicAndDeathAndNotWar` checks the override too: inside its scope War is
+built, nested scopes restore in order, and once the last is gone War is not built.
+
+### The simulation's figures that moved, re-measured
+
+Each was measured on this branch, not argued.
+
+- **The Siege prose in `sim/cataclysm_sim/policies.py`**, over 10,000 campaigns (seeds 0 to 9999, 1,955,187 dungeons)
+  by the method of `sim/tests/test_the_siege_prose_in_policies_is_true.py`. Against a median walk of 6 / 19 / 32 days,
+  the slack is nineteen, twenty and twenty-three days (the Pillar's median walk is 125). It was 8 / 23 / 37. The
+  120,293 Sieges that reached the map were 95% Basic, 0% Quest, 5% Fallen City and 0% Cataclysm, about 12.03 a
+  campaign, where they were 50 / 45 / 4 / 0 and 18.17 with War built: War is the only Cataclysm whose Quest dungeons
+  are Sieges. `config.py`'s copy of the medians follows.
+- **The opening wave on day 1** (`tools/tests/test_the_first_surge_fires_at_run_start.py`): seed 7 now faces Demonic,
+  and a wave's size is `surge_opening_count` times its Cataclysm's `count_mult` (in `sim/cataclysm_sim/patterns.py`)
+  to the power 0.7, rounded. That is 11 for Demonic's 0.9 and 18 for Death's 1.8, by design and not a fault. The test,
+  which is about the day the wave lands, counts every Cataclysm as built so that seed 7 faces War, whose 1.0 gives
+  exactly 12.
+- **The starting character's sample** (`tools/tests/test_the_starting_character_survives_a_pack.py`): the same
+  campaigns give 445 first-surge Outpost dungeons of 7 or 8 floors, so the floor on the sample's size is now 400, from
+  500. The assertion on the levels is unchanged and passes.
+
+---
+
 ## 2026-11-26 — Any blow that dealt something can carry an ailment; a bleed needs health and deals nothing while a shield stands; a Void Splinter ignores the shield; Warded and two bleed enchantments reworded
 
 **Affects:**

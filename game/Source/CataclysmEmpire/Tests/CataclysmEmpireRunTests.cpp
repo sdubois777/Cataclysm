@@ -62,6 +62,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunBeginTest,
 
 bool FCataclysmEmpireRunBeginTest::RunTest(const FString& Parameters)
 {
+	// THE BUILT LIST THIS TEST WAS WRITTEN AGAINST, Demonic, Death and War: its fixed seed faced War, and since War left
+	// the built list (2026-11-26) the same seed faces Demonic or Death, whose waves, Quest dungeons and modifiers follow
+	// their own rules. See `FCataclysmBuiltCataclysmsForTests`.
+	const FCataclysmBuiltCataclysmsForTests WarAsWhenWritten(
+		{ECataclysmType::Demonic, ECataclysmType::Death, ECataclysmType::War});
 	using namespace CataclysmEmpireRunTest;
 
 	UCataclysmEmpireRun* Run = MakeRun();

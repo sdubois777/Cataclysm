@@ -9804,9 +9804,10 @@ namespace CataclysmSaveLoadDrawTest
  * slice 6a, ruled 2026-11-02.
  *
  * TIER 4, AS `ARunBeginsAtTheCharactersTierAndOnlyAWinRaisesIt` SETS IT, so the run faces four and a list drawn from
- * anything but the character's seed agrees with its draw by chance about once in 30: the three built Cataclysms in one
- * of six orders, then one of five unbuilt ones, since the project owner's ruling of 2026-11-26
- * (`UCataclysmRoster::Built`). It was once in 1,680 while all eight were drawn alike. The seed itself is drawn from
+ * anything but the character's seed agrees with its draw by chance about once in 60: the two built Cataclysms in one
+ * of two orders, then two of six unbuilt ones in order, since the project owner's ruling of 2026-11-26
+ * (`UCataclysmRoster::Built`; once in 30 while War was also counted as built, until the owner took it off the list the
+ * same day). It was once in 1,680 while all eight were drawn alike. The seed itself is drawn from
  * the clock and is not predicted. Prints "NEW CHARACTER DRAW".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadNewCharacterDrawTest,
@@ -9879,9 +9880,10 @@ bool FCataclysmSaveLoadNewCharacterDrawTest::RunTest(const FString&)
  *
  * THE RECORD IS REWRITTEN TO SEED 7 AND TIER 3, naming no run, so the load takes the new-run path
  * (`ARunThatCannotBeReadStartsANewOneAndSaysSo`'s "no run named"). A list drawn from the clock instead agrees with seed
- * 7's by chance about once in 6 on each load, once in 36 on both: since the project owner's ruling of 2026-11-26 every
- * tier 3 list is the three built Cataclysms in one of six orders (`UCataclysmRoster::Built`). It was once in 336 while
- * all eight were drawn alike. Prints "LOADED DRAW".
+ * 7's by chance about once in 12 on each load, once in 144 on both: since the project owner's ruling of 2026-11-26
+ * every tier 3 list is the two built Cataclysms in one of two orders and then one of six unbuilt ones
+ * (`UCataclysmRoster::Built`; once in 6 while War was also counted as built, until the owner took it off the list the
+ * same day). It was once in 336 while all eight were drawn alike. Prints "LOADED DRAW".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadLoadedDrawTest,
 	"Cataclysm.SaveLoad.ALoadedCharactersNewRunFacesItsOwnDrawEveryTime",

@@ -750,7 +750,10 @@ def test_a_new_character_gains_at_least_three_levels_over_a_first_dungeon_of_sev
     "several", a judgement -- at the kill share the opening's cost was fitted at. From the experience alone, so a
     changed damage scale cannot fail it; the guard above is the fight's."""
     typical = [dungeon for dungeon in surge_dungeons if dungeon.floors in (7, 8)]
-    assert len(typical) > 500
+    # MORE THAN 400 SINCE WAR LEFT THE BUILT CATACLYSMS (2026-11-26), FROM 500: the first surges now come from Demonic
+    # and Death alone, and the same campaigns give 445 dungeons of 7 or 8 floors. A floor on the sample's size, so the
+    # assertion below is about enough dungeons to mean something; it says nothing about the levels.
+    assert len(typical) > 400, f"only {len(typical)} first-surge Outpost dungeons of 7 or 8 floors"
     short = [(dungeon.did, dungeon.subtype, dungeon.floors, level)
              for dungeon in typical if (level := level_after(dungeon, model)) < 4]
     assert not short, f"{len(short)} of {len(typical)} end below level 4; the first ten: {short[:10]}"
