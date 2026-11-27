@@ -36,7 +36,7 @@
  * **UNLESS THE PLAYER HAS TAKEN IT**, since issue #2793. The owner's ruling of
  * 2026-11-20 gives every minion 1.25 times the player's walking speed, a thrall
  * included, so a Sentinel taken by Subjugate follows its commander, and jogs
- * while it does (`JogAnimationName`). Nobody's Sentinel still never moves.
+ * while it does (`JogAnimationName`). Nobody's Sentinel walks too since 2026-11-27, at its own 2.5 m/s.
  *
  * **ITS BASIC ATTACK IS AN ENTRY IN `EnemyAbilities`, WHICH IS NEW HERE.** Every
  * other creature's basic attack is `MeleeReachCm` plus `AttackIntervalSeconds`
@@ -434,7 +434,7 @@ public:
 	 *  same reason and is the same 0.03 seconds. */
 	static const TCHAR* IdleAnimationName;
 
-	/** The STANDING jog, `Jog_Fwd_NonCombat`, which only a Sentinel the player has taken plays: nobody's never walks.
+	/** The STANDING jog, `Jog_Fwd_NonCombat`, which every Sentinel plays while it walks: until 2026-11-27 only a taken one did.
 	 *  Issue #2793. In the Paragon Minions siege folder beside the rooted clips, and not in
 	 *  `game/docs/enemy-source-assets.md`'s measured list until then. */
 	static const TCHAR* JogAnimationName;
