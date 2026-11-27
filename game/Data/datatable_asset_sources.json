@@ -95,7 +95,7 @@
       "asset": "DT_EnemyArchetypes",
       "csv": "EnemyArchetypes.csv",
       "rows": 10,
-      "csv_sha256": "5e7876d70325af0780ad4231d303b3fee49281e64582705c888244dfa7e9858f"
+      "csv_sha256": "842a2ff49bf4fe6d4528187885b797ed27e5a398efb4ff5583526ea2de096a9e"
     },
     {
       "asset": "DT_EnemyDrops",

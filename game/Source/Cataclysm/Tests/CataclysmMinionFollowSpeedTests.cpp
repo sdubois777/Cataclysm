@@ -106,11 +106,11 @@ namespace CataclysmMinionFollowSpeedTest
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// T1. The fault: a taken Sentinel is given its commander's pace; nobody's stays rooted; and it roots again when nobody
-// commands it any more.
+// T1. The fault: a taken Sentinel is given its commander's pace; nobody's walks at its own designed 250 cm/s (the owner's
+// "Walk everywhere", 2026-11-27; until then it stayed rooted); and it walks at its own pace again when nobody commands it.
 // --------------------------------------------------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFollowSpeedTakenSentinelTest,
-	"Cataclysm.MinionFollowSpeed.ATakenSentinelWalksAtItsCommandersPaceAndNobodysStaysRooted",
+	"Cataclysm.MinionFollowSpeed.ATakenSentinelWalksAtItsCommandersPaceAndNobodysAtItsOwn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmFollowSpeedTakenSentinelTest::RunTest(const FString&)
@@ -139,8 +139,8 @@ bool FCataclysmFollowSpeedTakenSentinelTest::RunTest(const FString&)
 	TestEqual(TEXT("set-up: the player walks at its designed 400 cm/s"), FollowSpeedWalkOf(Player), 400.0f);
 	TestEqual(TEXT("the share of its commander's pace a minion walks at is the owner's 1.25"),
 			  UCataclysmCommand::CommandedWalkSpeedShareOfCommander, 1.25f);
-	TestEqual(TEXT("set-up: a Sentinel is designed to walk at nought"), FollowSpeedDesignOf(Taken), 0.0f);
-	TestEqual(TEXT("set-up: and is told to walk at nought"), FollowSpeedWalkOf(Taken), 0.0f);
+	TestEqual(TEXT("set-up: a Sentinel is designed to walk at 250 cm/s"), FollowSpeedDesignOf(Taken), 250.0f);
+	TestEqual(TEXT("set-up: and is told to walk at it"), FollowSpeedWalkOf(Taken), 250.0f);
 	if (!TestTrue(TEXT("set-up: the player takes one Sentinel"), TakeForFollowSpeed(Player, Taken)))
 	{
 		return false;
@@ -152,16 +152,16 @@ bool FCataclysmFollowSpeedTakenSentinelTest::RunTest(const FString&)
 	TestEqual(TEXT("the taken Sentinel walks at 1.25 times its commander's speed"), FollowSpeedWalkOf(Taken),
 			  CommandedAtDesigned, 0.01f);
 	TestTrue(TEXT("and records that its speed follows a commander"), Taken->bWalkSpeedFollowsACommander);
-	TestEqual(TEXT("CONTROL: the Sentinel nobody took stays rooted"), FollowSpeedWalkOf(Nobodys), 0.0f);
+	TestEqual(TEXT("CONTROL: the Sentinel nobody took walks at its own 250"), FollowSpeedWalkOf(Nobodys), 250.0f);
 	TestFalse(TEXT("CONTROL: and follows nobody's pace"), Nobodys->bWalkSpeedFollowsACommander);
-	TestEqual(TEXT("the taken Sentinel's designed figure is still nought, for everything that reads the design"),
-			  FollowSpeedDesignOf(Taken), 0.0f);
+	TestEqual(TEXT("the taken Sentinel's designed figure is still its own 250, for everything that reads the design"),
+			  FollowSpeedDesignOf(Taken), 250.0f);
 
-	// NOBODY'S AGAIN. A thrall names its commander as its owner, so an owner of nothing is no commander; it must root
-	// again rather than walk on at its last commander's pace.
+	// NOBODY'S AGAIN. A thrall names its commander as its owner, so an owner of nothing is no commander; it must walk at
+	// its own pace again rather than walk on at its last commander's.
 	Taken->SetOwner(nullptr);
 	Taken->RefreshWalkSpeed();
-	TestEqual(TEXT("once nobody commands it, it is rooted again"), FollowSpeedWalkOf(Taken), 0.0f);
+	TestEqual(TEXT("once nobody commands it, it walks at its own 250 again"), FollowSpeedWalkOf(Taken), 250.0f);
 	TestFalse(TEXT("and no longer follows a commander's pace"), Taken->bWalkSpeedFollowsACommander);
 	return true;
 }

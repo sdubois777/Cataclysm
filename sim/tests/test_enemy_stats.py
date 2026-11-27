@@ -278,9 +278,13 @@ def test_the_design_documents_movement_descriptions_hold(faster, slower):
     assert es.archetype(faster).move_speed > es.archetype(slower).move_speed
 
 
-def test_the_corrupted_sentinel_does_not_move_at_all():
-    """The design calls it stationary, which is a real stat and not flavour."""
-    assert es.archetype("Corrupted Sentinel").move_speed == 0.0
+def test_the_corrupted_sentinel_walks_slowly():
+    """The owner's "Walk everywhere" of 2026-11-27: it walks toward the player at
+    2.5 m/s, a judgement stated to the owner, and chases at the same pace. Until
+    then the design called it stationary and this held it at 0."""
+    sentinel = es.archetype("Corrupted Sentinel")
+    assert sentinel.move_speed == 2.5
+    assert sentinel.chase_speed == 0.0
 
 
 def test_the_brute_is_the_armoured_one_and_the_imp_is_not():

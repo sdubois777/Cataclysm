@@ -7,7 +7,19 @@
 #include "CataclysmCorruptedSentinelCharacter.generated.h"
 
 /**
- * The Corrupted Sentinel: a turret. It never moves and it never stops shooting.
+ * The Corrupted Sentinel: a slow walker that plants to shoot. It walks toward the player, stops where it has a clear
+ * shot within its bolt's range, and fires; it walks again when the player breaks its line or leaves its range.
+ *
+ * THE OWNER, 2026-11-27, after a Horde quest dungeon: "same thing with corrupted sentinels. I thought we decided they
+ * should be able to move", and asked to choose, "Walk everywhere". That replaced the design's "The Corrupted Sentinel
+ * never moves at any rarity" and "Stationary ranged. Forces the player to stay mobile". It walks at 2.5 m/s, slower
+ * than every class (`DesignedWalkSpeedCmPerSecond`), and never retreats. While it walks it plays its jog; planted, its
+ * rooted pose. It fires only planted: the brain stops it before any wind-up (`UseAbilitiesOn`), and without a clear shot
+ * (`HasAClearShotAt`) it uses no ability at all and closes on the player instead.
+ *
+ * WHAT IS BELOW WAS WRITTEN WHEN IT COULD NOT WALK, and the arguments for its reach and its mortar still hold: its
+ * 14 metre bolt and its lobbed mortar are unchanged. Where a comment below says it cannot move, read "could not, until
+ * 2026-11-27".
  *
  * WHAT IT DOES, from `ABILITIES['Corrupted Sentinel']` in
  * `sim/cataclysm_sim/enemy_abilities.py`:
@@ -24,7 +36,7 @@
  * **UNLESS THE PLAYER HAS TAKEN IT**, since issue #2793. The owner's ruling of
  * 2026-11-20 gives every minion 1.25 times the player's walking speed, a thrall
  * included, so a Sentinel taken by Subjugate follows its commander, and jogs
- * while it does (`JogAnimationName`). Nobody's Sentinel still never moves.
+ * while it does (`JogAnimationName`). Nobody's Sentinel walks too since 2026-11-27, at its own 2.5 m/s.
  *
  * **ITS BASIC ATTACK IS AN ENTRY IN `EnemyAbilities`, WHICH IS NEW HERE.** Every
  * other creature's basic attack is `MeleeReachCm` plus `AttackIntervalSeconds`
@@ -117,6 +129,13 @@ public:
 	virtual float SightRadiusCm() const override { return SentinelNoticeRadiusCm; }
 	virtual float RoamRadiusCm() const override { return SentinelRoamRadiusCm; }
 
+	/**
+	 * Nothing solid between its middle and the target's, on the visibility channel, both bodies left out: the trace
+	 * `UCataclysmCommand::ThingsCommandedInSightOf` and a projectile's flight make. Pawns do not block that channel, so
+	 * another creature is never cover. The owner's "Walk everywhere", 2026-11-27.
+	 */
+	virtual bool HasAClearShotAt(const AActor* Target) const override;
+
 	// ----------------------------------------------------------------------
 	// The designed stat block
 	//
@@ -161,7 +180,11 @@ public:
 	static constexpr float DesignedEnergyShieldFraction = 0.35f;
 
 	/**
-	 * How fast it moves. `move_speed` is 0.0, and so is `chase_speed`.
+	 * How fast it moves: 2.5 m/s since the owner's "Walk everywhere" of 2026-11-27, `move_speed` in
+	 * `sim/cataclysm_sim/enemy_stats.py`, which is the data `game/Data/EnemyArchetypes.csv` is made from;
+	 * `chase_speed` is 0, so it chases at the same pace. A JUDGEMENT stated to the owner: slower than every class
+	 * (3.5, 4.0, 4.6), so a player can always walk away from one. Until then it was 0, and what follows is the
+	 * reasoning of that time.
 	 *
 	 * **ZERO, AND IT IS THE ONLY ZERO IN THE ROSTER.** This is not a creature
 	 * that happens to be slow. `ACataclysmEnemyCharacter` never sets
@@ -182,7 +205,7 @@ public:
 	 * #2793 that function refused every creature designed at nought, so a taken
 	 * Sentinel was ordered to follow and moved nowhere. This figure stays nought.
 	 */
-	static constexpr float DesignedWalkSpeedCmPerSecond = 0.0f;
+	static constexpr float DesignedWalkSpeedCmPerSecond = 250.0f;
 
 	/** How fast it turns. `turn_rate_degrees` is the archetype default of 480.
 	 *  **It can turn even though it cannot walk**, which is what lets a rooted
@@ -216,18 +239,18 @@ public:
 	/**
 	 * How far away it notices somebody, in centimetres.
 	 *
-	 * **AS FAR AS IT CAN SHOOT, WHICH NO OTHER CREATURE NEEDS.** The Brute, the
-	 * Abyssal Warden, the Hellhound and the Imp all notice at 1000 cm and all of
-	 * them can walk, so a target further off is one they close on. This creature
-	 * cannot close on anything: a notice radius shorter than its range would
-	 * make the difference between the two dead ground it can shoot across and
-	 * refuses to. No enemy has a designed notice radius and issue #383 is that
-	 * gap; this one is derived from the creature rather than copied.
+	 * **TWO METRES BEYOND WHAT IT CAN SHOOT, the Succubus's margin** (it notices at 10 metres and shoots 8). Since the
+	 * owner's "Walk everywhere" of 2026-11-27 it walks toward a player it has noticed, so it has to notice one beyond its
+	 * range to walk in at all; at its range alone it noticed only a player it could already shoot. Ruled by the
+	 * coordinating session that day: 16 metres, not the 17.5 the Succubus's ratio gives, because groups stand
+	 * `FCataclysmFloorPopulator::LeastCellsBetweenPacks` cells apart (1600 cm) and must stand further apart than this
+	 * creature notices, or walking into one group pulls the next. It was 14 metres, its range, while it could not walk.
 	 */
-	static constexpr float SentinelNoticeRadiusCm = 1400.0f;
+	static constexpr float SentinelNoticeRadiusCm = 1600.0f;
 
-	/** How far from where it started it wanders. **Zero, because it cannot
-	 *  move.** Every other creature roams 600 cm. */
+	/** How far from where it started it wanders. **Zero: it does not wander.** It walks only toward a player it has
+	 *  noticed (2026-11-27), and with nobody to fight it walks back to where it started. Every other creature roams
+	 *  600 cm. */
 	static constexpr float SentinelRoamRadiusCm = 0.0f;
 
 	// ----------------------------------------------------------------------
@@ -411,7 +434,7 @@ public:
 	 *  same reason and is the same 0.03 seconds. */
 	static const TCHAR* IdleAnimationName;
 
-	/** The STANDING jog, `Jog_Fwd_NonCombat`, which only a Sentinel the player has taken plays: nobody's never walks.
+	/** The STANDING jog, `Jog_Fwd_NonCombat`, which every Sentinel plays while it walks: until 2026-11-27 only a taken one did.
 	 *  Issue #2793. In the Paragon Minions siege folder beside the rooted clips, and not in
 	 *  `game/docs/enemy-source-assets.md`'s measured list until then. */
 	static const TCHAR* JogAnimationName;

@@ -180,7 +180,7 @@ public:
 	 * IT DOES NOT RETREAT WHEN THE PLAYER CLOSES, and the design document says
 	 * why: 3.5 matches the slowest Demonic class and loses to the other two, so
 	 * kiting would produce a chase it cannot win. The creature that punishes
-	 * standing still is the Corrupted Sentinel, which never moves at all.
+	 * standing still is the Corrupted Sentinel, which walks slower still and plants to fire.
 	 */
 	static constexpr float DesignedWalkSpeedCmPerSecond = 350.0f;
 

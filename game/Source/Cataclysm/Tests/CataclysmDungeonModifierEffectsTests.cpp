@@ -1454,6 +1454,13 @@ namespace CataclysmDungeonModifierEffectsTest
 		// it was 3". Pinned here rather than in that one test, because a drawn rung is
 		// a coin toss under every assertion in this group.
 		Mode->ImpRarityStep = 0;
+
+		// AND EVERY WRAITH, FOR THE SAME REASON, since 2026-11-26 (#2943): what rises is a Wraith, not a creature of
+		// the slain one's kind, so it draws a Wraith's rung (`WraithRarityStep`, -1 by default) and the Imp's pin
+		// above no longer reaches it. MEASURED 2026-11-27 in window cs-w1: the same test failed three runs of three,
+		// "Expected 'the wraith rose a rung' to be 4, but it was 3" in the whole suite and "to be 5, but it was 4"
+		// alone, a wraith drawn at Herald and then at Boss, which no floor rule can raise.
+		Mode->WraithRarityStep = 0;
 		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
 		{
 			return nullptr;
@@ -28842,6 +28849,135 @@ bool FCataclysmEchoesStrikeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// IN A HORDE DUNGEON AN ECHO NOTICES THE PLAYER AS THE HORDE'S OWN CREATURES DO, from the floor's widened distance, so
+// it comes for a player standing five times its own notice distance away, AND IS STILL STANDING WHEN IT REACHES ITS
+// OWN KIND'S NOTICE DISTANCE: its ten-second give-up clock (R4) starts there. ANYWHERE ELSE IT WAITS at that distance
+// until the player is within its own, and the clock starts at noticing, as before (the control). The owner's play test
+// of 2026-11-27: "the echoes don't come attack you, they wait till you get into their aggro range ... they just need
+// to follow the mob aggro rules for hordes if it's a horde dungeon". The clock rule is the coordinating session's
+// ruling of the same day.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesHordeAggroTest,
+	"Cataclysm.DungeonModifierEffects.InAHordeDungeonAnEchoComesForThePlayerFromAfarAndElsewhereItWaits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesHordeAggroTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// What one floor showed: whether the first echo moved in on a player five times its own notice distance away,
+	// whether it still stood after longer than its give-up time out there, and, once the player was within its own
+	// notice distance, whether it stood a beat short of the give-up time and was gone at it.
+	struct FWhatItDid
+	{
+		bool bMovedInFromAfar = false;
+		bool bStandingAfterTheWalk = false;
+		bool bStandingABeatShort = false;
+		bool bGoneOnTime = false;
+		float Multiplier = 0.0f;
+		float EchoMultiplier = 0.0f;
+		float NoticeCm = 0.0f;
+	};
+
+	// THE SAME FLOORS TWICE, A HORDE DUNGEON'S AND AN ORDINARY ONE'S: floor 2's two deaths, then floor 3 carrying the
+	// row. A beat does not move a creature, so the echo stays where it stands while the player is far: the walk in is
+	// that stretch of time.
+	constexpr float TimesItsOwnNotice = 5.0f;
+	const auto OneFloor = [this](bool bHorde, FWhatItDid& Out) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a test world was created"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPossessedPlayer Player(World);
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TwoDieOnFloorTwo(*this, World, Player, Mode) || !GiveThePlayerHealthForTypedDamage(*this, Player))
+		{
+			return false;
+		}
+		if (bHorde)
+		{
+			Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+		}
+		Mode->DungeonModifiers = {EchoesRow};
+		if (!TestTrue(TEXT("set-up: floor 3 was reached"), Mode->GoToFloor(3)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
+		if (!TestEqual(TEXT("set-up: two echoes stand"), Echoes.Num(), 2))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* const First = Echoes[0];
+		const auto Stands = [First]() { return IsValid(First) && !First->IsActorBeingDestroyed(); };
+		Out.Multiplier = Mode->FloorBrief.SightRadiusMultiplier;
+		Out.EchoMultiplier = First->SightRadiusMultiplier;
+		Out.NoticeCm = First->NoticeRadiusCm;
+
+		// FAR: five times its own notice distance.
+		StandThePlayerFrom(Player, First, Echoes[1], Out.NoticeCm * TimesItsOwnNotice);
+		Beat(Mode, 1);
+		Out.bMovedInFromAfar = First->EchoMovesInOn.Get() == Player.Character;
+		Beat(Mode, BeatsFor(Effects::EchoesGiveUpAfterSeconds) + 2);
+		Out.bStandingAfterTheWalk = Stands();
+
+		// WITHIN ITS OWN NOTICE DISTANCE, short of where it strikes. Not if it is already gone.
+		if (!Out.bStandingAfterTheWalk)
+		{
+			return true;
+		}
+		// ITS CLOCK'S FIRST BEAT: elsewhere the beat it notices on, which starts the clock at nought; in the Horde,
+		// having noticed from afar, the first beat within, which already counts. So the Horde has no extra beat here.
+		StandThePlayerFrom(Player, First, First, Out.NoticeCm - 100.0f);
+		if (!bHorde)
+		{
+			Beat(Mode, 1);
+		}
+		Beat(Mode, BeatsFor(Effects::EchoesGiveUpAfterSeconds) - 1);
+		Out.bStandingABeatShort = Stands();
+		Beat(Mode, 1);
+		Out.bGoneOnTime = !Stands();
+		return true;
+	};
+
+	FWhatItDid InTheHorde;
+	FWhatItDid Elsewhere;
+	if (!OneFloor(/*bHorde=*/true, InTheHorde) || !OneFloor(/*bHorde=*/false, Elsewhere))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("ECHOES AND HORDE AGGRO: the floor's multiplier %.0f in the Horde, %.0f elsewhere; "
+								 "the echo's own notice %.0f cm; the player stood %.0f cm away"),
+							InTheHorde.Multiplier, Elsewhere.Multiplier, InTheHorde.NoticeCm,
+							InTheHorde.NoticeCm * TimesItsOwnNotice));
+	TestEqual(TEXT("set-up: a Horde floor's creatures notice from thirty times their own distance"),
+			  InTheHorde.Multiplier, FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier, 0.001f);
+	TestEqual(TEXT("set-up: an ordinary floor's from their own"), Elsewhere.Multiplier, 1.0f, 0.001f);
+	TestEqual(TEXT("A HORDE FLOOR'S ECHO IS RAISED WITH THE FLOOR'S MULTIPLIER"), InTheHorde.EchoMultiplier,
+			  InTheHorde.Multiplier, 0.001f);
+	TestEqual(TEXT("CONTROL: an ordinary floor's with one"), Elsewhere.EchoMultiplier, 1.0f, 0.001f);
+
+	TestTrue(TEXT("IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY"),
+			 InTheHorde.bMovedInFromAfar);
+	TestTrue(TEXT("AND IS STILL STANDING WHEN IT REACHES ITS KIND'S NOTICE DISTANCE, longer than its give-up time on"),
+			 InTheHorde.bStandingAfterTheWalk);
+	TestTrue(TEXT("its clock starts there: a beat short of ten seconds within it, it still stands"),
+			 InTheHorde.bStandingABeatShort);
+	TestTrue(TEXT("and at ten it is gone"), InTheHorde.bGoneOnTime);
+
+	TestFalse(TEXT("CONTROL: elsewhere it waits at that distance"), Elsewhere.bMovedInFromAfar);
+	TestTrue(TEXT("CONTROL: waiting, it still stands"), Elsewhere.bStandingAfterTheWalk);
+	TestTrue(TEXT("CONTROL: its clock starts at noticing: a beat short of ten seconds, it still stands"),
+			 Elsewhere.bStandingABeatShort);
+	TestTrue(TEXT("CONTROL: and at ten it is gone"), Elsewhere.bGoneOnTime);
+	return true;
+}
+
 // WHAT IS RECORDED: NOT A DEATH THAT PAYS NOTHING; EVERY OTHER DEATH, NO LIMIT; THE RECORD COVERS ONE FLOOR; A FLOOR
 // WITHOUT THE ROW BRINGS NONE; HORDE WAVES BRING THEM; LEAVING THE DUNGEON FORGETS THEM. Until issue #2740 only the last
 // six were kept.
@@ -29030,11 +29166,13 @@ bool FCataclysmEchoesAbilityTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// AN ECHO THAT CANNOT WALK STRIKES FROM ITS KIND'S OWN FULL REACH, AND ONE THAT WALKS IS STILL HELD TO SIX METRES: a
-// Corrupted Sentinel's echo fires its bolt from thirteen metres, and a Succubus's, seven metres off, moves in instead.
-// Ruled by the coordinating session on 2026-11-18 for issue #2740.
+// A CORRUPTED SENTINEL'S ECHO NOW WALKS IN LIKE ANY WALKER'S, HELD TO SIX METRES: thirteen metres off it moves in and
+// has not struck, as a Succubus's seven metres off does. The coordinating session's ruling of 2026-11-27, when the owner's
+// "Walk everywhere" made the Sentinel walk; until then it could not walk and struck from its full fourteen (ruled
+// 2026-11-18 for issue #2740). The "cannot walk" branch stays as a guard that no creature uses: `EchoesStrikeWithinCm`'s
+// own test holds it.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesCannotWalkTest,
-	"Cataclysm.DungeonModifierEffects.AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn",
+	"Cataclysm.DungeonModifierEffects.ASentinelsEchoNowWalksInToSixMetresAsASuccubussDoes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmEchoesCannotWalkTest::RunTest(const FString& Parameters)
@@ -29111,7 +29249,7 @@ bool FCataclysmEchoesCannotWalkTest::RunTest(const FString& Parameters)
 	}
 	if (!TestNotNull(TEXT("a Sentinel's echo stands"), SentinelEcho)
 		|| !TestNotNull(TEXT("and a Succubus's"), SuccubusEcho)
-		|| !TestEqual(TEXT("set-up: the Sentinel's cannot walk"), SentinelEcho->DesignedWalkSpeedCmPerSecond, 0.0f, 0.01f)
+		|| !TestTrue(TEXT("set-up: the Sentinel's walks"), SentinelEcho->DesignedWalkSpeedCmPerSecond > 0.0f)
 		|| !TestTrue(TEXT("set-up: the Succubus's walks"), SuccubusEcho->DesignedWalkSpeedCmPerSecond > 0.0f)
 		|| !TestNull(TEXT("set-up: the Sentinel's has fired nothing yet"), SentinelEcho->LastShotFired.Get()))
 	{
@@ -29136,16 +29274,18 @@ bool FCataclysmEchoesCannotWalkTest::RunTest(const FString& Parameters)
 	}
 	Beat(Mode, 1);
 
-	TestEqual(TEXT("the Sentinel's echo strikes from its full reach"), SentinelEcho->EchoMovesInToCm, SentinelReach,
-			  0.01f);
-	TestNotNull(TEXT("and fired its recorded bolt from thirteen metres"), SentinelEcho->LastShotFired.Get());
-	TestNull(TEXT("its one strike made, it moves in on nobody"), SentinelEcho->EchoMovesInOn.Get());
-	TestEqual(TEXT("the Succubus's echo moves in to six metres"), SuccubusEcho->EchoMovesInToCm,
+	TestEqual(TEXT("the Sentinel's echo moves in to six metres, as a walker's does"), SentinelEcho->EchoMovesInToCm,
+			  Effects::EchoesMostAwayCm, 0.01f);
+	TestNull(TEXT("and has fired nothing from thirteen metres"), SentinelEcho->LastShotFired.Get());
+	TestTrue(TEXT("having noticed the player"), SentinelEcho->EchoMovesInOn.Get() == Player.Character);
+	TestEqual(TEXT("CONTROL: the Succubus's echo moves in to six metres"), SuccubusEcho->EchoMovesInToCm,
 			  Effects::EchoesMostAwayCm, 0.01f);
 	TestTrue(TEXT("and has noticed the player but not struck, seven metres off"),
 			 SuccubusEcho->EchoMovesInOn.Get() == Player.Character);
-	TestEqual(TEXT("one of the two is spent"), Mode->EchoesSpentThisFloor(), 1);
-	TestEqual(TEXT("the Succubus's brain walks it in"), ThinksOnce(BrainOf(SuccubusEcho)),
+	TestEqual(TEXT("neither is spent"), Mode->EchoesSpentThisFloor(), 0);
+	TestEqual(TEXT("the Sentinel's brain walks it in"), ThinksOnce(BrainOf(SentinelEcho)),
+			  static_cast<int32>(ECataclysmBrainAction::Chasing));
+	TestEqual(TEXT("as the Succubus's walks it in"), ThinksOnce(BrainOf(SuccubusEcho)),
 			  static_cast<int32>(ECataclysmBrainAction::Chasing));
 	return true;
 }
@@ -51950,9 +52090,9 @@ bool FCataclysmWallsSectionsBondTest::RunTest(const FString& Parameters)
 // creature is placed where the player cannot walk before its own barrier opens. A creature that cannot be killed from
 // where the player can stand, a rule that moves a creature, and everything a rule adds are outside it.
 //
-// THE CORRUPTED SENTINEL IS THE KIND THAT NEVER MOVES: its header calls it "a turret" that "never moves". A creature's
-// section is the section of the cell it is placed on, so the turret's assertion is that it is placed on a cell of a
-// section and never on a boundary cell, and that the cell is reached as above.
+// THE CORRUPTED SENTINEL IS ALSO COUNTED ON ITS OWN, AS IT WAS WHEN IT COULD NOT MOVE: it is placed on a cell of a
+// section and never on a boundary cell, and that cell is reached as above. A creature's section is the section of the
+// cell it is placed on. It walks since 2026-11-27, and the coordinating session kept the rule that day.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSectionsReachTest,
 	"Cataclysm.DungeonModifierEffects.OnTwentyHallsPlansEveryPlacedCreatureIsReachedBeforeItsOwnBarrierOpens",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -52043,7 +52183,7 @@ bool FCataclysmSectionsReachTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("REACH plans=%d creatures=%d sentinels=%d pastTheFirstSection=%d"), Divided, Creatures,
 							Sentinels, AskedBehind));
 	TestEqual(TEXT("no creature is placed on a boundary cell"), OnABoundary, 0);
-	TestEqual(TEXT("no Corrupted Sentinel, which never moves, is placed outside a section"), SentinelsOnABoundary, 0);
+	TestEqual(TEXT("no Corrupted Sentinel is placed outside a section"), SentinelsOnABoundary, 0);
 	TestEqual(TEXT("every creature is reached with the barriers before its section open and the rest closed"),
 			  NotReached, 0);
 	TestEqual(TEXT("control: none past the first section is reached with the barrier before it closed"),
@@ -63325,9 +63465,10 @@ namespace CataclysmStillCreatureTest
 	}
 }
 
-// WHICH CREATURES CANNOT MOVE: a Corrupted Sentinel and every floor source, the Heavenly Core included; an Imp can.
+// WHICH CREATURES CANNOT MOVE: every floor source, the Heavenly Core included. A Corrupted Sentinel can since it began to
+// walk (the owner's "Walk everywhere", 2026-11-27), and the coordinating session took it off the list that day; an Imp can.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWhichCreaturesCannotMoveTest,
-	"Cataclysm.DungeonModifierEffects.ACorruptedSentinelAndAFloorSourceCannotMoveAndAnImpCan",
+	"Cataclysm.DungeonModifierEffects.AFloorSourceCannotMoveAndACorruptedSentinelAndAnImpCan",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmWhichCreaturesCannotMoveTest::RunTest(const FString& Parameters)
@@ -63351,7 +63492,7 @@ bool FCataclysmWhichCreaturesCannotMoveTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestTrue(TEXT("a Corrupted Sentinel cannot move"), ACataclysmDungeonGameMode::CreatureCannotMove(Sentinel));
+	TestFalse(TEXT("a Corrupted Sentinel can move, since 2026-11-27"), ACataclysmDungeonGameMode::CreatureCannotMove(Sentinel));
 	TestTrue(TEXT("nor can the Heavenly Core"), ACataclysmDungeonGameMode::CreatureCannotMove(Core));
 	TestFalse(TEXT("CONTROL: an Imp can"), ACataclysmDungeonGameMode::CreatureCannotMove(Imp));
 	TestFalse(TEXT("and nothing at all is not a creature that cannot move"),
@@ -63362,8 +63503,9 @@ bool FCataclysmWhichCreaturesCannotMoveTest::RunTest(const FString& Parameters)
 // UNDER SHADOWY ENEMIES A CREATURE THAT CANNOT MOVE AND NO LIGHT REACHES IS GIVEN A LIGHT, AND IS NOT SHROUDED; AN
 // IMP AS FAR FROM EVERY LIGHT IS SHROUDED AND GIVEN NONE (THE CONTROL). Issue #2334.
 //
-// WHERE EACH STANDS: the player at floor 2's entrance; the Sentinel 2 metres along X from it; the Imp 15 metres along
-// Y. The row's own lights are at least 20 metres from the entrance, which is asserted for both before the beat.
+// WHERE EACH STANDS: the player at floor 2's entrance; a plague beacon, a floor source, 2 metres along X from it; the Imp
+// 15 metres along Y. The row's own lights are at least 20 metres from the entrance, which is asserted for both before the
+// beat. Until 2026-11-27 the creature that cannot move was a Corrupted Sentinel, which walks since then.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShadowyLightsAStillCreatureTest,
 	"Cataclysm.DungeonModifierEffects.ShadowyEnemiesLightsACreatureThatCannotMoveAndNoLightReaches",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -63389,11 +63531,12 @@ bool FCataclysmShadowyLightsAStillCreatureTest::RunTest(const FString& Parameter
 	}
 	const TArray<FVector> Before = Mode->ShadowyEnemiesLightsNow();
 	const FVector Feet = Player.Character->GetActorLocation();
-	ACataclysmEnemyCharacter* Sentinel = SpawnStill(World, ACataclysmCorruptedSentinelCharacter::StaticClass(),
+	ACataclysmEnemyCharacter* Sentinel = SpawnStill(World, ACataclysmBeaconCharacter::StaticClass(),
 													Feet + FVector(200.0f, 0.0f, 0.0f));
 	ACataclysmEnemyCharacter* Imp =
 		SpawnStill(World, ACataclysmImpCharacter::StaticClass(), Feet + FVector(0.0f, 1500.0f, 0.0f));
-	if (!TestNotNull(TEXT("set-up: a Sentinel"), Sentinel) || !TestNotNull(TEXT("set-up: an Imp"), Imp))
+	if (!TestNotNull(TEXT("set-up: a beacon"), Sentinel) || !TestNotNull(TEXT("set-up: an Imp"), Imp)
+		|| !TestTrue(TEXT("set-up: the beacon cannot move"), ACataclysmDungeonGameMode::CreatureCannotMove(Sentinel)))
 	{
 		return false;
 	}
@@ -63428,10 +63571,11 @@ bool FCataclysmShadowyLightsAStillCreatureTest::RunTest(const FString& Parameter
 
 // NECROTIC GROUND PUTS NO PATCH WHERE IT WOULD REACH A CREATURE THAT CANNOT MOVE. Issue #2334.
 //
-// THE PLAYER IS RINGED BY SENTINELS 4 METRES APART, out to 16 metres, so every place the first patch can fall -- 3 to
-// 12 metres from the player -- is within a patch's 3 metres of one: the corner of a 4 metre square is 2.83 metres
-// from the nearest of its four. So no patch can appear. THE CONTROL is the same ring of Imps, which can move: the
-// first patch appears on its cadence.
+// THE PLAYER IS RINGED BY PLAGUE BEACONS, FLOOR SOURCES, 4 METRES APART, out to 16 metres, so every place the first patch
+// can fall -- 3 to 12 metres from the player -- is within a patch's 3 metres of one: the corner of a 4 metre square is
+// 2.83 metres from the nearest of its four. So no patch can appear. THE SAME RING OF CORRUPTED SENTINELS IS NOT SPARED
+// since they began to walk (the owner's "Walk everywhere", 2026-11-27; the coordinating session's ruling that day): the
+// first patch appears, as it does for THE CONTROL, the same ring of Imps.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecroticSparesAStillCreatureTest,
 	"Cataclysm.DungeonModifierEffects.NecroticGroundPutsNoPatchWhereItWouldReachACreatureThatCannotMove",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -63443,9 +63587,11 @@ bool FCataclysmNecroticSparesAStillCreatureTest::RunTest(const FString& Paramete
 	using Effects = UCataclysmDungeonModifierEffects;
 
 	// THE ROW IS THE NAMESPACE'S `NecroticGround`, the same key; a local of that name would hide it (C4459).
-	for (UClass* Ringed : {ACataclysmCorruptedSentinelCharacter::StaticClass(), ACataclysmImpCharacter::StaticClass()})
+	for (UClass* Ringed : {ACataclysmBeaconCharacter::StaticClass(), ACataclysmCorruptedSentinelCharacter::StaticClass(),
+						   ACataclysmImpCharacter::StaticClass()})
 	{
-		const bool bStill = Ringed == ACataclysmCorruptedSentinelCharacter::StaticClass();
+		const bool bStill = Ringed == ACataclysmBeaconCharacter::StaticClass();
+		const bool bSentinels = Ringed == ACataclysmCorruptedSentinelCharacter::StaticClass();
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!TestNotNull(TEXT("a test world was created"), World))
 		{
@@ -63487,10 +63633,17 @@ bool FCataclysmNecroticSparesAStillCreatureTest::RunTest(const FString& Paramete
 		Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches) * 3);
 		if (bStill)
 		{
-			TestEqual(TEXT("ringed by Sentinels, no patch was put down in three cadences"), ZonesOnTheFloor(World), 0);
-			TestTrue(TEXT("and a patch on a Sentinel's feet is refused"),
+			TestEqual(TEXT("ringed by beacons, no patch was put down in three cadences"), ZonesOnTheFloor(World), 0);
+			TestTrue(TEXT("and a patch on a beacon's feet is refused"),
 					 Mode->ANecroticPatchHereWouldReachACreatureThatCannotMove(Player.Character,
 																			  Feet + FVector(400.0f, 0.0f, 0.0f)));
+		}
+		else if (bSentinels)
+		{
+			TestTrue(TEXT("ringed by Sentinels, which walk now, the fog spread"), ZonesOnTheFloor(World) > 0);
+			TestFalse(TEXT("and a patch on a Sentinel's feet is not refused"),
+					  Mode->ANecroticPatchHereWouldReachACreatureThatCannotMove(Player.Character,
+																			   Feet + FVector(400.0f, 0.0f, 0.0f)));
 		}
 		else
 		{
