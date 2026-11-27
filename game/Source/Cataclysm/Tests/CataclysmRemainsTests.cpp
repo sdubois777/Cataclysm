@@ -38,6 +38,9 @@
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
+#include "Empire/CataclysmEmpireRun.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 
 /**
  * The Necromancer's remains, its Ossuary limb, the Abomination and the Bone Colossus: the Death finish's slice D
@@ -1193,8 +1196,12 @@ bool FCataclysmRemainsColossusTest::RunTest(const FString&)
 	const float AfterFed = RemainsMaximumHealthOf(Colossus);
 	Player.Kill(TooFar);
 
-	TestEqual(TEXT("a death 4 m from it feeds it 10% of that creature's maximum health"), AfterFed - Risen,
-			  FedHealth * UCataclysmBoneGiants::ColossusFedHealthSharePercent / 100.0f, 0.5f);
+	// A COMMON'S REMAINS: 2% OF THE HEALTH IT ROSE WITH (the owner, 2026-11-27); the rarity half is
+	// `TheBoneColossusIsFedTwoPercentOfItsStartHealthTimesTheRungsMultiple`.
+	TestEqual(TEXT("a Common's death 4 m from it feeds it 2% of the health it rose with"), AfterFed - Risen,
+			  Risen * UCataclysmBoneGiants::ColossusFedStartHealthPercent / 100.0f, 0.5f);
+	TestTrue(TEXT("and the creature's own health is still read, for the control in the test named above"),
+			 FedHealth > 0.0f);
 	TestEqual(TEXT("CONTROL: a death 8 m from it does not, and its remains stay"), RemainsInWorld(World).Num(), 1);
 	TestEqual(TEXT("and it was not fed"), RemainsMaximumHealthOf(Colossus), AfterFed, 0.01f);
 
@@ -1485,6 +1492,164 @@ bool FCataclysmRemainsColossusSizeTest::RunTest(const FString&)
 	UCataclysmBoneGiants::StepColossusOf(Player.Character);
 	TestEqual(TEXT("at a thousandth of its health it is drawn at its least"), Colossus->GetActorScale3D().X,
 			  UCataclysmBoneGiants::ColossusSmallestScale, 0.001f);
+	return true;
+}
+
+
+// ==========================================================================
+// The Bone Colossus: what a feed adds, and a Horde dungeon's next floor. The owner's choice and the coordinating
+// session's ruling of 2026-11-27.
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsColossusFeedTest,
+	"Cataclysm.Remains.TheBoneColossusIsFedTwoPercentOfItsStartHealthTimesTheRungsMultiple",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner, 2026-11-27, choosing the recommended option: each remains fed adds 2% of the health the Colossus ROSE
+ * with, times the dead creature's rarity health multiple. A Common's adds 2%, an Elite's 2% times 1.85. CONTROL: the
+ * rule it replaced, 10% of the dead creature's maximum health, no longer holds.
+ */
+bool FCataclysmRemainsColossusFeedTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRemainsNecromancer Player;
+	if (!Player.Make(*this, World))
+	{
+		return false;
+	}
+	Player.Hold({}, FirstRite, 2);
+	ACataclysmEnemyCharacter* First = RemainsCreatureAt(World, FVector(3 * M, 0, 0));
+	ACataclysmEnemyCharacter* Common = RemainsCreatureAt(World, FVector(3 * M, 2 * M, 0));
+	ACataclysmEnemyCharacter* Elite = RemainsCreatureAt(World, FVector(3 * M, -2 * M, 0));
+	if (!TestNotNull(TEXT("set-up"), First) || !TestNotNull(TEXT("set-up"), Common) || !TestNotNull(TEXT("set-up"), Elite))
+	{
+		return false;
+	}
+	Elite->SetRarityStep(1);
+	Player.Kill(First);
+	ACataclysmMinion* Colossus = UCataclysmBoneGiants::ColossusOf(Player.Character);
+	if (!TestNotNull(TEXT("the first remains raise the Colossus"), Colossus))
+	{
+		return false;
+	}
+	const float Risen = RemainsMaximumHealthOf(Colossus);
+
+	const float CommonsHealth = RemainsMaximumHealthOf(Common);
+	Player.Kill(Common);
+	const float AfterCommon = RemainsMaximumHealthOf(Colossus);
+	TestEqual(TEXT("a Common's remains add 2% of the health it rose with"), AfterCommon - Risen, Risen * 0.02f,
+			  Risen * 0.0001f + 0.01f);
+	TestEqual(TEXT("to its current health as well"), RemainsHealthOf(Colossus), AfterCommon, 0.5f);
+
+	float EliteMultiple = 1.0f;
+	float UnusedDamage = 1.0f;
+	float UnusedArmour = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(UCataclysmEnemyRarity::LoadEnemyRarityTable(), 1, EliteMultiple,
+											 UnusedDamage, UnusedArmour);
+	Player.Kill(Elite);
+	const float EliteAdded = RemainsMaximumHealthOf(Colossus) - AfterCommon;
+	TestEqual(TEXT("an Elite's remains add 2% of it times an Elite's health multiple"), EliteAdded,
+			  Risen * 0.02f * EliteMultiple, Risen * 0.0001f + 0.01f);
+	TestTrue(FString::Printf(TEXT("which is more than a Common's (multiple %.3f)"), EliteMultiple),
+			 EliteAdded > (AfterCommon - Risen) * 1.5f);
+
+	// CONTROL: the rule this replaced.
+	TestFalse(TEXT("CONTROL: a Common's remains no longer add 10% of that creature's maximum health"),
+			  FMath::IsNearlyEqual(AfterCommon - Risen, CommonsHealth * 0.10f, 0.5f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsColossusHordeFloorTest,
+	"Cataclysm.Remains.AHordeDungeonsNextFloorEndsTheBoneColossusAndKeepsTheRest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner's play log of 2026-11-27: one Colossus carried from floor 1 to floor 6 of a seven-floor Horde dungeon. A
+ * Horde dungeon's floors are waves into one kept arena, and `GoToFloor` clears nothing on a kept arena, so nothing
+ * ended it. It is "gone when the floor changes". CONTROL: on the same floor change the player's ordinary minion is
+ * carried, as a kept arena keeps its followers, so only the Colossus is ended.
+ */
+bool FCataclysmRemainsColossusHordeFloorTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRemainsNecromancer Player;
+	if (!Player.Make(*this, World))
+	{
+		return false;
+	}
+
+	// A HORDE DUNGEON OF FOUR FLOORS, entered: floor 2 is the next wave in floor 1's arena.
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("set-up: a dungeon game mode"), Mode) || !TestNotNull(TEXT("set-up: a run"), Run))
+	{
+		return false;
+	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten; // Issue #2928: the Cataclysms this run faces are named.
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+	Mode->EnemyScale = 0.0f;
+	int32 Chosen = INDEX_NONE;
+	for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+	{
+		Chosen = Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel ? Index : INDEX_NONE;
+	}
+	if (!TestTrue(TEXT("set-up: the run has a dungeon to walk"), Chosen != INDEX_NONE))
+	{
+		return false;
+	}
+	FCataclysmDungeon& Dungeon = Run->Dungeons[Chosen];
+	Dungeon.Floors = 4;
+	Dungeon.SubType = ECataclysmDungeonSubType::Horde;
+	Dungeon.Modifiers.Reset();
+	Dungeon.ModifierScore = 0.0f;
+	if (!TestTrue(TEXT("set-up: the Horde dungeon was entered"), Mode->EnterEmpireDungeon(Dungeon.DungeonId)))
+	{
+		return false;
+	}
+
+	// ITS COLOSSUS, AND AN ORDINARY MINION OF THE PLAYER'S BESIDE IT.
+	Player.Hold({}, FirstRite, 2);
+	ACataclysmEnemyCharacter* First = RemainsCreatureAt(World, FVector(3 * M, 0, 0));
+	if (!TestNotNull(TEXT("set-up"), First))
+	{
+		return false;
+	}
+	Player.Kill(First);
+	ACataclysmMinion* Colossus = UCataclysmBoneGiants::ColossusOf(Player.Character);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(Player.Character, FVector(-3 * M, 0, 0), 600.0f, false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("set-up: the Colossus rose on floor 1"), Colossus) || !TestNotNull(TEXT("set-up: an Imp"), Imp))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("set-up: floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("set-up: and it is the same arena, kept"), Mode->bKeptTheArena);
+	TestFalse(TEXT("THE NEXT FLOOR OF A HORDE DUNGEON ENDS THE COLOSSUS"),
+			  IsValid(Colossus) && !Colossus->IsActorBeingDestroyed());
+	TestNull(TEXT("and none stands for the player"), UCataclysmBoneGiants::ColossusOf(Player.Character));
+	TestTrue(TEXT("CONTROL: the player's Imp is carried to the next wave"),
+			 IsValid(Imp) && !Imp->IsActorBeingDestroyed());
+
+	// AND THE NEXT REMAINS RAISE A NEW ONE ON THAT FLOOR.
+	ACataclysmEnemyCharacter* OnFloorTwo = RemainsCreatureAt(World, FVector(3 * M, 3 * M, 0));
+	if (TestNotNull(TEXT("set-up"), OnFloorTwo))
+	{
+		Player.Kill(OnFloorTwo);
+		TestNotNull(TEXT("the first remains on floor 2 raise a new Colossus"),
+					UCataclysmBoneGiants::ColossusOf(Player.Character));
+	}
 	return true;
 }
 

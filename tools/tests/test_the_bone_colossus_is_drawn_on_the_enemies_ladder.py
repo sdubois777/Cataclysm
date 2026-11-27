@@ -94,3 +94,32 @@ def test_its_reach_grows_with_its_body():
     assert "GetUnscaledCapsuleRadius" not in step
     rise = function_body(_cpp(), "void UCataclysmBoneGiants::RemainsLanded")
     assert "Tally.ColossusStartReach = Risen->ReachCm;" in rise
+
+
+GAME_MODE_CPP = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon" / "CataclysmDungeonGameMode.cpp"
+
+
+def test_a_feed_is_two_percent_of_the_start_health_times_the_rungs_multiple():
+    """The owner, 2026-11-27: each remains fed adds 2% of the health the Colossus rose with, times the dead creature's
+    rarity health multiple. CONTROL: the 10%-of-the-creature rule it replaced is gone from the feed."""
+    header = GIANTS_H.read_text(encoding="utf-8")
+    assert re.search(r"static\s+constexpr\s+float\s+ColossusFedStartHealthPercent\s*=\s*2\.0f\s*;", header)
+    assert "ColossusFedHealthSharePercent" not in header
+    fed = function_body(_cpp(), "float UCataclysmBoneGiants::FedHealthFor")
+    assert "UCataclysmEnemyRarity::ScalingFromCommon(" in fed
+    assert "StartHealth * ColossusFedStartHealthPercent / 100.0f * Multiple" in fed
+    landed = function_body(_cpp(), "void UCataclysmBoneGiants::RemainsLanded")
+    assert "FedHealthFor(Tally.ColossusStartHealth, Remains->RarityStep)" in landed
+    assert "Remains->MaximumHealth" not in landed
+
+
+def test_a_horde_dungeons_next_floor_ends_the_colossus():
+    """A kept Horde arena's floor change clears nothing, so `GoToFloor` ends the Colossus there itself (the coordinating
+    session's ruling of 2026-11-27). CONTROL: the ordinary floor change still clears the floor."""
+    body = GAME_MODE_CPP.read_text(encoding="utf-8")
+    flat = re.sub(r"\s+", " ", re.sub(r"//[^\n]*", " ", body))
+    assert ("else if (bReplacingAFloor && bKeptTheArena) { if (UWorld* World = GetWorld()) "
+            "{ UCataclysmBoneGiants::EndTheColossi(*World); } }") in flat
+    assert "if (bReplacingAFloor && !bKeptTheArena)" in flat
+    ended = function_body(_cpp(), "int32 UCataclysmBoneGiants::EndTheColossi")
+    assert "Each.Value.Colossus.Reset();" in ended and "Abomination" not in ended

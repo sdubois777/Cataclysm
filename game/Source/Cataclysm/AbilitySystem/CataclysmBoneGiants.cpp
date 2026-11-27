@@ -326,10 +326,14 @@ void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemainsMarker
 		{
 			return;
 		}
-		const float Added = Remains->MaximumHealth * ColossusFedHealthSharePercent / 100.0f;
+		// 2% OF THE HEALTH IT ROSE WITH, TIMES THE DEAD CREATURE'S RARITY HEALTH MULTIPLE. The owner, 2026-11-27.
+		const float Added = FedHealthFor(Tally.ColossusStartHealth, Remains->RarityStep);
 		BoneGiantsWriteHealth(Colossus, BoneGiantsMaximumHealthOf(Colossus) + Added, BoneGiantsHealthOf(Colossus) + Added);
-		UE_LOG(LogCataclysm, Log, TEXT("BONE COLOSSUS FED: %s's Colossus took the remains of %s, +%.0f health."),
-			   *Player->GetName(), *Remains->Kind.ToString(), Added);
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("BONE COLOSSUS FED: %s's Colossus took the remains of %s (rung %d), +%.0f health: %.0f%% of the %.0f "
+					"it rose with, times the rung's multiple."),
+			   *Player->GetName(), *Remains->Kind.ToString(), Remains->RarityStep, Added, ColossusFedStartHealthPercent,
+			   Tally.ColossusStartHealth);
 		Remains->Destroy();
 		StepColossusOf(Player);
 		return;
@@ -432,6 +436,44 @@ void UCataclysmBoneGiants::StepEveryColossus()
 // ==========================================================================
 // The floor left
 // ==========================================================================
+
+float UCataclysmBoneGiants::FedHealthFor(float StartHealth, int32 RarityStep)
+{
+	float Multiple = 1.0f;
+	float UnusedDamage = 1.0f;
+	float UnusedArmour = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(UCataclysmEnemyRarity::LoadEnemyRarityTable(), FMath::Max(0, RarityStep),
+											 Multiple, UnusedDamage, UnusedArmour);
+	return StartHealth * ColossusFedStartHealthPercent / 100.0f * Multiple;
+}
+
+int32 UCataclysmBoneGiants::EndTheColossi(UWorld& World)
+{
+	UCataclysmBoneGiants* Giants = In(&World);
+	if (!Giants)
+	{
+		return 0;
+	}
+	int32 Ended = 0;
+	for (TPair<TWeakObjectPtr<const AActor>, FCataclysmGiantsOfAPlayer>& Each : Giants->Players)
+	{
+		if (ACataclysmMinion* Colossus = Each.Value.Colossus.Get(); IsValid(Colossus))
+		{
+			Colossus->Destroy();
+			++Ended;
+		}
+		Each.Value.Colossus.Reset();
+		Each.Value.ColossusStartHealth = 0.0f;
+		Each.Value.ColossusStartDamage = 0.0f;
+		Each.Value.ColossusStartReach = 0.0f;
+	}
+	if (Ended > 0)
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("BONE COLOSSUS: %d ended as a Horde dungeon's next floor began in the same arena."),
+			   Ended);
+	}
+	return Ended;
+}
 
 int32 UCataclysmBoneGiants::EndTheFloor(UWorld& World)
 {

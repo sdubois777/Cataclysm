@@ -2,13 +2,16 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; and why the owner did not see one with them
+## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
 
 **Affects:**
 - `game/Source/Cataclysm/Character/CataclysmEnemyRarity.h` and `.cpp`: `UCataclysmEnemyRarity::BodyScaleForHealthMultiple`.
 - `game/Source/Cataclysm/AbilitySystem/CataclysmBoneGiants.h` and `.cpp`: `ColossusStartsAtStep`; `StepColossusOf` draws
   the Colossus on the enemies' ladder; `RemainsLanded` draws it at its size as it rises, and its rise line says its size
   and where it stands. `ColossusLargestScale` is removed.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `GoToFloor` ends the Colossus on a kept Horde arena.
+  `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`: `CapsuleGrowthCm`, split out of
+  `BodyGrowthCm`.
 - Tests: `Cataclysm.EnemyRarity.ABodyWithARungsHealthIsDrawnAtThatRungsSize` (new) in
   `game/Source/Cataclysm/Tests/CataclysmEnemyRarityTests.cpp`;
   `Cataclysm.Remains.TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder` (new) and one line of
@@ -44,9 +47,21 @@ with me" (2026-11-27, play-testing The First Rite's option 2).
   a normal minion's, among seven Wisps and four Skeletal Mages, and being fed barely moved it: the six feeds at
   `16.23.36` added 15 health to 20976, so its cube-root size grew by 0.02%.
 
-**A second finding, not acted on:** in dungeon 1 (from `15.59.27`), floors 2 to 6 show "1 BarrowGuard 20" throughout and
-no Colossus rose on them, so one Colossus was carried down five floors; in dungeon 8 a new one rose on every floor. The
-header says it is "Gone when the floor changes". Reported to the coordinating session.
+### A Colossus carried down a Horde dungeon's floors, and now ended there
+
+In dungeon 1 (from `15.59.27`), floors 2 to 6 show "1 BarrowGuard 20" throughout and no Colossus rose on them, so one
+Colossus was carried down five floors; a new one rose on floor 7. In dungeon 8 a new one rose on every floor.
+**Dungeon 1 is a Horde dungeon and dungeon 8 an Elite one.** A Horde dungeon's floors are waves into one arena it keeps
+(`bKeptTheArena`), and `ACataclysmDungeonGameMode::GoToFloor` clears nothing on a kept arena, so `ClearTheFloor`, the
+only caller of `UCataclysmBoneGiants::EndTheFloor`, never ran; its last floor was carved afresh and cleared, which is
+why floor 7 raised a new one. The header says the Colossus is "Gone when the floor changes", and the coordinating
+session ruled (2026-11-27) that this holds here too.
+
+- `GoToFloor` now calls `UCataclysmBoneGiants::EndTheColossi` when it keeps the arena: every Colossus ends, and nothing
+  else does. **The Abomination is not ended there**: its own rule, in the same header, is that it "stays through a
+  kept Horde arena's waves". The floor's tally and the player's other followers stay as a kept arena keeps them.
+- Tested by `Cataclysm.Remains.AHordeDungeonsNextFloorEndsTheBoneColossusAndKeepsTheRest`, with the player's Imp carried
+  as the control, and the next remains raising a new Colossus on floor 2.
 
 ### The size
 
@@ -72,9 +87,23 @@ ln 1.2 / ln 1.85, about 0.296, at every step.
   13.2 cm further from its centre; hurt below a normal minion's size, shorter. How it chooses and lands an attack is not
   changed; the empire-tree session's `fix/minions-that-do-not-attack` holds why minions dealt no damage.
 
-**Open, and reported rather than changed:** feeding adds 10% of the fed creature's maximum health, and on these floors
-that is a few health against a Colossus of 20,000, so "grows with each creature's remains" is invisible in play at any
-size rule. The coordinating session is asked whether the feed should be a share of the Colossus's own health instead.
+### What a feed adds
+
+Feeding added 10% of the fed creature's maximum health, which on these floors was a few health against a Colossus of
+20,000: the six feeds at `16.23.36` added 15. Asked, **the owner chose the recommended option (2026-11-27, relayed by
+the coordinating session): each remains fed adds 2% of the health the Colossus ROSE with, times the dead creature's
+rarity health multiple from `game/Data/EnemyRarities.csv`**, the multiples the size rule reads: a Common's +2%, an
+Elite's +3.7%, and so on up the steps. It adds to maximum and current health, as before.
+
+- `ColossusFedStartHealthPercent` (2) replaces `ColossusFedHealthSharePercent` (10); `UCataclysmBoneGiants::FedHealthFor`
+  computes it, and the FED log line now gives the rung, the share and the health it rose with.
+- **A JUDGEMENT:** remains with no rung, a minion's (`RarityStep` -1), feed as a Common's.
+- The vow's sentence, "it grows with each creature's remains", still reads true, so no text changed.
+- Tested by `Cataclysm.Remains.TheBoneColossusIsFedTwoPercentOfItsStartHealthTimesTheRungsMultiple`: a Common's 2%, an
+  Elite's 2% times its multiple; CONTROL: 10% of the creature no longer holds. The existing Colossus test's feed line
+  was moved to the new figure.
+
+**Starting at Legendary (1.44) was approved by the coordinating session as a judgement.**
 
 ---
 
