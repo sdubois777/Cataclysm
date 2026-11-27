@@ -33,11 +33,28 @@
  * `UWorld::Tick`, collects on a request or, on its timer, only when a world in
  * the engine's world list has begun play; a test world is in no list.
  *
- * WHAT IT DOES. After each test, if more worlds are alive than the last
- * collection left, it runs `CollectGarbage` and times it. The test has ended
- * by then: the framework broadcasts the end event with its latent commands
- * empty (`AutomationTest.cpp` 1370 and 1386 in Unreal Engine 5.8), on the game
- * thread, from the automation worker's tick.
+ * WHAT IT DOES. After each test it counts the worlds alive beyond what the
+ * last collection left, and runs `CollectGarbage`, timed, when either of two
+ * limits is reached: `Cataclysm.TestCollectEveryWorlds` worlds left over (16),
+ * or used memory above `Cataclysm.TestCollectAboveMb` (10,752 MB) with any
+ * world left over. The test has ended by then: the framework broadcasts the
+ * end event with its latent commands empty (`AutomationTest.cpp` 1370 and 1386
+ * in Unreal Engine 5.8), on the game thread, from the automation worker's tick.
+ *
+ * EVERY N WORLDS, NOT AFTER EVERY TEST, SINCE ISSUE #2928 SLICE 5. Until then
+ * one world left over was enough, and a whole-suite run made about 4,522
+ * collections taking about 147 s of its 19 minutes (the survey on issue #2928,
+ * section 3; windows dfb-w1, ail-w1 and rost-w1). A collection's cost is mostly
+ * marking what is still alive, which is about the same whether it frees one
+ * world or sixteen, so fewer collections cost less in all. THE MEMORY LIMIT is
+ * what keeps a run of large worlds from piling up before the count is reached:
+ * the suite's peak was 9.2 to 9.8 GB with a collection after every test, and
+ * the limit is set a little above the 9.0 to 9.7 GB the suite holds at its end.
+ * Both limits are console variables, so a window can measure another pair
+ * without a build. A world left alive between collections is one `DestroyWorld`
+ * has cleaned up and taken off the root set; nothing reaches it through a world
+ * list, and the one code path that walks every object of a class skips a world
+ * that is tearing down (`ACataclysmPlayerState::StartingLevelChanged`).
  *
  * WHAT IT PRINTS. Always, once when the process exits after a test has run, a
  * line beginning `CataclysmTestMemorySummary:`. With the switch on, a line per
@@ -49,6 +66,20 @@
  */
 
 DEFINE_LOG_CATEGORY_STATIC(LogCataclysmTestMemory, Log, All);
+
+static TAutoConsoleVariable<int32> CVarCataclysmTestCollectEveryWorlds(
+	TEXT("Cataclysm.TestCollectEveryWorlds"),
+	16,
+	TEXT("Collect garbage between automation tests once this many destroyed test "
+		 "worlds are left over since the last collection. 1 collects after every "
+		 "test that left one, as before issue #2928 slice 5."));
+
+static TAutoConsoleVariable<int32> CVarCataclysmTestCollectAboveMb(
+	TEXT("Cataclysm.TestCollectAboveMb"),
+	10752,
+	TEXT("Collect garbage between automation tests whenever the process's used "
+		 "memory is above this many megabytes and any destroyed test world is "
+		 "left over. Issue #2928 slice 5."));
 
 static TAutoConsoleVariable<int32> CVarCataclysmTestMemoryLines(
 	TEXT("Cataclysm.TestMemoryLines"),
@@ -114,6 +145,21 @@ namespace CataclysmCollectGarbageBetweenTests
 	int64 Megabytes(uint64 InBytes)
 	{
 		return static_cast<int64>(InBytes / (1024ull * 1024ull));
+	}
+
+	/**
+	 * Whether to collect now: `LeftOver` worlds alive beyond the last collection's, `UsedMb` the process's used
+	 * memory. THE ONE RULE THE HANDLER AND ITS TEST BOTH ASK. Nothing left over never collects; at least `EveryWorlds`
+	 * left over always does; one or more left over with used memory above `AboveMb` does. `EveryWorlds` below 1 reads
+	 * as 1.
+	 */
+	bool ShouldCollect(int32 LeftOver, int64 UsedMb, int32 EveryWorlds, int64 AboveMb)
+	{
+		if (LeftOver <= 0)
+		{
+			return false;
+		}
+		return LeftOver >= FMath::Max(1, EveryWorlds) || UsedMb > AboveMb;
 	}
 
 	/**
@@ -202,7 +248,11 @@ namespace CataclysmCollectGarbageBetweenTests
 
 			int32 WorldsNow = CountLiveWorlds();
 			double CollectionSeconds = -1.0;
-			if (WorldsNow > Baseline)
+			// MEMORY READ ONLY WHEN A WORLD IS LEFT OVER, so a test that left none costs nothing more than before.
+			const int32 LeftOver = WorldsNow - Baseline;
+			const int64 UsedMb = LeftOver > 0 ? Megabytes(FPlatformMemory::GetStats().UsedVirtual) : 0;
+			if (ShouldCollect(LeftOver, UsedMb, CVarCataclysmTestCollectEveryWorlds.GetValueOnGameThread(),
+							  CVarCataclysmTestCollectAboveMb.GetValueOnGameThread()))
 			{
 				const FCollection Collection = CollectDestroyedWorlds();
 				CollectionSeconds = Collection.Seconds;
@@ -247,13 +297,15 @@ namespace CataclysmCollectGarbageBetweenTests
 			bSummaryPrinted = true;
 			const FPlatformMemoryStats Stats = FPlatformMemory::GetStats();
 			UE_LOG(LogCataclysmTestMemory, Log,
-				TEXT("CataclysmTestMemorySummary: tests=%d peak_used_virtual_mb=%lld final_used_virtual_mb=%lld collections=%d collection_total_s=%.3f worlds_at_last_collection=%d"),
+				TEXT("CataclysmTestMemorySummary: tests=%d peak_used_virtual_mb=%lld final_used_virtual_mb=%lld collections=%d collection_total_s=%.3f worlds_at_last_collection=%d collect_every_worlds=%d collect_above_mb=%d"),
 				TestsEnded,
 				Megabytes(Stats.PeakUsedVirtual),
 				Megabytes(Stats.UsedVirtual),
 				Collections,
 				CollectionTotalSeconds,
-				Baseline);
+				Baseline,
+				CVarCataclysmTestCollectEveryWorlds.GetValueOnGameThread(),
+				CVarCataclysmTestCollectAboveMb.GetValueOnGameThread());
 		}
 
 		int32 Baseline = INDEX_NONE;
@@ -332,6 +384,23 @@ CATACLYSM_TEST(FCataclysmDestroyedWorldIsFreedTest,
 	TestEqual(TEXT("after the collection, the live world count is back at its baseline"),
 		Collection.WorldsAfter, Baseline);
 
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmCollectionRuleTest,
+	"Cataclysm.TestWorld.TheCollectionBetweenTestsWaitsForSixteenWorldsOrTheMemoryLimit")
+{
+	// ISSUE #2928 SLICE 5: the rule the handler asks, at the defaults (16 worlds, 10,752 MB) and at their edges.
+	using namespace CataclysmCollectGarbageBetweenTests;
+	TestFalse(TEXT("CONTROL: nothing left over never collects, whatever the memory"), ShouldCollect(0, 99999, 16, 10752));
+	TestFalse(TEXT("one world left over at low memory waits"), ShouldCollect(1, 9000, 16, 10752));
+	TestFalse(TEXT("fifteen left over at low memory still waits"), ShouldCollect(15, 9000, 16, 10752));
+	TestTrue(TEXT("sixteen left over collects"), ShouldCollect(16, 9000, 16, 10752));
+	TestTrue(TEXT("one left over above the memory limit collects"), ShouldCollect(1, 10753, 16, 10752));
+	TestFalse(TEXT("one left over exactly at the memory limit waits"), ShouldCollect(1, 10752, 16, 10752));
+	TestTrue(TEXT("a count of 1 collects after every test that left a world, as before slice 5"),
+		ShouldCollect(1, 0, 1, 10752));
+	TestTrue(TEXT("a count below 1 reads as 1"), ShouldCollect(1, 0, 0, 10752));
 	return true;
 }
 

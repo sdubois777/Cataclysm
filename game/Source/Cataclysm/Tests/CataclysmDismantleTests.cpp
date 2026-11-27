@@ -48,6 +48,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 namespace CataclysmDismantleTest
 {
@@ -165,6 +166,7 @@ namespace CataclysmDismantleTest
 			Out.State->SetOwnGold(1000000);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2848, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		if (Out.Character && Out.Character->GetInventory() && Out.Character->GetEquipment())

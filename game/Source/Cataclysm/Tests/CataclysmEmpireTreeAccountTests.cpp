@@ -28,6 +28,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree on the account record, and buying, choosing and respec through the game instance. Issue
@@ -126,6 +127,7 @@ namespace CataclysmEmpireTreeAccountTest
 
 		if (bWithARun)
 		{
+			const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 			Out.Instance->BeginEmpireRun(/*Seed*/ 2741, ECataclysmSurgeMode::Static, static_cast<int32>(Lethality),
 										 /*DifficultyTier*/ 1);
 		}

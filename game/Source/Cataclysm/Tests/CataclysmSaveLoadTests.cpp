@@ -78,6 +78,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * A character and its run, written by one world and loaded by another. Issue #753, the start-up step, ruled
@@ -261,6 +262,7 @@ namespace CataclysmSaveLoadTest
 
 		if (!bDies)
 		{
+			const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 			UCataclysmEmpireRun* Run = Scene.Instance->BeginEmpireRun(7);
 			if (!Test.TestNotNull(TEXT("set-up: an empire run was begun"), Run))
 			{
@@ -489,6 +491,7 @@ bool FCataclysmSaveLoadIdentityTest::RunTest(const FString&)
 		Saved.RunId = FGuid::NewGuid();
 		Saved.CharacterId = FGuid::NewGuid();
 		Scene.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(TEXT("Sandbox")), 1);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 		if (!TestNotNull(TEXT("set-up: an empire run was begun"), Scene.Instance->BeginEmpireRun(7)))
 		{
 			return false;
@@ -596,6 +599,7 @@ bool FCataclysmSaveLoadUnreadableRunTest::RunTest(const FString&)
 		}
 		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 		const UCataclysmEmpireRun* RunBefore = Scene.Instance->BeginEmpireRun(5);
 		const int32 LevelBefore = Scene.State->GetCharacterLevel();
 
@@ -792,6 +796,7 @@ bool FCataclysmSaveLoadDeathProcessedTest::RunTest(const FString&)
 
 	// THE RUN, ON THE GAME INSTANCE, so the dungeon and the writer both find it. Nothing standing on it, as the death
 	// tests' scene has it.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Run = Scene.Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0);
 	if (!TestTrue(TEXT("set-up: a run was begun"), Run && Run->Map && Run->Clock))
 	{
@@ -981,6 +986,7 @@ namespace CataclysmSaveLoadTest
 		Out.CharacterId = FGuid::NewGuid();
 		Scene.Base.Writer->BeginRun(Out.RunId, Out.CharacterId, Scene.Mode->DungeonName, Scene.Mode->FloorNumber);
 
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 		UCataclysmEmpireRun* Run = Scene.Base.Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0);
 		if (!Test.TestTrue(TEXT("set-up: an empire run was begun"), Run && Run->Map && Run->Clock))
 		{
@@ -1359,6 +1365,7 @@ bool FCataclysmSaveLoadDungeonRefusedTest::RunTest(const FString&)
 		}
 		ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten6; // Issue #2928: the Cataclysms this run faces are named.
 		UCataclysmEmpireRun* RunBefore = Scene.Base.Instance->BeginEmpireRun(5);
 		int32 WalkingBefore = INDEX_NONE;
 		if (bAlreadyWalking && RunBefore && Scene.Mode)
@@ -1490,6 +1497,7 @@ namespace CataclysmSaveLoadTest
 	/** A dungeon placed by hand on a run of a world's own game instance, carrying the given modifiers. */
 	int32 PlaceADungeonCarrying(FAutomationTestBase& Test, const FDungeonScene& Scene, const TArray<FName>& Modifiers)
 	{
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten7; // Issue #2928: the Cataclysms this run faces are named.
 		UCataclysmEmpireRun* Run = Scene.Base.Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0);
 		if (!Test.TestTrue(TEXT("set-up: an empire run was begun"), Run && Run->Map && Run->Clock))
 		{
@@ -8395,6 +8403,7 @@ bool FCataclysmSaveLoadListTest::RunTest(const FString&)
 		}
 		ON_SCOPE_EXIT { Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 		Scene.Writer->BeginRun(WrittenRun, Written, FName(TEXT("Sandbox")), 1);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten8; // Issue #2928: the Cataclysms this run faces are named.
 		if (!TestNotNull(TEXT("set-up: an empire run was begun"), Scene.Instance->BeginEmpireRun(7)))
 		{
 			return false;
@@ -9404,6 +9413,7 @@ bool FCataclysmSaveLoadTierTest::RunTest(const FString&)
 		Saved.CharacterId = FGuid::NewGuid();
 		Scene.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(TEXT("Sandbox")), 1);
 		Scene.State->SetDifficultyTier(3);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten9; // Issue #2928: the Cataclysms this run faces are named.
 		if (!TestNotNull(TEXT("set-up: an empire run was begun at tier 3"),
 						 Scene.Instance->BeginEmpireRun(7, ECataclysmSurgeMode::Static, 0, 3)))
 		{
@@ -9570,6 +9580,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadNewCharacterDrawTest,
 
 bool FCataclysmSaveLoadNewCharacterDrawTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: this test reads the draw itself, so it holds the named list throughout.
 	using namespace CataclysmSaveLoadTest;
 	using namespace CataclysmSaveLoadDrawTest;
 
@@ -9645,6 +9656,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadLoadedDrawTest,
 
 bool FCataclysmSaveLoadLoadedDrawTest::RunTest(const FString&)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: this test reads the draw itself, so it holds the named list throughout.
 	using namespace CataclysmSaveLoadTest;
 	using namespace CataclysmSaveLoadDrawTest;
 
@@ -9784,6 +9796,7 @@ bool FCataclysmFirstSurgeDoorsTest::RunTest(const FString&)
 	using namespace CataclysmFirstSurgeTest;
 
 	UCataclysmGameInstance* Instance = NewObject<UCataclysmGameInstance>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten10; // Issue #2928: the Cataclysms this run faces are named.
 	const UCataclysmEmpireRun* Console = Instance->BeginEmpireRun(/* Seed */ 7, ECataclysmSurgeMode::Static, 0, 1);
 	if (!TestNotNull(TEXT("set-up: a console run was begun"), Console)
 		|| !TestTrue(TEXT("CONTROL: the modifier table loaded into the run"), Console->ModifierPool.Num() > 0))
@@ -9796,6 +9809,7 @@ bool FCataclysmFirstSurgeDoorsTest::RunTest(const FString&)
 	const UCataclysmEmpireRun* Asked = Empty->GetOrBeginEmpireRun();
 
 	UCataclysmGameInstance* ForACharacter = NewObject<UCataclysmGameInstance>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten11; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Character = ForACharacter->BeginACharactersEmpireRun(/* Seed */ 11, /* CataclysmOrderSeed */ 5,
 																			  ECataclysmSurgeMode::Static, 0, /* Tier */ 3);
 	if (!TestNotNull(TEXT("set-up: a run was begun on an empty instance"), Asked)
@@ -9806,6 +9820,7 @@ bool FCataclysmFirstSurgeDoorsTest::RunTest(const FString&)
 	const FString CharacterWave = CheckTheOpeningWave(*this, *Character, TEXT("a character's at tier 3"));
 
 	UCataclysmGameInstance* ForHeretic = NewObject<UCataclysmGameInstance>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten12; // Issue #2928: the Cataclysms this run faces are named.
 	const UCataclysmEmpireRun* Heretic = ForHeretic->BeginEmpireRun(/* Seed */ 1, ECataclysmSurgeMode::Accelerating,
 																	/* Heretic */ 2, 1);
 
@@ -10693,6 +10708,7 @@ bool FCataclysmCapitalSandboxSaveTest::RunTest(const FString&)
 		Saved.RunId = FGuid::NewGuid();
 		Saved.CharacterId = FGuid::NewGuid();
 		Saving.Writer->BeginRun(Saved.RunId, Saved.CharacterId, FName(ACataclysmGameMode::SandboxFloorName), 1);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten13; // Issue #2928: the Cataclysms this run faces are named.
 		UCataclysmEmpireRun* SavingRun = Saving.Instance->BeginEmpireRun(7);
 		if (!TestNotNull(TEXT("set-up: an empire run was begun"), SavingRun)
 			|| !TestNotNull(TEXT("set-up: a creature stands on the sandbox's floor"),
@@ -11190,6 +11206,7 @@ namespace CataclysmTravelTest
 		// travel-w1's first run (2026-11-18) read that as the stairs test's "the character exactly as it left" failing.
 		Out.Scene.Base.State->SetCataclysmOrderSeed(975318642);
 
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten14; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run = Out.Scene.Base.Instance->BeginEmpireRun(1, ECataclysmSurgeMode::Static, 0);
 		if (!Test.TestTrue(TEXT("set-up: an empire run was begun"), Out.Run && Out.Run->Map && Out.Run->Clock))
 		{
@@ -11822,6 +11839,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelDayZeroDeathTest,
 bool FCataclysmTravelDayZeroDeathTest::RunTest(const FString&)
 {
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten15; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 	if (!TestNotNull(TEXT("set-up: the run began"), Run->Map.Get()))
 	{
@@ -11860,6 +11878,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTravelReturnLineTest,
 bool FCataclysmTravelReturnLineTest::RunTest(const FString&)
 {
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten16; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 	if (!TestNotNull(TEXT("set-up: the run began"), Run->Map.Get())
 		|| !TestTrue(TEXT("set-up: the map has five cities to hit"), Run->Map->Cities.Num() >= 5))

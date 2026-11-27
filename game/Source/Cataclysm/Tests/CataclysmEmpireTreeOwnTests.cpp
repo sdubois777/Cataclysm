@@ -28,6 +28,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * A Solo Self-Found character's own empire upgrade points and tree, on its character record. Issue #2741, slice 1c:
@@ -102,6 +103,7 @@ namespace CataclysmEmpireTreeOwnTest
 
 		if (bWithARun)
 		{
+			const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 			Out.Instance->BeginEmpireRun(/*Seed*/ 2741, ECataclysmSurgeMode::Static, static_cast<int32>(Lethality),
 										 /*DifficultyTier*/ 1);
 		}

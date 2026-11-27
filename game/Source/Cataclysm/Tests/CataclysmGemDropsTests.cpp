@@ -127,7 +127,9 @@ bool FCataclysmGemDropsWhichTest::RunTest(const FString&)
 		return false;
 	}
 	const TArray<FName> Rows = Gems->GetRowNames();
-	TestEqual(TEXT("the Gems sheet has 28 gems"), Rows.Num(), 28);
+	// THE GEMS THE SHEET HOLDS, HOWEVER MANY (28 on 2026-11-27): the count is no longer pinned, since it only restated
+	// the sheet (issue #2928). Every one of them is drawn below.
+	TestTrue(TEXT("CONTROL: the Gems sheet has gems"), Rows.Num() > 0);
 
 	// 1,000 DRAWS A GEM: one standard deviation is about 31, so 850 to 1,150 is nearly five either side.
 	TMap<FName, int32> Counts;

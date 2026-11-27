@@ -11,6 +11,7 @@
 #include "Empire/CataclysmSurge.h"
 #include "Engine/DataTable.h"
 #include "Player/CataclysmEmpireTree.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's slice 7: the four Treasury nodes that read a Treasurer city upgrade. Issue #2741, the
@@ -45,6 +46,7 @@ namespace CataclysmEmpireTreeTreasurerTest
 	UCataclysmEmpireRun* QuietTreasurerRun(int32 Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();

@@ -15,6 +15,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The run record keeps its Cataclysm boss dungeon, at version 4. Issue #1324
@@ -95,6 +96,7 @@ bool FCataclysmEarnedBossSaveRoundTripTest::RunTest(const FString& Parameters)
 	const auto Begun = []()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* Seed */ 11, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 1);
 		Run->AdvanceDays(4);
 		return Run;

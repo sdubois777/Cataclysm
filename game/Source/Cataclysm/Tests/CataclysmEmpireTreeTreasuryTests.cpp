@@ -9,6 +9,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Player/CataclysmEmpireTree.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's slice 6d: Treasury Guard and Tax Collection. Issue #2741, the owner's rulings of
@@ -34,6 +35,7 @@ namespace CataclysmEmpireTreeTreasuryTest
 	UCataclysmEmpireRun* QuietTreasuryRun(int32 Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();

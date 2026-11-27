@@ -30,6 +30,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's slice 9: the five nodes the coordinating session ruled under the owner's delegation on
@@ -73,6 +74,7 @@ namespace CataclysmEmpireTreeNineTest
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 		Run->SetTreeBonuses(Bonuses);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();
@@ -280,6 +282,7 @@ namespace CataclysmEmpireTreeNineTest
 		}
 
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2742, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		return Out;

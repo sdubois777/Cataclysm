@@ -24,6 +24,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's slice 5b: Relentless Pursuit and the four drop rules. Issue #2741, each reading a judgement
@@ -61,6 +62,7 @@ namespace CataclysmEmpireTreeDropsTest
 	UCataclysmEmpireRun* QuietDropsRun(int32 Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();
@@ -369,6 +371,7 @@ bool FCataclysmEmpireTreeDropsStreakTest::RunTest(const FString&)
 		return false;
 	}
 	const int32 AfterThird = Run->ClearsSinceLastDeath;
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(2742);
 
 	AddInfo(FString::Printf(TEXT("CLEAN CLEARS: %d after two clears, %d after a death (run clears %d), %d after another, "

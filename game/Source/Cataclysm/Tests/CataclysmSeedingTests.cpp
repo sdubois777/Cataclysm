@@ -18,6 +18,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * A FLOOR'S CREATURES DRAW THEIR RARITY AND THEIR MODIFIERS INDEPENDENTLY. Issue #2749's placement seeding slice,
@@ -273,6 +274,7 @@ CATACLYSM_SEEDING_TEST(FCataclysmSeedingLoadedRunTest,
 	// 25". Nothing the Cataclysm stream draws reads a city, and every other field, the stream's state and the active
 	// Cataclysms among them, is the fixture's. The fixture's one dungeon stands on city 7, which a whole map has.
 	UCataclysmEmpireRun* Fresh = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Fresh->Begin(2749);
 	TestEqual(TEXT("set-up: the fixture holds two cities"), Record->Cities.Num(), 2);
 	UCataclysmEmpireRun* Loaded = NewObject<UCataclysmEmpireRun>();

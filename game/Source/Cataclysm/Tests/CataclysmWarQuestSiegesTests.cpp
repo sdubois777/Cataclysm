@@ -15,6 +15,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * War's quest: Quest Sieges. Issue #51 slice B4.
@@ -38,6 +39,7 @@ namespace CataclysmWarQuestSiegesTest
 	UCataclysmEmpireRun* MakeEmptyRun(int32 Seed = 1, ECataclysmType Facing = ECataclysmType::Death)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();

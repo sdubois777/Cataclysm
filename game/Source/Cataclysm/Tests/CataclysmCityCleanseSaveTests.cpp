@@ -13,6 +13,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Whether the cleanse city upgrade has been bought in the run, saved since run record version 16. Issue #2838, ruled
@@ -82,8 +83,10 @@ bool FCataclysmCityCleanseSaveTest::RunTest(const FString&)
 	using namespace CataclysmCityCleanseSaveTest;
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* InSeed */ 2838, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* InDifficultyTier */ 3);
 	UCataclysmEmpireRun* Untouched = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Untouched->Begin(/* InSeed */ 2838, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* InDifficultyTier */ 3);
 	const int32 PillarId = Run->Map->PillarId;
 

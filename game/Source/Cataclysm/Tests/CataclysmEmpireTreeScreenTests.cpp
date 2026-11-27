@@ -37,6 +37,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmTestSkip.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's screen, and the empire map's button that opens it. Issue #2741 slice 2.
@@ -147,6 +148,7 @@ namespace CataclysmEmpireTreeScreenTest
 
 		if (bWithARun)
 		{
+			const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 			Out.Instance->BeginEmpireRun(/*Seed*/ 2741, ECataclysmSurgeMode::Static,
 										 static_cast<int32>(ECataclysmLethality::Standard), /*DifficultyTier*/ 1);
 		}
@@ -1075,6 +1077,7 @@ bool FCataclysmEmpireTreeScreenMapButtonPressTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(3);
 	Screen->SetRunForTests(Run);
 

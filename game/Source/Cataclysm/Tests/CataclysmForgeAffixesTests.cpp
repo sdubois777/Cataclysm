@@ -22,6 +22,7 @@
 #include "Save/CataclysmSavePartition.h"
 #include "DayClock/CataclysmDayClock.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * THE FORGE'S THREE AFFIX CRAFTS. Issue #47, slice F1, ruled by the coordinating session on 2026-11-22.
@@ -108,6 +109,7 @@ namespace CataclysmForgeAffixesTest
 			Out.State->SetOwnGold(1000000);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2847, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		if (Out.Character && Out.Character->GetInventory() && Out.Character->GetEquipment())

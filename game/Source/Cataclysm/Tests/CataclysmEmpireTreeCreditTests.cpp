@@ -27,6 +27,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's slice 6e: Global Credit and Sovereign Loans, the gold debt. Issue #2741, the owner's ruling
@@ -123,6 +124,7 @@ namespace CataclysmEmpireTreeCreditTest
 
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
 		// THE PRICE TESTS' SEED, whose city 0 they buy on: no Siege dungeon stands on it to refuse the offer.
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2742, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		return Out;

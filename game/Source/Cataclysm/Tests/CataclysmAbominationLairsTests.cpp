@@ -27,6 +27,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Death's quest: Abomination lairs. Issue #51 slice B5.
@@ -49,6 +50,7 @@ namespace CataclysmAbominationLairsTest
 	UCataclysmEmpireRun* MakeEmptyRun(ECataclysmType Facing, int32 Seed = 1)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();
@@ -156,6 +158,7 @@ namespace CataclysmAbominationLairsTest
 		{
 			return nullptr;
 		}
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(1);
 		Run->AdvanceDay();
 		OutMode->SetEmpireRunForTests(Run);

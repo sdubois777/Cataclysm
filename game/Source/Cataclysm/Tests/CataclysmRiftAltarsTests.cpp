@@ -31,6 +31,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * A Rift's four altars: the Demonic Quest dungeon, issue #51 slice B1. Since 2026-11-24. WRITTEN BEFORE ITS FIRST
@@ -100,6 +101,7 @@ namespace CataclysmRiftAltarsTest
 		Out.Run = NewObject<UCataclysmEmpireRun>();
 		if (Out.Mode && Out.Run)
 		{
+			const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 			Out.Run->Begin(1);
 			Out.Run->AdvanceDay();
 			Out.Mode->SetEmpireRunForTests(Out.Run);

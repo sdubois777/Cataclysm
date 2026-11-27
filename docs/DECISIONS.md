@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — A weapon is held by its grip: the Greatsword, the Sword and the Dagger were held by the tip of the blade, and each weapon mesh now names where the hand holds it
+
+**Affects:**
+- `docs/All_Things_Cataclysm.xlsx`, the Weapon Meshes sheet: six columns, Grip X, Grip Y, Grip Z, Grip Pitch,
+  Grip Yaw and Grip Roll, written by `tools/apply_weapon_grips_2026_11_27.py`. `game/Data/WeaponMeshes.csv`
+  regenerated; `tools/generate_datatables.py` reads and refuses a non-number in each.
+- `game/Source/Cataclysm/Data/CataclysmDataRows.h`: `FCataclysmWeaponMeshRow` GripX to GripRoll.
+- `game/Source/Cataclysm/Items/CataclysmWeaponMeshes.h` and `.cpp`: `GripFor` and `GripFrom`.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`: `DrawWeaponsInHands` sets the hand's relative
+  transform from `GripFor`, for the player and for the creatures that copy a player.
+- `game/docs/weapon-source-assets.md`: "Where the hand holds each mesh", with the measurements.
+- Tests: three in `game/Source/Cataclysm/Tests/CataclysmWeaponMeshTests.cpp`, four in
+  `tools/tests/test_a_weapon_is_drawn_in_the_hand.py`.
+
+### SAID FIRST
+
+- **WINDOW grip-w1 PASSED IN UNREAL ON `b5836f16e`, AND NOTHING HAS BEEN SEEN.** Automation tests do not render. The
+  owner is asked to look at the Greatsword, Sword, Dagger and Warhammer in the hand, and at the Spear, Crossbow and
+  Shield, which were not changed.
+- **`DT_WeaponMeshes` was rebuilt in the window's editor step**: "Imported DataTable 'DT_WeaponMeshes' - 0 Problems".
+- **This branch carries a workbook edit**, which git cannot merge with another branch's.
+
+### The owner's report, verbatim
+
+"he's holding the greatsword by the tip.. instead of the handle" (2026-11-27, with a screenshot).
+
+### The cause
+
+The hand socket (`HandGrip_R`) holds a mesh's origin, and the meshes were attached with no offset or turn, so where
+the Medieval Weapons pack's author put each origin decided what the hand held. `SM_Sword_3` (the Greatsword),
+`SM_Sword_1` (the Sword) and `SM_Dagger` put their origin at the blade's tip, with the hilt at the far end of +Z.
+
+**Measured without the editor**, from each mesh's own vertex positions: read out of the `.uasset`'s Oodle-compressed
+mesh description with the engine's `oo2core.dll`, and sliced along Z. The crossguard is the widest slice and the blade
+narrows to its tip. The pack's own `WeaponSocket` on SM_Sword_3 sits at Z 88.6 of 93.5, at the hilt, which agrees.
+The figures for all nine meshes are in `game/docs/weapon-source-assets.md`.
+
+### What changed, and the judgements in it
+
+- Each row names the mesh point the hand holds and the turn about it; `GripFor` puts that point on the socket at the
+  row's scale. Data, so a correction is six cells and no rebuild.
+- **The Sword, Dagger and Greatsword** hold the middle of their grip (Z 69.5, 26.5 and 83) and turn 180 degrees of
+  roll, about the blade's width axis, so the blade points away from the hand the way every mesh held at its origin
+  did.
+- **The Warhammer (`SM_Mace`) holds Z -19**: its origin is on its plain shaft about 10 cm above a wrapped grip running
+  from Z -30 to -9. That the wrapped part is the grip is a judgement from its widths.
+- **Left as they were, and named for the owner to look at:** the Spear is held at its butt end; which way the
+  Crossbow's stock points and where the Shield's strap is were not read.
+- No genre research applies: this is where a piece of art sits in a hand, not a formula or a mechanic.
+
+### Window grip-w1, on `b5836f16e`
+
+- Build: "Succeeded - 99 actions, 89 files compiled".
+- `Cataclysm.WeaponMesh.` alone: "13 tests performed, 13 succeeded, 0 failed"; 9 skipped part of what they check,
+  because the weapons pack is not in a worktree, `AnEquippedGreatswordIsHeldByItsGripAndTheNextWeaponIsNotTurned`
+  among them. "Test saves: 0 written and deleted, 0 left behind".
+- The whole suite: "6141 tests performed, 6141 succeeded, 0 failed", the base's 6138 and this branch's 3; 62 skipped
+  part of what they check; "Test saves: 895 written and deleted, 0 left behind".
+- Python beside it: "9721 passed, 10 skipped"; JUnit 9,731 tests, 0 failures. ruff: all checks passed.
+- C++ proof, prefix `Cataclysm.WeaponMesh.`: in `GripFrom`, `Location` set to nought unless `Drawn < 0`. PROVED: with
+  the break in, "13 tests performed, 11 succeeded, 2 failed: AGripPointIsPutOnTheHandSocket,
+  TheGreatswordsRowHoldsItByItsGripAndTheAxesByItsOrigin", the two predicted; restored, the run passed.
+- Python proof, in a `git archive` copy: `DrawWeaponsInHands` set back to `SetRelativeScale3D(FVector(Scale))`.
+  PROVED: `test_the_hand_is_placed_by_the_grip` failed with it in; restored, "12 passed, 1 skipped".
+
+---
+
 ## 2026-11-27 — Saves: only the current version is read; the 45 upgrade steps, their tests and the old example files are removed (#2928, slice 12)
 
 **Affects:** `game/Source/Cataclysm/Save/` (`CataclysmSaveVersion.h` and `.cpp` replace `CataclysmSaveMigration.h` and
@@ -95,11 +162,14 @@ and a future save change needs no upgrade step. Current versions, unchanged: run
 
 - **No editor step**: no CSV or asset changes.
 - **Groups alone (new only, the owner's rule of 2026-11-25):** `Cataclysm.SaveVersion.` 3.
-- **The whole suite: 6093**, with Python beside it. The base log is rost-w1's whole suite on 4520d824, "6138 tests
-  performed", whose tree declares the same 6087 tests by name as development 2596d702a (6138 performed, because some
-  tests report more than one result). This branch removes 52 names and adds 7, all simple tests: 6138 - 45. **Test
-  saves 895**, as in that log: read per test from its running total, none of the removed tests wrote one. **Skipped
-  halves 61**, as in that log.
+- **The whole suite: 6100**, with Python beside it, on development 81e7179b2 merged in. **This said 6093 against
+  rost-w1's log (6138 on 4520d824) until that merge**; development then held 7 tests more (the weapon grip's 3, slices
+  5 and 6's 1, and slices 1 and 3's 3), and slice 4's window had measured a newer whole suite. The base is that log,
+  `s4_suite_engine_9a04952f.log` (C:\w2928s4): "6145 tests performed", on a tree declaring 6094 tests, the same count
+  as development and differing only by two renames on that unmerged branch (more performed than declared, because some
+  tests report more than one result). This branch removes 52 names and adds 7, all simple tests: 6145 - 45. **Test
+  saves 895** and **skipped halves 62**, as in that log; read per test from its running total, none of the removed
+  tests wrote a save, and none is among the skipped halves.
 - **One C++ guard proof, SV1**, that the older-record refusal is tested: in `CataclysmSaveVersion.cpp`,
   `if (Version < CurrentVersion)` read as `if (false && Version < CurrentVersion)`. Predicted, narrowed to
   `Cataclysm.SaveVersion.`: 3 performed, 1 failed, `AnOlderRecordIsRefusedAndACurrentOneLoads`; restored, 3 passed.

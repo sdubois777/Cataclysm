@@ -14,6 +14,7 @@
 #include "Interface/CataclysmEmpireMapLayout.h"
 #include "Interface/CataclysmEmpireStatusBar.h"
 #include "Tests/CataclysmTestSkip.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire map shows the Cataclysm boss dungeon. Issue #1324 slice 6c, 2026-11-03.
@@ -35,6 +36,7 @@ namespace CataclysmBossOnTheMapTest
 	UCataclysmEmpireRun* MakeTierRun(int32 Seed, int32 DifficultyTier)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, DifficultyTier);
 		return Run;
 	}

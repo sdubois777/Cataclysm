@@ -15,6 +15,7 @@
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Raising a bought city upgrade, as the game module offers, prices and saves it. Issue #1265, the coordinating
@@ -32,6 +33,7 @@ namespace CataclysmCityUpgradeRaiseScreenTest
 	UCataclysmEmpireRun* MakeRun(int32 DifficultyTier = 1)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 1265, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, DifficultyTier);
 		return Run;
 	}

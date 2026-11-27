@@ -19,6 +19,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's rules that act at an event. Issue #2741 slice 3b: the seven nodes the coordinating session's
@@ -55,6 +56,7 @@ namespace CataclysmEmpireTreeEventsTest
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 		Run->SetTreeBonuses(Bonuses);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();
@@ -949,6 +951,7 @@ bool FCataclysmEmpireTreeEventsBeginTest::RunTest(const FString&)
 	Run->CitiesReclaimed = 2;
 	Run->bSanctuaryLastStandSpent = true;
 	const bool bCountedBefore = Run->ClearsSinceLastSurge == 4 && Run->CitiesReclaimed == 2 && Run->bSanctuaryLastStandSpent;
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(2742);
 
 	AddInfo(FString::Printf(TEXT("BEGUN AGAIN: %d clears, %d reclaimed, spent %s"), Run->ClearsSinceLastSurge,

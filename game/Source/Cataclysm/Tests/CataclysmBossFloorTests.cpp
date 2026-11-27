@@ -26,6 +26,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The last floor of the Cataclysm boss dungeon, issue #1324 slice 6d. Since 2026-11-03.
@@ -172,6 +173,7 @@ namespace CataclysmBossFloorTest
 		Out.Run = NewObject<UCataclysmEmpireRun>();
 		if (Out.Mode && Out.Run)
 		{
+			const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 			Out.Run->Begin(1);
 			Out.Run->AdvanceDay();
 			Out.Mode->SetEmpireRunForTests(Out.Run);

@@ -100,3 +100,24 @@ bool UCataclysmWeaponMeshes::HasRowFor(const UDataTable* Table, FName Base)
 {
 	return FindRow(Table, Base) != nullptr;
 }
+
+FTransform UCataclysmWeaponMeshes::GripFrom(const FVector& GripPoint, const FRotator& GripRotation, float Scale)
+{
+	const float Drawn = Scale > 0.0f ? Scale : 1.0f;
+	const FQuat Turn = GripRotation.Quaternion();
+	// THE COMPONENT DRAWS A MESH POINT P AT Turn(Drawn * P) + Location, so the grip point lands on the socket's origin
+	// when Location is minus where the turn and the scale put it.
+	const FVector Location = -Turn.RotateVector(GripPoint * Drawn);
+	return FTransform(Turn, Location, FVector(Drawn));
+}
+
+FTransform UCataclysmWeaponMeshes::GripFor(const UDataTable* Table, FName Base, float Scale)
+{
+	const FCataclysmWeaponMeshRow* Row = FindRow(Table, Base);
+	if (!Row)
+	{
+		return GripFrom(FVector::ZeroVector, FRotator::ZeroRotator, Scale);
+	}
+	return GripFrom(FVector(Row->GripX, Row->GripY, Row->GripZ),
+					FRotator(Row->GripPitch, Row->GripYaw, Row->GripRoll), Scale);
+}
