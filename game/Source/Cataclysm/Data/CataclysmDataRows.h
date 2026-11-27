@@ -1691,7 +1691,7 @@ struct FCataclysmEnemyArchetypeRow : public FTableRowBase
 	float CritMultiplierPercent = 150.0f;
 
 	/** How fast it moves before it has noticed the player. Zero is a creature
-	 *  that never moves, which is the Corrupted Sentinel. */
+	 *  that never moves; none is designed so today (the Corrupted Sentinel was, until 2026-11-27). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enemy Archetype")
 	float MoveSpeedMetresPerSecond = 4.5f;
 

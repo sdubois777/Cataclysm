@@ -173,6 +173,22 @@ float ACataclysmCorruptedSentinelCharacter::DesignedSecondsBetweenAttacks() cons
 	return AttackIntervalSecondsInUse();
 }
 
+bool ACataclysmCorruptedSentinelCharacter::HasAClearShotAt(const AActor* Target) const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !IsValid(Target))
+	{
+		return false;
+	}
+	// MIDDLE TO MIDDLE, ON THE VISIBILITY CHANNEL, BOTH BODIES LEFT OUT: what blocks a bolt blocks the shot. The owner's
+	// "Walk everywhere", 2026-11-27.
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(CataclysmSentinelClearShot), /*bInTraceComplex=*/false, this);
+	Query.AddIgnoredActor(Target);
+	FHitResult Blocked;
+	return !World->LineTraceSingleByChannel(Blocked, GetActorLocation(), Target->GetActorLocation(), ECC_Visibility,
+											Query);
+}
+
 void ACataclysmCorruptedSentinelCharacter::AttackTarget(AActor* /*Target*/)
 {
 	// NOTHING, AND THAT IS THE WHOLE POINT OF THIS OVERRIDE.
@@ -411,8 +427,8 @@ void ACataclysmCorruptedSentinelCharacter::UpdateLoopingAnimation()
 	}
 
 	// STANDING ROOTED, OR JOGGING WHILE IT WALKS, chosen from its own velocity as every other creature here chooses.
-	// Until issue #2793 there was only the rooted pose, because nobody's Sentinel cannot walk and so never reaches the
-	// jog; a Sentinel the player has taken walks at its commander's pace. NO UNROOTING CLIP BETWEEN THE TWO, a
+	// Until issue #2793 there was only the rooted pose; a Sentinel the player has taken walks at its commander's pace,
+	// and since the owner's "Walk everywhere" of 2026-11-27 nobody's walks too, toward a player it has noticed. NO UNROOTING CLIP BETWEEN THE TWO, a
 	// judgement of 2026-11-20: `PlantedExit` and `PlantedIntro` are in the pack and are not played.
 	const bool bWalking = GetVelocity().Size2D() > WalkingThresholdCmPerSecond;
 	UAnimSequence* Wanted = (bWalking && JogAnimation) ? JogAnimation.Get() : IdleAnimation.Get();

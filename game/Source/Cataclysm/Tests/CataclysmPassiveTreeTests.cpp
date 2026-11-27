@@ -3580,9 +3580,6 @@ namespace CataclysmPassiveConditionTest
 			// the character struck carries a Poison or a Bleed the asker applied. It names a state, so it compares
 			// nothing.
 			|| Name == TEXT("target_carries_your_poison_or_bleed")
-			// THE DEATH TREES' SLICE C4b1 (2026-11-25), ANY FUEL'S "FERVOUR GAINED FROM SOURCES OTHER THAN KILLS": the
-			// gain being sized is not a kill's payment. It names a state, so it compares nothing.
-			|| Name == TEXT("fervour_gain_not_from_a_kill")
 			// THE DEATH TREES' SLICE C4c1 (2026-11-25), PASSED ON'S "YOUR HIT": the kill being acted on was made by a hit.
 			// It names a state, so it compares nothing.
 			|| Name == TEXT("killing_blow_was_a_hit")
@@ -3608,6 +3605,9 @@ namespace CataclysmPassiveConditionTest
 			// AND FIRST AMONG THE DEAD'S "your permanent minion with the most maximum health", the Death line's finishing
 			// slice B (2026-11-26): a state of the minion asking.
 			|| Name == TEXT("minion_has_your_most_maximum_health")
+			// AND DEATH MADE FLESH'S "the Fervour you hold no longer adds to your damage", the Soul Collector keystone
+			// rework (issue #2951): a state of the character.
+			|| Name == TEXT("fervour_held_adds_damage")
 			// THE BERSERKER'S STATES, 2026-11-25: "DUAL WIELD ONLY", "WHILE IN WRATH" AND "WHILE IN FRENZY". Each names
 			// a state, so each compares nothing.
 			|| Name == TEXT("dual_wielding")

@@ -1,13 +1,14 @@
-"""The player's kill handler reaches Reclaimed, Claimed and Death's Toll in the order ruled.
+"""The player's kill handler reaches Death's Toll's follower kill as ruled.
 
-WHY THIS EXISTS. The Soul Collector's Reclaimed, Claimed and Death's Toll (the Death trees' slice C4b2, 2026-11-25) are
-called from `ACataclysmPlayerCharacter::OnSomethingDied`. One Unreal test drives it with a whole player
-(`Cataclysm.KillCredit.AMinionsKillPaysTheRealPlayerUnderDeathsToll`); the others call the three directly. Continuous
-integration compiles no C++, so this reads the order from the source with comments and strings removed.
+WHY THIS EXISTS. The Soul Collector's Death's Toll (the Death trees' slice C4b2, 2026-11-25), granted by the starting
+node since the keystone rework (issue #2951), is called from `ACataclysmPlayerCharacter::OnSomethingDied`. One Unreal
+test drives it with a whole player (`Cataclysm.KillCredit.AMinionsKillPaysTheRealPlayerUnderDeathsToll`); the others
+call it directly. Continuous integration compiles no C++, so this reads the source with comments and strings removed.
+Reclaimed and Claimed, which this also checked, were retired by issue #2951.
 
-WHAT IS ASSERTED. An own kill gives back decay before it is paid; Claimed is asked only for a death this character did
-not make and that Death's Toll did not make its own, so the two never both pay; both decays record what they took, as
-ruled; and a follower's kill raises `kill` only to rows whose trigger key begins with the Soul Collector's prefix.
+WHAT IS ASSERTED. A follower's kill is credited only for a death this character did not make; both decays record what
+they took, which Unquiet Souls and Grave Patience act on; and a follower's kill raises `kill` only to rows whose trigger
+key begins with the Soul Collector's prefix.
 """
 
 from __future__ import annotations
@@ -45,30 +46,19 @@ def bodies(path: pathlib.Path, keep_strings: bool = False) -> dict[str, str]:
     return {name: re.sub(r"\s+", " ", "\n".join(lines)) for name, lines in found.items()}
 
 
-def test_an_own_kill_gives_back_decay_before_it_is_paid():
-    body = bodies(HANDLER)["ACataclysmPlayerCharacter::OnSomethingDied"]
-    given = body.find("UCataclysmFervour::GiveBackDecayOnKill(Acting);")
-    paid = body.find("UCataclysmFervour::GainOnOwnKill(Acting, Notice.Victim);")
-    assert body.count("UCataclysmFervour::GiveBackDecayOnKill(Acting);") == 1 and 0 <= given < paid, (
-        "the kill handler must give back Reclaimed's decay once, before it pays the kill")
-
-
-def test_claimed_is_asked_only_when_no_kill_was_credited():
+def test_a_followers_kill_is_credited_only_for_a_death_this_character_did_not_make():
     body = bodies(HANDLER)["ACataclysmPlayerCharacter::OnSomethingDied"]
     guarded = re.search(
-        r"if \( ?Notice\.Killer != this && Notice\.Victim && "
-        r"!UCataclysmFervour::CreditAFollowersKill\( ?Acting, this, Notice ?\) ?\) "
-        r"\{ UCataclysmFervour::ClaimOnDeath\( ?Acting, Notice\.Victim ?\); \}", body)
-    assert guarded, ("Claimed must be asked only for a death this character did not make and that Death's Toll did "
-                     "not credit to it, so the two never both pay")
-    assert body.count("UCataclysmFervour::ClaimOnDeath(") == 1
+        r"if \( ?Notice\.Killer != this && Notice\.Victim ?\) "
+        r"\{ UCataclysmFervour::CreditAFollowersKill\( ?Acting, this, Notice ?\); \}", body)
+    assert guarded, "a follower's kill must be credited only for a death this character did not make"
     assert body.count("UCataclysmFervour::CreditAFollowersKill(") == 1
 
 
 def test_both_decays_record_what_they_took():
     every = bodies(FERVOUR)
     for name in ("UCataclysmFervour::DecayStep", "UCataclysmFervour::KillDecayStep"):
-        assert "NoteFervourDecayed(" in every[name], f"{name} must record what it took, for Reclaimed"
+        assert "NoteFervourDecayed(" in every[name], f"{name} must record what it took, for Unquiet Souls and Grave Patience"
 
 
 def test_a_followers_kill_raises_kill_to_the_soul_collectors_rows_only():

@@ -95,7 +95,7 @@
       "asset": "DT_EnemyArchetypes",
       "csv": "EnemyArchetypes.csv",
       "rows": 10,
-      "csv_sha256": "5e7876d70325af0780ad4231d303b3fee49281e64582705c888244dfa7e9858f"
+      "csv_sha256": "842a2ff49bf4fe6d4528187885b797ed27e5a398efb4ff5583526ea2de096a9e"
     },
     {
       "asset": "DT_EnemyDrops",
@@ -172,14 +172,14 @@
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 998,
-      "csv_sha256": "01959b3f15564bb6edf617e34947bbb4f9761051091b69170f8a4d214b23db22"
+      "rows": 1003,
+      "csv_sha256": "c25ad0cb8cf0f39e1914cea161c811407407ee0952871cef27c28aa1aeeef9ff"
     },
     {
       "asset": "DT_PassiveNodes",
       "csv": "PassiveNodes.csv",
       "rows": 661,
-      "csv_sha256": "8e08a904db77317ab808b0075fac4459d04bbe6c88f7fc8952ab2e4d9e2e7a4c"
+      "csv_sha256": "b105d4d53e87999cad61787945dd63086af87bfbd202731d0db2bb0260ccaa8f"
     },
     {
       "asset": "DT_SkillSlots",

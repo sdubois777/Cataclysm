@@ -13,6 +13,10 @@
 #include "Animation/AnimSequence.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyController.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
+#include "Components/BoxComponent.h"
+#include "Navigation/PathFollowingComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -151,13 +155,14 @@ bool FCataclysmSentinelCarriesItsDesignedProfile::RunTest(const FString&)
 	TestEqual(TEXT("it shoots on its designed interval"),
 		Sentinel->SecondsBetweenAttacks(),
 		Sentinel_t::DesignedAttackIntervalSeconds);
-	TestEqual(TEXT("it notices as far as it can shoot, which no other creature "
-				   "needs"),
-		Sentinel->SightRadiusCm(), Sentinel_t::SiegeBoltRangeCm);
+	// TWO METRES BEYOND WHAT IT CAN SHOOT, the Succubus's margin, since it began to walk (2026-11-27); it noticed only
+	// as far as it shoots while it could not walk.
+	TestEqual(TEXT("it notices two metres beyond what it can shoot"),
+		Sentinel->SightRadiusCm(), Sentinel_t::SiegeBoltRangeCm + 200.0f);
 
-	// **IT DOES NOT ROAM, AND EVERY OTHER CREATURE DOES.** A roam radius on a
-	// creature that cannot walk is a destination it can never reach.
-	TestEqual(TEXT("it does not wander, because it cannot"),
+	// **IT DOES NOT ROAM, AND EVERY OTHER CREATURE DOES.** It walks only toward a
+	// player it has noticed (the owner's "Walk everywhere", 2026-11-27).
+	TestEqual(TEXT("it does not wander"),
 		Sentinel->RoamRadiusCm(), 0.0f);
 
 	TestNotEqual(TEXT("its reach is not the base enemy's"),
@@ -179,14 +184,15 @@ bool FCataclysmSentinelCarriesItsDesignedProfile::RunTest(const FString&)
 	// sets MaxWalkSpeed, so a creature that stopped setting it would move at
 	// Unreal's default 600 cm/s -- faster than two of the three player classes
 	// -- and a turret would quietly become a melee enemy.
-	TestEqual(TEXT("it cannot move at all"), Movement->MaxWalkSpeed, 0.0f);
+	// IT WALKS AT 2.5 M/S SINCE THE OWNER'S "Walk everywhere" OF 2026-11-27; until then this was nought.
+	TestEqual(TEXT("it walks at its designed 250 cm/s"), Movement->MaxWalkSpeed, 250.0f);
 	TestNotEqual(TEXT("and that is not Unreal's default, which is what a "
 					  "creature that forgot to set one would have"),
 		Movement->MaxWalkSpeed, 600.0f);
 
 	// BUT IT CAN STILL TURN, which is what lets a rooted creature track a
 	// player who circles it.
-	TestEqual(TEXT("it turns at its designed rate even though it cannot walk"),
+	TestEqual(TEXT("it turns at its designed rate"),
 		Movement->RotationRate.Yaw,
 		static_cast<double>(Sentinel_t::DesignedTurnRateDegreesPerSecond));
 	TestTrue(TEXT("and that rate is not zero"),
@@ -780,6 +786,261 @@ bool FCataclysmSentinelAlternatesItsFiringClips::RunTest(const FString&)
 			Sentinel_t::FirePlayRate(), Sentinel_t::MaximumPlayRate),
 		Sentinel_t::FirePlayRate() < Sentinel_t::MaximumPlayRate);
 
+	return true;
+}
+
+
+// --------------------------------------------------------------------------
+// It walks, and plants to fire. The owner, 2026-11-27: "same thing with corrupted sentinels. I thought we decided they
+// should be able to move", and asked to choose, "Walk everywhere".
+// --------------------------------------------------------------------------
+
+namespace CataclysmSentinelWalksTest
+{
+	/** A wall across the X axis at `X`, blocking the visibility channel, the way the projectile tests build one. */
+	AActor* SentinelTestWall(UWorld* World, float X)
+	{
+		AActor* Wall = World->SpawnActor<AActor>(FVector(X, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!Wall)
+		{
+			return nullptr;
+		}
+		UBoxComponent* Solid = NewObject<UBoxComponent>(Wall);
+		Solid->InitBoxExtent(FVector(20.0f, 500.0f, 500.0f));
+		Solid->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		Solid->SetCollisionObjectType(ECC_WorldStatic);
+		Solid->SetCollisionResponseToAllChannels(ECR_Block);
+		Wall->SetRootComponent(Solid);
+		Solid->RegisterComponent();
+		Wall->SetActorLocation(FVector(X, 0.0f, 0.0f));
+		return Wall;
+	}
+
+	ACataclysmEnemyController* SentinelBrain(ACataclysmCharacterBase* Sentinel)
+	{
+		return Sentinel ? Cast<ACataclysmEnemyController>(Sentinel->GetController()) : nullptr;
+	}
+
+	int32 SentinelThinks(ACataclysmEnemyController* Brain)
+	{
+		return Brain ? static_cast<int32>(Brain->Think()) : -1;
+	}
+
+	constexpr int32 SentinelChasing = static_cast<int32>(ECataclysmBrainAction::Chasing);
+	constexpr int32 SentinelWindingUp = static_cast<int32>(ECataclysmBrainAction::WindingUp);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSentinelClosesAndPlantsTest,
+	"Cataclysm.Sentinel.ItClosesFromBeyondItsRangeAndPlantsToFire",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A player it has noticed beyond its 14 metres is walked toward, with no ability begun; the same player within its
+ * range, with nothing between them, is fired at: the brain begins a wind-up. CONTROL: the second half is the creature's
+ * old behaviour and holds; the first is new. It notices from further than it shoots only on a floor that makes every
+ * creature see further, which a Horde dungeon does, so the test raises its sight the same way.
+ */
+bool FCataclysmSentinelClosesAndPlantsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSentinelTest;
+	using namespace CataclysmSentinelWalksTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmCorruptedSentinelCharacter* Sentinel = SpawnSentinel(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, FVector(2000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyController* Brain = SentinelBrain(Sentinel);
+	if (!TestNotNull(TEXT("set-up: a Sentinel"), Sentinel) || !TestNotNull(TEXT("set-up: a target"), Target)
+		|| !TestNotNull(TEXT("set-up: the Sentinel has a brain"), Brain))
+	{
+		return false;
+	}
+	Sentinel->SightRadiusMultiplier = 2.0f;
+	TestTrue(TEXT("set-up: it notices from further than twenty metres"), Sentinel->NoticesFromCm() > 2000.0f);
+	TestEqual(TEXT("it walks at 250 cm/s"), Sentinel->GetCharacterMovement()->MaxWalkSpeed, 250.0f);
+
+	// BEYOND ITS RANGE: IT WALKS, AND BEGINS NOTHING.
+	TestEqual(TEXT("twenty metres off, it walks toward the player"), SentinelThinks(Brain), SentinelChasing);
+	TestEqual(TEXT("and has begun no ability"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+	TestNull(TEXT("and fired nothing"), Sentinel->LastShotFired.Get());
+
+	// WITHIN ITS RANGE, A CLEAR SHOT: IT PLANTS AND BEGINS TO FIRE.
+	Target->SetActorLocation(FVector(1000.0f, 0.0f, 0.0f));
+	TestEqual(TEXT("ten metres off with a clear shot, it begins a wind-up"), SentinelThinks(Brain), SentinelWindingUp);
+	TestNotEqual(TEXT("of one of its two abilities"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSentinelDoesNotFireWalkingTest,
+	"Cataclysm.Sentinel.ItDoesNotFireWhileItWalks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * While it walks it is moving and has begun nothing; once it has begun a wind-up it has stopped. The brain stops it
+ * before any wind-up (`UseAbilitiesOn`), so a Sentinel is never moving and casting at once. CONTROL: the walking pass
+ * shows it really was moving, so "stopped" is a change and not how it always was.
+ */
+bool FCataclysmSentinelDoesNotFireWalkingTest::RunTest(const FString&)
+{
+	using namespace CataclysmSentinelTest;
+	using namespace CataclysmSentinelWalksTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmCorruptedSentinelCharacter* Sentinel = SpawnSentinel(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, FVector(2000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyController* Brain = SentinelBrain(Sentinel);
+	if (!TestNotNull(TEXT("set-up: a Sentinel"), Sentinel) || !TestNotNull(TEXT("set-up: a target"), Target)
+		|| !TestNotNull(TEXT("set-up: the Sentinel has a brain"), Brain))
+	{
+		return false;
+	}
+	Sentinel->SightRadiusMultiplier = 2.0f;
+
+	if (!TestEqual(TEXT("set-up: twenty metres off, it walks"), SentinelThinks(Brain), SentinelChasing))
+	{
+		return false;
+	}
+	// WHAT THE BRAIN DID, NOT A WALK'S STATUS: a world built for a test has no navigation system, so a walk's status is
+	// never "moving" there (window cs-w1 measured 0, idle). The brain's own record is read instead, as the coordinating
+	// session ruled: a walk ordered and no ability begun.
+	const int32 MovesWhileWalking = Brain->MovesOrdered;
+	TestTrue(TEXT("CONTROL: walking, it has ordered a walk"), MovesWhileWalking > 0);
+	TestEqual(TEXT("and has begun no ability"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+	TestNull(TEXT("and fired nothing"), Sentinel->LastShotFired.Get());
+
+	Target->SetActorLocation(FVector(1000.0f, 0.0f, 0.0f));
+	if (!TestEqual(TEXT("set-up: in range with a clear shot, it begins a wind-up"), SentinelThinks(Brain),
+				   SentinelWindingUp))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and winding up, it ordered no further walk"), Brain->MovesOrdered, MovesWhileWalking);
+	TestNotEqual(TEXT("and stood still: no walk is in progress"), static_cast<int32>(Brain->GetMoveStatus()),
+				 static_cast<int32>(EPathFollowingStatus::Moving));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSentinelWalksWhenSightBreaksTest,
+	"Cataclysm.Sentinel.ItWalksAgainWhenItsLineOfSightBreaksAndTheGatekeepersMortarDoesNotAsk",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A player within its range behind a wall is walked toward, and no ability begins; the wall gone, it plants and fires.
+ * CONTROL: the Gatekeeper, whose mortar is "exactly as the Sentinel's", does not ask for a clear shot, so a wall between
+ * it and the same player changes nothing for it.
+ */
+bool FCataclysmSentinelWalksWhenSightBreaksTest::RunTest(const FString&)
+{
+	using namespace CataclysmSentinelTest;
+	using namespace CataclysmSentinelWalksTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmCorruptedSentinelCharacter* Sentinel = SpawnSentinel(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, FVector(1000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyController* Brain = SentinelBrain(Sentinel);
+	AActor* Wall = SentinelTestWall(World, 500.0f);
+	if (!TestNotNull(TEXT("set-up: a Sentinel"), Sentinel) || !TestNotNull(TEXT("set-up: a target"), Target)
+		|| !TestNotNull(TEXT("set-up: the Sentinel has a brain"), Brain) || !TestNotNull(TEXT("set-up: a wall"), Wall))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("ten metres off behind a wall, it has no clear shot"), Sentinel->HasAClearShotAt(Target));
+	TestEqual(TEXT("so it walks toward the player"), SentinelThinks(Brain), SentinelChasing);
+	TestEqual(TEXT("and begins no ability"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+
+	Wall->Destroy();
+	TestTrue(TEXT("the wall gone, it has a clear shot"), Sentinel->HasAClearShotAt(Target));
+	TestEqual(TEXT("and plants and begins to fire"), SentinelThinks(Brain), SentinelWindingUp);
+
+	// CONTROL: THE GATEKEEPER DOES NOT ASK.
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmGatekeeperCharacter* Gatekeeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+		ACataclysmGatekeeperCharacter::StaticClass(), FVector(0.0f, 3000.0f, 0.0f), FRotator::ZeroRotator, Params);
+	ACataclysmEnemyCharacter* KeepersTarget = SpawnTarget(World, FVector(1000.0f, 3000.0f, 0.0f));
+	AActor* KeepersWall = World->SpawnActor<AActor>(FVector(500.0f, 3000.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: a Gatekeeper"), Gatekeeper) || !TestNotNull(TEXT("set-up: its target"), KeepersTarget)
+		|| !TestNotNull(TEXT("set-up: its wall"), KeepersWall))
+	{
+		return false;
+	}
+	UBoxComponent* Solid = NewObject<UBoxComponent>(KeepersWall);
+	Solid->InitBoxExtent(FVector(20.0f, 500.0f, 500.0f));
+	Solid->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Solid->SetCollisionObjectType(ECC_WorldStatic);
+	Solid->SetCollisionResponseToAllChannels(ECR_Block);
+	KeepersWall->SetRootComponent(Solid);
+	Solid->RegisterComponent();
+	KeepersWall->SetActorLocation(FVector(500.0f, 3000.0f, 0.0f));
+	TestTrue(TEXT("CONTROL: behind the same wall, the Gatekeeper is not held to a clear shot"),
+			 Gatekeeper->HasAClearShotAt(KeepersTarget));
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSentinelNoticesAtSixteenTest,
+	"Cataclysm.Sentinel.ItNoticesAPlayerAtSixteenMetresAndWalksInToFireButNotAtEighteen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * It notices a player two metres beyond its 14 metre range, the Succubus's margin, so on an ordinary floor it walks in
+ * from 15.9 metres and plants to fire once in range. CONTROL: at 18 metres it notices nobody and walks nowhere. The
+ * coordinating session's ruling of 2026-11-27: 16 metres, which keeps groups further apart than it notices.
+ */
+bool FCataclysmSentinelNoticesAtSixteenTest::RunTest(const FString&)
+{
+	using namespace CataclysmSentinelTest;
+	using namespace CataclysmSentinelWalksTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmCorruptedSentinelCharacter* Sentinel = SpawnSentinel(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, FVector(1800.0f, 0.0f, 0.0f));
+	ACataclysmEnemyController* Brain = SentinelBrain(Sentinel);
+	if (!TestNotNull(TEXT("set-up: a Sentinel"), Sentinel) || !TestNotNull(TEXT("set-up: a target"), Target)
+		|| !TestNotNull(TEXT("set-up: the Sentinel has a brain"), Brain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it notices at 16 metres on an ordinary floor"), Sentinel->NoticesFromCm(), 1600.0f);
+
+	// CONTROL: EIGHTEEN METRES OFF, IT NOTICES NOBODY.
+	TestNotEqual(TEXT("CONTROL: eighteen metres off, it does not walk toward the player"), SentinelThinks(Brain),
+				 SentinelChasing);
+	TestNull(TEXT("CONTROL: and has no target"), Brain->CurrentTarget.Get());
+
+	// 15.9 METRES OFF: IT NOTICES, AND WALKS IN.
+	Target->SetActorLocation(FVector(1590.0f, 0.0f, 0.0f));
+	TestEqual(TEXT("15.9 metres off, it walks toward the player"), SentinelThinks(Brain), SentinelChasing);
+	TestTrue(TEXT("whom it has noticed"), Brain->CurrentTarget.Get() == Target);
+	TestEqual(TEXT("and has begun no ability yet"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+
+	// IN ITS RANGE, IT PLANTS AND FIRES.
+	Target->SetActorLocation(FVector(1300.0f, 0.0f, 0.0f));
+	TestEqual(TEXT("thirteen metres off, it plants and begins to fire"), SentinelThinks(Brain), SentinelWindingUp);
 	return true;
 }
 

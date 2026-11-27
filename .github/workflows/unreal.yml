@@ -30,10 +30,15 @@ on:
     # shared with whoever is working on it, so that skip is what keeps a docs
     # change from costing a build.
   push:
-    branches: [main, development]
-    # The push trigger keeps its paths filter on purpose: a documents merge into
-    # development does not need a build of development, and there is no
-    # required check to satisfy on a push.
+    branches: [main]
+    # MAIN ONLY, NOT DEVELOPMENT, since 2026-11-27 (the project owner: "yeah go ahead
+    # and make the change"). A pull request can merge into development only when it
+    # is up to date with it, and its own run of this check has just compiled that
+    # exact tree, so a second compile on the merge built the same code again on the
+    # owner's machine. It also took the build lock just as the next session's build
+    # started, which twice on 2026-11-27 made that build fail and retry. A release
+    # into main still compiles. The paths filter stays: a documents release does not
+    # need a build, and there is no required check to satisfy on a push.
     paths:
       - "game/**"
       - ".github/workflows/unreal.yml"

@@ -214,16 +214,17 @@ bool FCataclysmSiphonSappingColdTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSiphonOnceASecondTest,
-	"Cataclysm.Siphon.LivingHarvestsRealRowPaysOnceASecondForEachMember",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSiphonHungeringTest,
+	"Cataclysm.Siphon.HungeringSiphonsRealRowDrainsMoreForEveryFiveFervourHeld",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Living Harvest: "Each enemy in your Siphon gives you 1 Fervour every 2 seconds", paid once a second (ruled
- * 2026-11-25) as half a Fervour for each member. Three steps pay nothing; the fourth, a second in, pays 0.5; the
- * eighth another 0.5. THE CONTROL: the three steps before the second has passed.
+ * Hungering Siphon, the Soul Collector keystone rework (issue #2951): "Your Siphon deals damage over time to every enemy
+ * in it: 0.5% of your weapon damage each second for every 5 Fervour you hold". Its real row, on a holder of weapon damage
+ * 100 with one member: 10 a second at 100 Fervour and 5 at 50. THE CONTROL: at no Fervour it sends nothing, and the
+ * holder has no other row that drains. It replaced Living Harvest, whose row this test read until that day.
  */
-bool FCataclysmSiphonOnceASecondTest::RunTest(const FString&)
+bool FCataclysmSiphonHungeringTest::RunTest(const FString&)
 {
 	using namespace CataclysmSiphonTest;
 
@@ -233,27 +234,23 @@ bool FCataclysmSiphonOnceASecondTest::RunTest(const FString&)
 	ACataclysmEnemyCharacter* Holder = SiphonHolder(*this, World);
 	UCataclysmAbilitySystemComponent* System = SystemOf(Holder);
 	if (!System || !SiphonCreature(*this, World, 2.0f)
-		|| !TestTrue(TEXT("set-up: the real rows"),
+		|| !TestTrue(TEXT("set-up: the real rows. If false, DT_PassiveEffects is older than the CSV"),
 					 GiveRealRows(Holder, {{TheSiphon(), 1}, {FName(TEXT("SoulCollector_keystone_c_kA")), 1}}, {})))
 	{
 		return false;
 	}
+	Holder->SetAttackDamage(100.0f);
+	TestEqual(TEXT("set-up: one creature is in the Siphon"), SiphonStepOf(World, Holder), 1);
 	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
 
-	for (int32 Step = 0; Step < 3; ++Step)
-	{
-		SiphonStepOf(World, Holder);
-	}
-	TestEqual(TEXT("control: three quarters of a second pay nothing"), System->GetNumericAttribute(Pool), 50.0f,
+	System->SetNumericAttributeBase(Pool, 0.0f);
+	TestEqual(TEXT("control: at no Fervour the Siphon drains nothing"), FCataclysmSiphon::DrainOnce(Holder), 0.0f,
 			  0.001f);
-	SiphonStepOf(World, Holder);
-	TestEqual(TEXT("the fourth step, a second in, pays half a Fervour for the one member"),
-			  System->GetNumericAttribute(Pool), 50.5f, 0.001f);
-	for (int32 Step = 0; Step < 4; ++Step)
-	{
-		SiphonStepOf(World, Holder);
-	}
-	TestEqual(TEXT("and the next second another half"), System->GetNumericAttribute(Pool), 51.0f, 0.001f);
+	System->SetNumericAttributeBase(Pool, 50.0f);
+	TestEqual(TEXT("at 50 Fervour it sends 5, ten steps of 0.5% of 100"), FCataclysmSiphon::DrainOnce(Holder), 5.0f,
+			  0.01f);
+	System->SetNumericAttributeBase(Pool, 100.0f);
+	TestEqual(TEXT("and at 100 it sends 10"), FCataclysmSiphon::DrainOnce(Holder), 10.0f, 0.01f);
 	return true;
 }
 

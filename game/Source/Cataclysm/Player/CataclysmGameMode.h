@@ -946,16 +946,13 @@ protected:
 	/**
 	 * How far from the player start each one is put, in centimetres.
 	 *
-	 * A HUNDRED CENTIMETRES BEYOND ITS OWN RANGE, which is the tightest margin
-	 * of any creature here and is deliberate. It shoots 14 metres and notices at
-	 * 14 metres -- the two are one number for a creature that cannot close the
-	 * difference -- so at 1500 it can see and hit nothing at the player start,
-	 * and one step forward puts the player inside its range at the exact edge.
-	 * Anything much further out would mean walking a long way to find out what
-	 * the creature does, since it will not come to you.
+	 * BEYOND ITS OWN NOTICE RADIUS, so it is standing about rather than already walking at the player when the level
+	 * opens. It notices at 16 metres since it began to walk (the owner's "Walk everywhere", 2026-11-27), and at 1850 a
+	 * few steps toward it bring it walking in, at 2.5 metres per second, to plant and fire at 14. The sandbox floor
+	 * reaches 2000 cm, so this is near its edge. It stood at 1500, a metre beyond its range, while it could not walk.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Sandbox", meta = (ClampMin = "0"))
-	float CorruptedSentinelDistanceCm = 1500.0f;
+	float CorruptedSentinelDistanceCm = 1850.0f;
 
 	/**
 	 * Which direction from the player start it is placed in, in degrees.
@@ -1012,8 +1009,8 @@ protected:
 	 * How far from the player start each one is put, in centimetres.
 	 *
 	 * BEYOND ITS OWN NOTICE RADIUS, which is 1000 cm, so it is standing about
-	 * rather than already walking at the player when the level opens. Unlike the
-	 * Corrupted Sentinel it CAN close: it walks at 3.5 metres per second, so
+	 * rather than already walking at the player when the level opens. It can
+	 * close, as the Corrupted Sentinel can since 2026-11-27: it walks at 3.5 metres per second, so
 	 * five metres of approach brings it into its own 1000 cm notice radius and
 	 * it comes the rest of the way on its own.
 	 *
@@ -1115,9 +1112,10 @@ protected:
 	 *
 	 * **FURTHER OUT THAN ANY OTHER CREATURE, AND FORCED RATHER THAN CHOSEN.**
 	 * Every creature must stand further from every other than its own notice
-	 * radius, and this one's is 1400 cm -- the largest in the game, because
-	 * like the Corrupted Sentinel it can never close a gap on an unwilling
-	 * player and so must notice as far as its longest attack reaches.
+	 * radius, and this one's is 1400 cm -- the largest of any creature but the
+	 * Corrupted Sentinel, which notices at 1600 and walks in (2026-11-27) --
+	 * because it can never close a gap on an unwilling player and so must notice
+	 * as far as its longest attack reaches.
 	 *
 	 * At 2000 cm the nearest neighbour is 1417 cm away, which clears the rule
 	 * by 17 cm. At 2200 the margin is 157 cm, which is the difference between

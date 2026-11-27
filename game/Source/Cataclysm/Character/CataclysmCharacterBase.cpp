@@ -298,8 +298,8 @@ void ACataclysmCharacterBase::RegenerationStep()
 		{
 			Returning->ReturnFervourDue();
 
-			// AND THE FERVOUR THRESHOLDS' STEP: Long Shadow's record of what is held now, and the fourth vow's faster
-			// recovery of running cooldowns (the Death trees' slice C3d). Its return value is dropped as every call
+			// AND THE FERVOUR THRESHOLDS' STEP: Tolling Count's thresholds reached (issue #2951), and the fourth vow's
+			// faster recovery of running cooldowns (the Death trees' slice C3d). Its return value is dropped as every call
 			// above it is.
 			Returning->FervourThresholdStep(UCataclysmRegeneration::StepSeconds);
 		}

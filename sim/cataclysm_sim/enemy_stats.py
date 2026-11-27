@@ -549,15 +549,20 @@ ARCHETYPES: dict[str, Archetype] = {
         ),
         Archetype(
             name="Corrupted Sentinel",
-            role="Stationary ranged. Forces the player to stay mobile",
+            role="Slow ranged. Walks toward the player and plants to fire",
             # A BOLT EVERY SECOND, AT THE SAME DAMAGE PER SECOND, as the
             # Succubus's: issue #2808. The share was 1.10 at 2.0 seconds, and
             # 1.10 x 1.0 / 2.0 is 0.55. Its mortar's percentage doubled to 300
             # with it, so a shell is worth what it was.
             health_share=1.30, damage_share=0.55, armor_share=2.20,
-            attack_interval=1.0, move_speed=0.0, energy_shield_fraction=0.35,
+            # IT WALKS, SINCE THE OWNER'S "Walk everywhere" OF 2026-11-27: toward the
+            # player, planting to fire once it has a clear shot within its bolt's
+            # range. 2.5 m/s is a judgement stated to the owner: slower than every
+            # class (3.5, 4.0, 4.6), so a player can always walk away from one.
+            # Until then it was 0, "Stationary ranged".
+            attack_interval=1.0, move_speed=2.5, energy_shield_fraction=0.35,
             # A construct rather than a living thing, so it is hard to hurt by
-            # any means. It cannot retreat, so it has to be able to take hits.
+            # any means. It does not retreat, so it has to be able to take hits.
             resistance=20.0,
         ),
         Archetype(

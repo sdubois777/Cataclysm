@@ -294,7 +294,7 @@ struct CATACLYSM_API FCataclysmFloorBrief
 	 * ONE, AND NOT ZERO, ON AN ORDINARY FLOOR. It multiplies rather than
 	 * replaces, so every creature keeps the notice radius it was given -- the
 	 * design deliberately gives each its own, because "a Hellhound that charges
-	 * and a Corrupted Sentinel that never moves cannot share one number", which
+	 * and a Corrupted Sentinel that shoots from 14 metres cannot share one number", which
 	 * is `ACataclysmEnemyCharacter::MeleeReachCm`'s own note.
 	 *
 	 * A HORDE FLOOR IS THE ONLY THING THAT MOVES IT. The owner's rule is that in

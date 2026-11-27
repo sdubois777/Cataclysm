@@ -271,8 +271,19 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: SO 99 AND 48 SINCE THE DEATH LINE MET THE WAR LINE (the Death trees' bundle 3
 #: merge, 2026-11-25): the four and the one the War line's sentences brought on
 #: top of the Death line's 95 and 47.
-STRINGS_CONTAINING_THE_WORD = 99
-STRINGS_USING_IT_AS_A_MAGNITUDE = 48
+#:
+#: AND TO 103 AND 50 ON 2026-11-27, the Soul Collector keystone rework (issue
+#: #2951, `tools/apply_soul_collector_keystones_rework_2026_11_27.py`): the tree's
+#: strings containing the word went from 14 to 18 and its magnitudes from 5 to 7.
+#: Hungry for the Strong's "100% more Fervour" and Hoarder's "50% less Fervour"
+#: are gone; Death Made Flesh ("1% less damage"), Heavy Urn ("0.5% more damage"),
+#: Trophy of the Strong ("20% more damage") and Reaper's Rhythm ("15% more damage
+#: and take 10% less damage") are keystones that use a magnitude. The other two new
+#: containing strings are ordinary English: Miser's Grip's and Cold Storage's "50
+#: or more Fervour". Reaper's Rhythm's "5 or more kills" is on the same string as
+#: its magnitudes.
+STRINGS_CONTAINING_THE_WORD = 103
+STRINGS_USING_IT_AS_A_MAGNITUDE = 50
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.

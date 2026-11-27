@@ -2,6 +2,324 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — Enemy Corrupted Sentinels walk: toward the player at 2.5 m/s, planting to fire once they have a clear shot within their bolt's range
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.h` and `.cpp`: `DesignedWalkSpeedCmPerSecond`
+  250 (it was 0); `HasAClearShotAt`, a trace on the visibility channel.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`: `HasAClearShotAt`, true for every character that does not
+  say otherwise.
+- `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`: `Think` uses no ability and makes no attack on a
+  target it has no clear shot at, and closes on it instead.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`: `CreatureCannotMove` asks for a floor source or
+  a creature designed not to walk; the rift hunters' and the echoes' comments give reasons true now.
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`: the same two comments.
+- `sim/cataclysm_sim/enemy_stats.py` (`move_speed` 2.5, a new role) and `game/Data/EnemyArchetypes.csv`, regenerated.
+- `docs/Cataclysm_GDD_v2.md`: the Corrupted Sentinel's section, its role, and the archetype sentence.
+- Tests: four new in `Cataclysm.Sentinel.`; `CataclysmCorruptedSentinelTests.cpp`'s walking speed; the `#2793` follow
+  test, the Echoes test, the three "cannot move" tests and the floor sections test's comment; three Python checks.
+
+### SAID FIRST
+
+- **BUILT AND RUN IN WINDOW cs-w1, 2026-11-27; NOT SEEN IN PLAY.** Nobody has watched a Sentinel walk on a real floor.
+  A world built for a test has no navigation system, so the tests show what the brain orders, not a walk across a
+  floor (see "Window cs-w1" below).
+- **`DT_EnemyArchetypes` was rebuilt in the window's editor step** (10 rows), so
+  `test_every_csv_still_hashes_to_what_was_recorded` passes again.
+- **THE WHOLE SUITE FOUND TWO TESTS THE BRANCH HAD NOT MOVED**, both fixed and re-run before this entry was written:
+  `Cataclysm.Enemy.CommanderReachesEveryCreatureThatCanBeBuffed` still held a buffed Sentinel at walk speed 0 (it is
+  now 3 m/s, its 2.5 m/s times the buff's 1.2, and still below the slowest class's 3.5); and
+  `Cataclysm.DungeonModifierEffects.AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound` failed three runs of three on
+  a draw no test pinned. Since #2943 what rises under Vengeful Wraiths is a Wraith, which draws its own rung
+  (`WraithRarityStep`, -1 by default), and it drew Herald, then Boss, past Volatile Evolution's ceiling of Herald. The
+  test helper `AFloorCarryingTheWraithsRow` now pins it to 0 beside the Imp's pin. **Not shown: that this branch could
+  not have made that draw likelier.** The test passed once in the Bone Colossus window earlier the same day.
+- **The design already said "the Sentinel does not fire without line of sight"; the game did not check.** Until this
+  change the brain fired any ability whose target was in range, walls or not; only the bolt's flight was stopped by
+  geometry. The Sentinel now checks.
+- **IT NOTICES AT 16 METRES, NOT 14.** At its range alone it noticed only a player it could already shoot, so on an
+  ordinary floor it would have walked only to get round a wall. The coordinating session ruled 17.5 metres, the
+  Succubus's ratio of notice to range, then **corrected it to 16 metres, the Succubus's 2 metre margin, because 17.5
+  broke the spacing rule**: groups stand `LeastCellsBetweenPacks` cells apart (1600 cm) and must stand further apart
+  than any creature notices, or walking into one pulls the next, and 5 cells would have thinned every floor
+  (the session's own correction, recorded at its request).
+
+### The owner's words, verbatim
+
+"same thing with corrupted sentinels. I thought we decided they should be able to move" (2026-11-27, after a
+Horde-style quest dungeon). Asked to choose, the owner picked **"Walk everywhere"**: enemy Sentinels always walk slowly
+toward the player and plant to fire. That replaced the design's "The Corrupted Sentinel never moves at any rarity" and
+"Stationary ranged. Forces the player to stay mobile".
+
+### What it does
+
+- **It walks at 2.5 m/s**, a judgement the coordinating session stated to the owner: slower than every class (3.5, 4.0
+  and 4.6), so a player can always walk away from one. In the data: `move_speed` in `sim/cataclysm_sim/enemy_stats.py`,
+  which makes `game/Data/EnemyArchetypes.csv`; `tools/tests/test_sentinel_matches_the_model.py` holds the C++ constant
+  to it, as for every creature.
+- **Once it has noticed the player it walks toward them, stops where it has a clear shot within its bolt's range, and
+  fires.** It walks again when the player breaks its line of sight or leaves its range. It never retreats, and it does
+  not wander (`SentinelRoamRadiusCm` stays 0).
+- **It never fires while moving**: the brain stops it before any wind-up begins (`UseAbilitiesOn`), and without a clear
+  shot it begins none.
+- **The clear shot** is a trace from its middle to the target's on the visibility channel, both bodies left out, the
+  trace a projectile's flight and `UCataclysmCommand::ThingsCommandedInSightOf` make. Pawns do not block it.
+- **It plays its jog walking and its rooted pose planted**, as a taken Sentinel already did (#2793), at the unmeasured
+  rate of 1.0.
+- **It notices a player at 16 metres** (`SentinelNoticeRadiusCm`, 1400 until now), two metres beyond its range, so it
+  walks in to fire on any floor. The sandbox's Sentinel moved from 1500 to 1850 cm, beyond it.
+- **Its mortar and bolt are unchanged.** The Gatekeeper's mortar, "exactly as the Sentinel's", is unaffected: the
+  Gatekeeper does not ask for a clear shot (a test holds it).
+
+### The coordinating session's rulings, 2026-11-27, on what was built on "it cannot walk"
+
+1. **ECHOES OF THE PAST**: a Sentinel's echo moves in like any walker's, held to 6 metres, as the Lich's and the
+   Succubus's are. The rule is keyed on a designed walk speed above 0, so this followed by itself; the test that used
+   the Sentinel as its echo that cannot walk now shows it walking in. The "cannot walk" branch stays as a guard no
+   creature uses today. **Only comment lines of `StepEchoesOfThePast` changed**, not its notice or give-up clock lines.
+2. **ABYSSAL RIFTS' HUNTERS** keep the Sentinel out: a hunter's job is to close on the player, and at 2.5 m/s a Sentinel
+   catches nobody. The stated reason became "kinds that can close on a player"; no behaviour changed.
+3. **`CreatureCannotMove`** (Shadowy Enemies and Necrotic Ground, #2334) no longer lists the Sentinel: it walks to the
+   player and can be led out of the dark or the fog. It now asks for a floor source or a creature designed not to walk,
+   which no creature but a floor source is. Tested: a ring of Sentinels no longer stops Necrotic Ground's fog, and a
+   ring of plague beacons still does.
+4. **FLOOR SECTIONS** keep their rule that no Sentinel is placed outside a section; the test's comment no longer gives
+   "never moves" as its reason.
+5. **THE STALE COMMENTS** that said it never moves are corrected in this branch: `CataclysmCharacterBase.h`,
+   `CataclysmEnemyCharacter.h` and `.cpp`, `CataclysmSuccubusCharacter.h`, `CataclysmFloorBrief.h`,
+   `CataclysmDataRows.h`, `CataclysmGameMode.h` (the Succubus's, the Sentinel's and the Gatekeeper's spawn notes) and
+   `CataclysmFloorPopulationTests.cpp`.
+6. **THE GATEKEEPER CHECK** (`tools/tests/test_gatekeeper_matches_the_model.py`) looked for two constants by names that
+   do not exist, `AbyssalWardenNoticeRadiusCm` and `CorruptedSentinelNoticeRadiusCm`, so it never compared the Warden
+   or the Sentinel. The names are fixed and its claim is now "furthest except the Corrupted Sentinel, which walks in".
+
+### Window cs-w1, 2026-11-27
+
+| Step | Result |
+|---|---|
+| Build, merge head `a7ed4d5c6` | Succeeded - 98 actions, 88 files compiled |
+| Editor step | `DT_EnemyArchetypes` rebuilt, 10 rows; committed as `dc0031e51` |
+| `Cataclysm.Sentinel.` alone, first run | 10 performed, 8 succeeded: `ItCarriesItsDesignedProfile` still held the notice to the bolt's 14 m, and `ItDoesNotFireWhileItWalks` read a walk status of idle |
+| The same, after both were fixed (`2cb8a24ec`) | 10 performed, 10 succeeded |
+| Whole suite, `2cb8a24ec` | **6109 performed**, 6107 succeeded, 2 failed (the two tests above); 893 saves written and deleted, 0 left behind |
+| Python beside it, `2cb8a24ec` | 9672 passed, 10 skipped; JUnit: 9682 tests, 0 failures, 0 errors, 10 skipped. Ruff: all checks passed |
+| After both were fixed (`25c582599`) | `Cataclysm.DungeonModifierEffects.` 788 of 788; `Cataclysm.Enemy.` 19 of 19 |
+| C++ guard proof, `Cataclysm.Sentinel.` | **PROVED.** `HasAClearShotAt` made to answer yes always: 10 performed, 1 failed, `ItWalksAgainWhenItsLineOfSightBreaksAndTheGatekeepersMortarDoesNotAsk`, the one predicted; restored, 10 of 10 |
+
+The whole suite was not run again after the last two tests changed; only their two groups were.
+
+**THE WALKING TEST READS WHAT THE BRAIN ORDERED, NOT A WALK'S STATUS.** A world built for a test has no navigation
+system, so `GetMoveStatus` never reports moving there. As the coordinating session ruled for that case, the test reads
+`ACataclysmEnemyController::MovesOrdered`, a new count of walks ordered through `MoveTo` whether or not they could be
+made: while walking it ordered a walk and began no ability; planted, it ordered no further walk and began a wind-up.
+
+### Unreal tests
+
+New, in `Cataclysm.Sentinel.`:
+- `Cataclysm.Sentinel.ItClosesFromBeyondItsRangeAndPlantsToFire`
+- `Cataclysm.Sentinel.ItDoesNotFireWhileItWalks`
+- `Cataclysm.Sentinel.ItWalksAgainWhenItsLineOfSightBreaksAndTheGatekeepersMortarDoesNotAsk`
+- `Cataclysm.Sentinel.ItNoticesAPlayerAtSixteenMetresAndWalksInToFireButNotAtEighteen`
+
+Renamed, because their names stopped being true:
+- `...MinionFollowSpeed.ATakenSentinelWalksAtItsCommandersPaceAndNobodysStaysRooted` to
+  `...AndNobodysAtItsOwn`;
+- `...DungeonModifierEffects.AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn` to
+  `...ASentinelsEchoNowWalksInToSixMetresAsASuccubussDoes`;
+- `...DungeonModifierEffects.ACorruptedSentinelAndAFloorSourceCannotMoveAndAnImpCan` to
+  `...AFloorSourceCannotMoveAndACorruptedSentinelAndAnImpCan`.
+
+---
+
+## 2026-11-27 — The Soul Collector's keystones use Fervour and the dead rather than keep Fervour: eight keystones and eleven small nodes rewritten
+
+**Affects:**
+- `docs/Soul_Collector_Class_Tree_Final.json`: twenty nodes' sentences and nine names, written by
+  `tools/apply_soul_collector_keystones_rework_2026_11_27.py`.
+- The design workbook's Passive Effects sheet: those nodes' rows, defined in `tools/reapply_death_trees_workbook.py`
+  (`SOUL_COLLECTOR_REWORK`) and written on their own by `tools/reapply_soul_collector_keystones_rework_workbook.py`.
+- `game/Data/PassiveNodes.csv` and `PassiveEffects.csv`: 998 rows to 1003.
+- The engine and the generator: see "What is new code".
+- `docs/Cataclysm_GDD_v2.md`: the Soul Collector's row of the Fervour table.
+
+Issue [#2951](https://github.com/sdubois777/Cataclysm/issues/2951).
+
+### What the owner said
+
+The project owner, 2026-11-27, after play-testing the Soul Collector, verbatim: "the soul collectors keystones pretty
+much all have something to do with retaining/gaining fervour but you don't need any of them which makes the tree
+pretty lame. Should probably rework most of those to be something like buffs based on fervour or something more in line
+with the class theme."
+
+A draft (the session's `.claude/windows/soul_collector_keystones_draft.md`) proposed replacements and asked five
+questions. **The owner's five answers, 2026-11-27, relayed by the coordinating session, each the recommended option:**
+
+1. Replace all eight. Death Made Flesh replaces Soulbound and is the tree's one conversion keystone.
+2. Rework the small nodes about gaining or keeping Fervour, in the same change.
+3. Death Made Flesh and Deathly Presence stack, unchanged.
+4. Gathered Souls counts deaths within 6 metres, the Siphon's radius, not 3.
+5. Kills by your minions, gadgets and traps count as your kills for every kill-based Soul Collector node, tree-wide. This
+   takes the place of Death's Toll's second half and costs no keystone.
+
+**The eleven small nodes' sentences are the coordinating session's ruling within the owner's approval**, 2026-11-27, as
+drafted. So are three wordings the code required, approved the same day:
+- Unquiet Souls and Gleaning strike "the strongest enemy within 10 metres", the reach of the existing action
+  `strike_strongest_near`, rather than a nearest enemy at 8 or 6 metres.
+- Gathered Souls' stacks share one 6-second window, restarted by each new stack, as every stack row's do.
+- Miser's Grip and Cold Storage say "50 or more Fervour", the existing condition `class_resource_points_at_least` that
+  Brimming and Held Close already use.
+
+Every number is a judgement under the owner's delegation of unstated numbers.
+
+### The genre research
+
+Fetched 2026-11-27.
+
+- **Path of Exile, Soul Eater** ([poedb](https://poedb.tw/us/Soul_Eater)): souls are consumed from "anything killed
+  nearby", each granting increased attack and cast speed, and lost over time when none are eaten. Gathered Souls is that
+  shape at this game's scale.
+- **Path of Exile, Rage** ([poedb](https://poedb.tw/us/Rage)): each Rage grants 1% more attack damage up to 30, and
+  nodes add a second benefit per Rage held. The unique gloves Painshed give "5% less Damage taken per 5 Rage", capped
+  at 30%. Death Made Flesh is that shape.
+- **Diablo IV, Ossified Essence** (fextralife): 0.5% more damage for each point of Essence above 50. Heavy Urn copies
+  the shape and the number.
+- **Diablo IV, Unbridled Rage** (fextralife): more damage for more resource cost, a conversion.
+- **Not read:** Path of Exile's charge pages (404) and Diablo IV's passive lists (404). Last Epoch gave no game text:
+  its wikis refuse automated fetches, and the Maxroll guides read paraphrase their nodes.
+
+What the three agree on: a resource matters for what it gives while held or when spent, and decay is what makes holding
+it hard. None makes a keystone of "gain more" or "lose less".
+
+### The twenty nodes
+
+| Node | Was | Is |
+| :-- | :-- | :-- |
+| basic_spine_000 Fervour | the class's generator | the same, its damage rows under `fervour_held_adds_damage`, and answer 5 (`follower_kills_count_as_yours`) |
+| keystone_spine_001 | Death's Toll | **Gathered Souls**: each enemy death within 6 m, 2% increased attack speed and movement speed a stack, up to 10, 6 s |
+| keystone_spine_002 | Reclaimed | **Unquiet Souls**: every 5 Fervour decayed, a strike of 40% weapon damage on the strongest enemy within 10 m |
+| keystone_spine_003 | Soulbound | **Death Made Flesh**: the Fervour held adds no damage; 1% less damage taken for every 4 held, up to 25% |
+| keystone_a_kB | Hoarder | **Heavy Urn**: 0.5% more damage for each Fervour held above 50 |
+| keystone_a_kC | Long Shadow | **Tolling Count**: rising to an opened threshold, a 100% weapon damage blast within 5 m, each threshold once in 5 s |
+| keystone_b_kB | Hungry for the Strong | **Trophy of the Strong**: an Elite or stronger kill, 20% more damage for 10 s |
+| keystone_b_kC | Kindred Fires | **Reaper's Rhythm**: a chain of 5 or more kills, 15% more damage and 10% less damage taken |
+| keystone_c_kA | Living Harvest | **Hungering Siphon**: the Siphon drains 0.5% of weapon damage a second for every 5 Fervour held |
+| basic_spine_001 Tithe of the Dead | more Fervour from kills | +1% increased damage a point against enemies within 6 m |
+| basic_spine_004 Grave Patience | a later decay | every 5 Fervour decayed restores 0.2% of maximum health a point |
+| basic_spine_007 Claimed | a struck enemy's Fervour | +1% increased damage a point for 4 s after a kill |
+| basic_a_b1 Miser's Grip | a decay floor | +2% increased damage a point at 50 or more Fervour |
+| basic_a_b2 Cold Storage | a slower decay | 1% reduced damage taken a point at 50 or more Fervour |
+| basic_b_stem0 Gleaning | a chance of an extra Fervour | a 5% chance a point on a kill to strike the strongest enemy within 10 m for 50% |
+| basic_b_stem2 Thinning the Herd | more Fervour by the crowd | +1% increased damage a point for every 2 enemies within 8 m, up to 10 |
+| basic_b_b1 Tear Loose | a chance at Fervour on an Elite hit | an Elite or stronger kill restores 1% of maximum health a point |
+| basic_b_b2 Vigil Over the Strong | a slower decay near an Elite | +1% increased attack speed a point while an Elite or stronger is within 15 m |
+| basic_b_c0 Any Fuel, now **Gathering Pace** | more Fervour from other sources | +0.5% increased attack speed a point for each kill in the current chain, up to 10 |
+| basic_b_c1 Borrowed Time | a longer hold on other gains | 0.5% reduced damage taken a point for every 2 kills in the chain, up to 10 |
+
+**A save is untouched.** A passive allocation stores node identifiers (`FCataclysmSpentNode::Node`), and no identifier,
+position, maximum or edge moved, so renaming Any Fuel to Gathering Pace changes no saved character.
+
+### What is new code
+
+- **`nearby_death` reaches 6 metres.** The player character raises it for a death up to
+  `UCataclysmAbilitySystemComponent::NearbyDeathFarthestMetres` (6) and carries the distance. `EventThresholdCrossed`
+  holds each row to its Event Value, or 3 metres when it states none. So the one enchantment row on the event,
+  "When an enemy dies near you", reaches the 3 metres it always did.
+- **A kill stack judges a target-rarity condition against the creature killed** (`IsJudgedWhereItsStackIsGranted` in
+  `CataclysmItem.cpp`). On the stat it would have been read against the next enemy struck. No stack row carried such a
+  condition before, so no other row's meaning changed.
+- **`ScaleOffset` is read on `class_resource_held`**, for Heavy Urn's "above 50", in the pipeline, its validator and
+  the generator. Before, only `class_points_spent` and `traps_active` read one.
+- **The condition `fervour_held_adds_damage`**, with the stat `fervour_held_adds_no_damage`, for Death Made Flesh.
+  - It asks whether the Fervour held adds to the character's damage, and is false while the stat is above nought.
+  - It takes no value.
+  - **When the reading is unknown it holds**: `FCataclysmStatConditions::bFervourHeldAddsDamage` is true by default, so
+    a lookup nobody filled keeps the starting node's damage, which is what every character but one holding the
+    keystone has.
+  - The starting node's two damage rows state it. No mechanism existed to take away one node's rows: the value kind
+    `removed` zeroes the whole stat, gear's attack damage with it.
+- **The event `fervour_decayed`**, raised by `NoteFervourDecayed` once for each 5 Fervour decay takes, counted across
+  steps and not cleared by a kill. Unquiet Souls and Grave Patience act on it.
+- **The event `fervour_threshold_reached`**, raised by `RaiseFervourThresholdsReached`, which `FervourThresholdStep`
+  calls every step. It fires for each threshold reached since the last step, each threshold at most once every 5
+  seconds (`FervourThresholdReachedEverySeconds`), and the first step only records. Tolling Count acts on it.
+- **`strike_strongest_near` rolls a row's chance** (Gleaning). The generator now allows a Chance Percent on it.
+- **A stack row may state a whole-number step above 1**: Borrowed Time's 2, and Reaper's Rhythm's 5 capped at 5
+  stacks, which is nothing below 5 kills and one step at 5. The engine's `StackedValue` already counted any step; the
+  generator's bound was 1.
+- **`siphon_drain_weapon_percent` is a stat with an asker** (`STATS_WITH_AN_ASKER`, `ProbeScaledSiphonDrain`), so
+  Hungering Siphon may scale it.
+
+### What needed no new code
+
+- **Reaper's Rhythm, Gathering Pace and Borrowed Time** are kill stack rows with a 2-second window, the chain Kill Chain
+  defines. Unbroken Chain lengthens their window as it does Kill Chain's.
+- **Trophy of the Strong** is the same kind of row, and so Unbroken Chain lengthens its 10 seconds by up to 2 as well.
+  That is a consequence of the existing rule that a passive kill stack lasts the chain's extra seconds, and is recorded
+  here rather than changed.
+- **Tithe of the Dead** reads the existing outgoing-hit condition `target_within_metres`. `opponent_within_metres` is
+  the defender's.
+- **Hungering Siphon** scales Drain's own stat.
+
+### Not changed
+
+Overflow, Deathly Presence, Passed On, Soul Furnace, Feast and Turn of the Wheel already use Fervour or the death theme.
+Of the small nodes, Ossuary and Deep Urn now lead to Heavy Urn. Between the Dead, Held Close and Unbroken Chain give
+movement speed, crowd control resistance and a longer chain. Chained Souls and Bound Offering count Fervour held back for
+minions, which answer 5 keeps useful.
+
+### The retired stats' code, deleted
+
+The coordinating session ruled on 2026-11-27 that the code of a stat no row under `game/Data` uses any more is deleted
+in this change, with the tests that only test it, and a stat something else still uses is kept. **Deleted**, each read
+only by a retired node:
+
+| Stat or condition | Was read for |
+| :-- | :-- |
+| `decay_given_back_on_kill_seconds` | Reclaimed |
+| `fervour_claimed_within_seconds` | Claimed |
+| `health_percent_lost_per_fervour_lost` | Soulbound's loss on health lost |
+| `fervour_threshold_linger_seconds` | Long Shadow, with its record of thresholds held |
+| `fervour_hold_restarted_by_any_gain` | Kindred Fires |
+| `fervour_hold_extended_on_gain_seconds` | Borrowed Time |
+| `siphon_fervour_per_second` | Living Harvest |
+| `fervour_per_kill_extra_chance` | Gleaning, with the console variable `Cataclysm.KillFervourExtraRoll` |
+| the condition `fervour_gain_not_from_a_kill` | Any Fuel |
+
+**Kept:**
+- `fervour_decay_floor_percent`, Miser's Grip's before the rework: the War Fervour's decay out of combat reads it
+  (`CataclysmWarFervour.cpp`).
+- `class_resource_generation`, Any Fuel's before the rework: every gain of the class resource is scaled by it.
+- **The kill-payment marker** (`BeginKillPayment`, `IsPayingForAKill`, and `GainStated`'s `bForAKill`). Its readers
+  were Any Fuel's condition and Kindred Fires and Borrowed Time, so nothing in the game reads it now. It is not a stat
+  and it has callers in five files and Python checks of its own, so it was left for a change of its own.
+
+### The run (window sc-w1, 2026-11-27)
+
+| Step | Head | What it printed |
+| :-- | :-- | :-- |
+| Compile alone | `2c9012a20` | Failed: 11 errors, all `ReworkAllowance` undeclared in the new rows test, which did not name its namespace |
+| Compile alone | `38efdceb` | "Build: Succeeded - 5 actions, 1 file compiled: Module.Cataclysm.45.cpp" |
+| DataTables | `38efdceb` | `DT_PassiveEffects` and `DT_PassiveNodes` rebuilt, committed as `0e8bfd2da` |
+| `Cataclysm.SoulCollectorRework.` alone | `0e8bfd2da` | "17 tests performed, 17 succeeded, 0 failed"; saves 0 written, 0 left behind |
+| Whole suite | `0e8bfd2da` | "6109 tests performed, 6108 succeeded, 1 failed: TheSixNodesRowsAreTheirSentences"; saves 893 written and deleted, 0 left behind. 6109 was the registered prediction (6105 + 23 - 19) |
+| `Cataclysm.FervourOnEvents.` | `21873f778` | "7 tests performed, 7 succeeded, 0 failed", after that test was told Tear Loose's base is the maximum |
+| Python of record | `0e8bfd2da` | "9670 passed, 10 skipped"; JUnit 9,680 tests, 0 failures, 0 errors. ruff: all checks passed |
+| Python reading the test sources | `21873f778` | "1456 passed, 6 skipped" (135 files) |
+
+**The whole suite's one failure was the test's and not the game's.** `Cataclysm.FervourOnEvents.TheSixNodesRowsAreTheirSentences`
+expected every action row it reads to pay a flat amount; Tear Loose now restores 1% of maximum health, so its row's base
+is `maximum`, as `PassiveEffects.csv` says. The test now states each row's base. The whole suite was not run again after
+that change; the group was.
+
+**C++ guard proof, PROVED, registered before the run**, three breaks in one call on `Cataclysm.SoulCollectorRework.`:
+Gathered Souls' row reach ignored (every `nearby_death` row at 3 metres), the decay counted per step rather than across
+steps, and Death Made Flesh's switch read as off at 1. With them in: "17 tests performed, 13 succeeded, 4 failed:
+DeathMadeFleshTakesAwayTheFervoursDamageAndGivesDefence, GatheredSoulsCountsADeathWithinSixMetresAndNotSeven,
+GravePatienceHealsForEachFiveFervourDecayed, UnquietSoulsStrikesForEachFiveFervourDecayed", the four predicted.
+Restored: "17 tests performed, 17 succeeded, 0 failed".
+
+---
+
 ## 2026-11-27 — In a Horde dungeon Echoes of the Past come for the player from afar, as the Horde's own creatures do, and their ten-second give-up clock starts only at their own kind's notice distance
 
 **Said first:**
@@ -34,8 +352,9 @@ Decisions made outside the Google Drive documents, newest first.
   In the Horde the echo is raised with the floor's multiplier, moves in, and still stands after longer than its
   give-up time out there; within its own notice distance it stands a beat short of ten seconds and is gone at ten.
   The control, elsewhere: it is raised with one, waits, and its clock starts at noticing, as before.
-- An echo that cannot walk (the Corrupted Sentinel) notices from afar in a Horde dungeon and cannot come; its clock
-  starts when the player comes within its own notice distance, so it waits as it did before.
+- An echo that cannot walk notices from afar in a Horde dungeon and cannot come; its clock starts when the player
+  comes within its own notice distance, so it waits as it did before. No creature is such an echo since the walking
+  Corrupted Sentinel (#2961) merged into this branch; this sentence named the Sentinel until then.
 
 ### The other modifiers: swept, none changed
 

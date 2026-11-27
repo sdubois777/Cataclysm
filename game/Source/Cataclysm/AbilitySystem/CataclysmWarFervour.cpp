@@ -273,7 +273,7 @@ float FCataclysmWarFervour::TradeForEnemiesStruckTogether(UAbilitySystemComponen
 		return 0.0f;
 	}
 	// A NET GAIN GOES THROUGH `UCataclysmFervour::RaisePool`, as every gain to the pool does since the Death trees'
-	// bundle 3 merge (obligations 14 and 17), so Kindred Fires, Borrowed Time and Overflow hear of it; a net loss is
+	// bundle 3 merge (obligations 14 and 17), so Overflow hears of it; a net loss is
 	// written as it was.
 	if (Change > 0.0f)
 	{
@@ -365,7 +365,7 @@ float FCataclysmWarFervour::GainByRate(UAbilitySystemComponent* AbilitySystem, c
 		return 0.0f;
 	}
 	// THROUGH `UCataclysmFervour::RaisePool`, the one way a gain reaches the pool, since the Death trees' bundle 3 merge
-	// (obligations 14 and 17): a War gain is a gain that Kindred Fires and Borrowed Time act on, as any other is.
+	// (obligations 14 and 17): a War gain is a gain like any other.
 	return UCataclysmFervour::RaisePool(AbilitySystem, Gain);
 }
 

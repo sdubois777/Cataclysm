@@ -843,6 +843,129 @@ NODES: tuple[Node, ...] = (
           R("minion_damage", "increased", 3, cond="target_is_your_last_attacker"))),
 )
 
+
+#: THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951, 2026-11-27): twenty nodes' rows as they stand since, the starting
+#: node's, eight keystones' and eleven small nodes'. Each node's `before` is its rows as this script first wrote them, so
+#: a workbook still holding those is rewritten and anything else is refused. `NODES` below takes these in place of its
+#: own entries for the same nodes, and `tools/reapply_soul_collector_keystones_rework_workbook.py` writes them alone.
+#: The condition the starting node's damage rows now state: Death Made Flesh takes them away.
+ADDS_DAMAGE = "fervour_held_adds_damage"
+
+#: The starting node's rows on `development` 79d3da751: its damage, its Fervour by rung, its decay and the decay's grace.
+STARTING_BEFORE = (
+    R("attack_damage", "more", 1, scale=HELD, step=2),
+    R("spell_damage", "more", 1, scale=HELD, step=2),
+    R("fervour_per_kill", "flat", 1, cond=RUNG_IS, cond_value=0),
+    R("fervour_per_kill", "flat", 3, cond=RUNG_IS, cond_value=1),
+    R("fervour_per_kill", "flat", 5, cond=RUNG_IS, cond_value=2),
+    R("fervour_per_kill", "flat", 8, cond=RUNG_IS, cond_value=3),
+    R("fervour_per_kill", "flat", 15, cond=RUNG_AT_LEAST, cond_value=4),
+    R("fervour_kill_decay_per_second", "flat", 5),
+    R("fervour_kill_decay_grace_seconds", "flat", 4, cond=RUNG_IS, cond_value=0),
+    R("fervour_kill_decay_grace_seconds", "flat", 8, cond=RUNG_AT_LEAST, cond_value=1),
+)
+
+SOUL_COLLECTOR_REWORK: tuple[Node, ...] = (
+    # THE STARTING NODE: its damage stated under `fervour_held_adds_damage`, so Death Made Flesh can take it away, and
+    # answer 5, "Kills by your minions, gadgets and traps count as your kills", the stat Death's Toll held.
+    Node(SC + "basic_spine_000", "Fervour",
+         (R("attack_damage", "more", 1, scale=HELD, step=2, cond=ADDS_DAMAGE),
+          R("spell_damage", "more", 1, scale=HELD, step=2, cond=ADDS_DAMAGE))
+         + STARTING_BEFORE[2:]
+         + (R("follower_kills_count_as_yours", "flat", 1),),
+         before=(STARTING_BEFORE,)),
+
+    # THE EIGHT KEYSTONES.
+    # Gathered Souls: a stack on each enemy death within 6 metres (the event's Event Value), 2% attack speed and 2%
+    # movement speed each, up to 10, one 6 second window that each stack restarts.
+    Node(SC + "keystone_spine_001", "Gathered Souls",
+         (R("attack_speed", "increased", 2, scale=OWN, step=1, cap=10, event="nearby_death", stack_seconds=6,
+            event_value=6),
+          R("movement_speed", "increased", 2, scale=OWN, step=1, cap=10, event="nearby_death", stack_seconds=6,
+            event_value=6)),
+         before=((R("follower_kills_count_as_yours", "flat", 1),),)),
+    # Unquiet Souls: each 5 Fervour decayed, a strike of 40% of weapon damage on the strongest enemy within 10 metres.
+    Node(SC + "keystone_spine_002", "Unquiet Souls",
+         (A("strike_strongest_near", 40, event="fervour_decayed"),),
+         before=((R("decay_given_back_on_kill_seconds", "flat", 3),),)),
+    # Death Made Flesh, the tree's one conversion: the starting node's damage taken away, and 1% less damage taken for
+    # every 4 Fervour held, up to 25 steps.
+    Node(SC + "keystone_spine_003", "Death Made Flesh",
+         (R("fervour_held_adds_no_damage", "flat", 1),
+          R("damage_taken", "more", -1, scale=HELD, step=4, cap=25)),
+         before=((R("fervour_kill_decay_per_second", "removed", 1),
+                  R("health_percent_lost_per_fervour_lost", "flat", 2)),)),
+    # Heavy Urn: 0.5% more damage for each Fervour held above 50.
+    Node(SC + "keystone_a_kB", "Heavy Urn",
+         damage("more", 0.5, scale=HELD, step=1, scale_offset=50),
+         before=((R("fervour_kill_decay_per_second", "more", -50),),)),
+    # Tolling Count: a 100% weapon damage nova within 5 metres each time Fervour rises to an opened threshold.
+    Node(SC + "keystone_a_kC", "Tolling Count",
+         (A("smite_nearby", 100, event="fervour_threshold_reached"),),
+         before=((R("fervour_threshold_linger_seconds", "flat", 5),),)),
+    # Trophy of the Strong: 20% more damage for 10 seconds after killing an Elite or stronger, one stack.
+    Node(SC + "keystone_b_kB", "Trophy of the Strong",
+         damage("more", 20, scale=OWN, step=1, cap=1, event="kill", stack_seconds=10, cond=RUNG_AT_LEAST,
+                cond_value=1),
+         before=((R("fervour_per_kill", "more", 100, cond=RUNG_AT_LEAST, cond_value=1),),)),
+    # Reaper's Rhythm: a chain of 5 or more kills, kills within 2 seconds of each other, is one step of 5 stacks capped
+    # at 5: 15% more damage and 10% less damage taken, none below 5.
+    Node(SC + "keystone_b_kC", "Reaper's Rhythm",
+         damage("more", 15, scale=OWN, step=5, cap=5, event="kill", stack_seconds=2)
+         + (R("damage_taken", "more", -10, scale=OWN, step=5, cap=5, event="kill", stack_seconds=2),),
+         before=((R("fervour_hold_restarted_by_any_gain", "flat", 1),),)),
+    # Hungering Siphon: Drain's own stat, 0.5% of weapon damage a second for every 5 Fervour held.
+    Node(SC + "keystone_c_kA", "Hungering Siphon",
+         (R("siphon_drain_weapon_percent", "flat", 0.5, scale=HELD, step=5),),
+         before=((R("siphon_fervour_per_second", "flat", 0.5, scale=SIPHONED, step=1, cap=8),),)),
+
+    # THE ELEVEN SMALL NODES.
+    Node(SC + "basic_spine_001", "Tithe of the Dead",
+         damage("increased", 1, cond="target_within_metres", cond_value=6),
+         before=((R("fervour_per_kill", "increased", 2),),)),
+    Node(SC + "basic_spine_004", "Grave Patience",
+         (A("health", 0.2, event="fervour_decayed", fraction_of="maximum"),),
+         before=((R("fervour_kill_decay_grace_seconds", "flat", 1, min_points=5),
+                  R("fervour_kill_decay_grace_seconds", "flat", 1, min_points=10)),)),
+    Node(SC + "basic_spine_007", "Claimed",
+         damage("increased", 1, cond="seconds_after_kill", cond_value=4),
+         before=(tuple(R("fervour_claimed_within_seconds", "flat", 1, min_points=points) for points in (2, 4, 6, 8)),)),
+    Node(SC + "basic_a_b1", "Miser's Grip",
+         damage("increased", 2, cond="class_resource_points_at_least", cond_value=50),
+         before=((R("fervour_decay_floor_percent", "flat", 3),),)),
+    Node(SC + "basic_a_b2", "Cold Storage",
+         (R("damage_taken", "increased", -1, cond="class_resource_points_at_least", cond_value=50),),
+         before=((R("fervour_kill_decay_per_second", "increased", -5),),)),
+    Node(SC + "basic_b_stem0", "Gleaning",
+         (A("strike_strongest_near", 50, event="kill", chance_percent=5),),
+         before=((R("fervour_per_kill_extra_chance", "flat", 5),),)),
+    Node(SC + "basic_b_stem2", "Thinning the Herd",
+         damage("increased", 1, scale="enemies_in_reach", step=2, reach=8, cap=5),
+         before=((R("fervour_per_kill", "increased", 1, scale="enemies_in_reach", step=1, reach=8, cap=10),),)),
+    Node(SC + "basic_b_b1", "Tear Loose",
+         (A("health", 1, event="kill", fraction_of="maximum", cond=RUNG_AT_LEAST, cond_value=1),),
+         before=((A("class_resource", 1, cond=RUNG_AT_LEAST, cond_value=1, event="hit_dealt", fraction_of="points",
+                    chance_percent=2),),)),
+    Node(SC + "basic_b_b2", "Vigil Over the Strong",
+         (R("attack_speed", "increased", 1, cond="enemy_of_rarity_in_reach", cond_value=1, reach=15),),
+         before=((R("fervour_kill_decay_per_second", "increased", -5, cond="enemy_of_rarity_in_reach", cond_value=1,
+                    reach=15),),)),
+    Node(SC + "basic_b_c0", "Gathering Pace",
+         (R("attack_speed", "increased", 0.5, scale=OWN, step=1, cap=10, event="kill", stack_seconds=2),),
+         before=((R("class_resource_generation", "increased", 2, cond="fervour_gain_not_from_a_kill"),),)),
+    Node(SC + "basic_b_c1", "Borrowed Time",
+         (R("damage_taken", "increased", -0.5, scale=OWN, step=2, cap=10, event="kill", stack_seconds=2),),
+         before=((R("fervour_hold_extended_on_gain_seconds", "flat", 1, min_points=3),
+                  R("fervour_hold_extended_on_gain_seconds", "flat", 1, min_points=6)),)),
+)
+
+_REWORKED = {node.key: node for node in SOUL_COLLECTOR_REWORK}
+NODES = tuple(
+    Node(node.key, _REWORKED[node.key].label, _REWORKED[node.key].rows, node.option,
+         before=_REWORKED[node.key].before + node.before)
+    if node.option == 0 and node.key in _REWORKED else node
+    for node in NODES)
+
 #: The three Death class stat lines: (class, stat, level 1 base, gain per level).
 #: Everything a class does not name falls back to the `Default` line. See the
 #: 2026-11-24 entry in `docs/DECISIONS.md` for the reasoning and the sources.

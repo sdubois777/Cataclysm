@@ -891,7 +891,7 @@ The nine generators designed so far, one per class, each granted by that class's
 | Masochist (Demonic) | 1 per 1% of maximum health lost to damage, counting damage its energy shield absorbs as health lost, and 1 per 1% spent as an ability cost | Healing removes Fervour at the same rate, so health regeneration empties it. The energy shield recharging removes none |
 | Ravager (Demonic) | 1 for each enemy an attack hits, and 1 per second for every enemy within 4 metres | Fervour decays at 5 per second after 3 seconds with no enemy within 4 metres, so losing contact empties it |
 | Ritualist (Demonic) | 1 per second for each minion held, and 5 when one of them dies | Nothing. Fervour keeps its default of not decaying, which is what lets a thrall reserve it |
-| Soul Collector (Death) | 1 for each enemy it kills, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss | Fervour decays at 5 per second once 4 seconds have passed since its last kill, or 8 seconds after it kills an Elite or stronger creature, so a pause between kills empties it |
+| Soul Collector (Death) | 1 for each enemy it kills, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss. Enemies its minions, gadgets and traps kill count as its kills, for its Fervour and for every node of its tree that asks about a kill | Fervour decays at 5 per second once 4 seconds have passed since its last kill, or 8 seconds after it kills an Elite or stronger creature, so a pause between kills empties it |
 | Necromancer (Death) | 1 each time an enemy dies within 10 metres of it or to one of its minions | Nothing. Fervour keeps its default of not decaying, which is what lets its minions reserve it |
 | Shadow (Death) | 10 for each enemy it kills, 25 for an Elite or stronger, and 2 for each critical strike | Fervour drains at 10 per second once 4 seconds have passed since its last kill, so a full bar means a run of quick kills |
 
@@ -5439,7 +5439,7 @@ both tables and the pack figures below, so a change to the model fails there rat
 
   
 
-**The archetype decides everything about how a creature behaves.** The Imp is fast at every rarity. The Corrupted Sentinel never moves at any rarity. The Brute is heavily armored even as a Common enemy, which is why armor is not forced to zero at Common; an archetype with no armor simply has none.
+**The archetype decides everything about how a creature behaves.** The Imp is fast at every rarity. The Corrupted Sentinel walks slowly toward the player at every rarity and plants to fire. The Brute is heavily armored even as a Common enemy, which is why armor is not forced to zero at Common; an archetype with no armor simply has none.
 
   
 
@@ -6144,7 +6144,7 @@ The vertical slice will feature five to seven base enemy types from the Demonic 
 | The Succubus | Ranged caster. Debuffs player and buffs nearby allies. A quick bolt every second. |
 | The Hellhound | Aggressive charger that leaves fire trails. Trail can damage other enemies. |
 | The Brute | Heavily armored slow melee. Stomp stun attack. Can be outmaneuvered. |
-| The Corrupted Sentinel | Stationary ranged. Forces the player to stay mobile. |
+| The Corrupted Sentinel | Slow ranged. Walks toward the player and plants to fire. |
 | The Abyssal Warden (Mini-Boss) | Massive stone and lava demon. High damage resistance. |
 | The Gatekeeper (Boss) | Multi-phase towering demon. Each phase introduces new mechanics. |
 
@@ -6734,7 +6734,7 @@ That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy a
 
   
 
-**The Corrupted Sentinel never moves, and everything about it follows from that.** It cannot close a gap, cannot retreat from one, and cannot re-position to see round an obstacle. It has two abilities: a bolt it fires constantly, half a second after deciding to and with no marker, and a shell it lobs over cover on a cooldown. **One the player has taken with Subjugate is the exception**: it follows its commander at a minion's pace, and jogs as it walks (issue #2793).
+**The Corrupted Sentinel walks toward the player, plants and fires.** The owner, 2026-11-27, after a Horde quest dungeon: "same thing with corrupted sentinels. I thought we decided they should be able to move", and asked to choose, "Walk everywhere". That replaced this section's "never moves" and the role "Stationary ranged. Forces the player to stay mobile". **It walks at 2.5 metres per second**, slower than every class (3.5, 4.0 and 4.6), a judgement stated to the owner, so a player can always walk away from one. Once it has noticed the player it walks toward them, **stops where it has a clear shot within its bolt's 14 metres**, and fires; it walks again when the player breaks its line of sight or leaves its range. **It never retreats, and it never fires while it walks**: it stops before any cast begins. Walking it plays its jog; planted, its rooted pose. It has two abilities, unchanged: a bolt it fires constantly, half a second after deciding to and with no marker, and a shell it lobs over cover on a cooldown. **One the player has taken with Subjugate** follows its commander at a minion's pace, and jogs as it walks (issue #2793).
 
   
 
@@ -6753,7 +6753,7 @@ That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy a
 
   
 
-It gets all of it because it has nothing else. Its movement speed is **0.0 at every rarity**, so a reach shorter than the player's longest would mean any ranged build could stand one metre outside it and kill the creature for nothing. That is the same rule the Brute's rock throw already states from the other side: there is no distance at which an enemy is aware of the player and can do nothing.
+It got all of it when it could not move, and keeps it now that it walks slowly. At 2.5 metres per second it cannot catch a player who walks away, so a reach shorter than the player's longest would still mean any ranged build could stand one metre outside it and back off as it came. That is the same rule the Brute's rock throw already states from the other side: there is no distance at which an enemy is aware of the player and can do nothing.
 
   
 
@@ -6795,7 +6795,7 @@ It gets all of it because it has nothing else. Its movement speed is **0.0 at ev
 
   
 
-**Geometry blocks the bolt and the Sentinel does not fire without line of sight.** Path of Exile's projectiles travel until they hit an enemy or an obstacle, and Diablo IV treats an enemy shooting through a wall as a bug rather than a feature. Breaking line of sight is therefore real counterplay against this creature, and it is the counterplay a stationary enemy should have.
+**Geometry blocks the bolt and the Sentinel does not fire without line of sight.** Path of Exile's projectiles travel until they hit an enemy or an obstacle, and Diablo IV treats an enemy shooting through a wall as a bug rather than a feature. Breaking line of sight is therefore real counterplay against this creature: **without a clear shot it does not fire, and walks toward the player instead** until it has one (since 2026-11-27; until then the game did not check, and only the bolt's flight was blocked).
 
   
 
@@ -6811,15 +6811,15 @@ It gets all of it because it has nothing else. Its movement speed is **0.0 at ev
 
   
 
-**The rest of that answer is in the stat block rather than in an ability.** 2.20 armour share, an energy shield worth 35% of its health, 20% resistance and a 1.30 health share. A creature that cannot retreat has to be able to take hits, and this one survives being stood on rather than preventing it.
+**The rest of that answer is in the stat block rather than in an ability.** 2.20 armour share, an energy shield worth 35% of its health, 20% resistance and a 1.30 health share. A creature that does not retreat has to be able to take hits, and this one survives being stood on rather than preventing it.
 
   
 
-#### **The mortar is the only answer a creature that cannot walk has to cover**
+#### **The mortar answers cover before it has walked round it**
 
   
 
-A Sentinel that only shoots in straight lines is answered by one pillar, and it cannot step around it. The mortar is what stops that being the end of the fight.
+A Sentinel that only shoots in straight lines is answered by one pillar until it has walked round it, which at 2.5 metres per second takes a while. The mortar is what keeps the pressure on in the meantime: it is lobbed, and so is not one of the shots a wall refuses it.
 
   
 
