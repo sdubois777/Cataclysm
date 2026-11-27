@@ -1942,6 +1942,14 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			this, Target, Damage,
 			BlowDelivery, &Resolved);
 		Dealt = Damage;
+
+		// EVERY MINION BLOW IS SAID, 2026-11-27: the owner's play log could not tell whether a minion swung at all,
+		// since a creature's "HIT OUT" line does not name its attacker.
+		UE_LOG(LogCataclysm, Display,
+			   TEXT("MINION BLOW: %s (%s) struck %s: sent %.1f, landed %.1f, %.1f to health%s%s"),
+			   *TypeName, *GetName(), *GetNameSafe(Target), Damage, Resolved.Landed(), Resolved.DealtToHealth,
+			   Resolved.bEvaded ? TEXT(", evaded") : TEXT(""),
+			   Resolved.bRefusedByImmunityToAttacker ? TEXT(", refused by immunity") : TEXT(""));
 	}
 	// AND NOTHING AT ALL WITHOUT A TYPE ROW, SINCE ISSUE #1515. A minion used
 	// to fall back to 30% of its SUMMONER'S weapon damage here, which the
