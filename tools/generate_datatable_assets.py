@@ -98,6 +98,7 @@ TABLES = [
     ("DT_ForgeOperations", "ForgeOperations.csv", "CataclysmForgeOperationRow"),
     ("DT_DungeonModifiers", "DungeonModifiers.csv", "CataclysmDungeonModifierRow"),
     ("DT_ElementVisuals", "ElementVisuals.csv", "CataclysmElementVisualRow"),
+    ("DT_EmpireTreeDecorations", "EmpireTreeDecorations.csv", "CataclysmEmpireTreeDecorationRow"),
     ("DT_EmpireTreeEdges", "EmpireTreeEdges.csv", "CataclysmEmpireTreeEdgeRow"),
     ("DT_EmpireTreeEffects", "EmpireTreeEffects.csv", "CataclysmEmpireTreeEffectRow"),
     ("DT_EmpireTreeNodes", "EmpireTreeNodes.csv", "CataclysmEmpireTreeNodeRow"),

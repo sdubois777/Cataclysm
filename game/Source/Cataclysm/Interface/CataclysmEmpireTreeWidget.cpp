@@ -40,10 +40,30 @@ const UDataTable* UCataclysmEmpireTreeWidget::EdgeTable() const
 	return Edges;
 }
 
-void UCataclysmEmpireTreeWidget::SetTables(const UDataTable* InNodeTable, const UDataTable* InEdgeTable)
+const UDataTable* UCataclysmEmpireTreeWidget::DecorationTable() const
+{
+	if (!Decorations)
+	{
+		const_cast<UCataclysmEmpireTreeWidget*>(this)->Decorations = UCataclysmEmpireTree::LoadDecorationTable();
+	}
+	return Decorations;
+}
+
+void UCataclysmEmpireTreeWidget::SetTables(const UDataTable* InNodeTable, const UDataTable* InEdgeTable,
+										   const UDataTable* InDecorationTable)
 {
 	Nodes = InNodeTable;
 	Edges = InEdgeTable;
+	Decorations = InDecorationTable;
+	// THE DRAWING IS MADE AGAIN FROM THE NEW TABLES on the next refresh.
+	bGraphBuilt = false;
+}
+
+int32 UCataclysmEmpireTreeWidget::SpentInView(const FString& View) const
+{
+	const FCataclysmPassiveAllocation& Spent = Allocation();
+	return View == UCataclysmEmpireTreeLayout::WholeTreeView ? UCataclysmEmpireTree::SpentInTree(Spent)
+															: UCataclysmEmpireTree::SpentInBranch(NodeTable(), Spent, View);
 }
 
 void UCataclysmEmpireTreeWidget::SetWorldContextForTests(UObject* InContext)
@@ -95,7 +115,7 @@ bool UCataclysmEmpireTreeWidget::ShowBranch(const FString& Branch)
 	bChoosingExtraOption = false;
 	bAwaitingTheSecondRespecPress = false;
 
-	BuildGraph();
+	// THE SAME DRAWING, FITTED TO THE VIEW: every view draws the whole tree, so nothing is rebuilt.
 	FitToBranch();
 	RefreshDisplay();
 	return true;
@@ -103,7 +123,12 @@ bool UCataclysmEmpireTreeWidget::ShowBranch(const FString& Branch)
 
 TArray<FName> UCataclysmEmpireTreeWidget::ShownNodes() const
 {
-	return ShownBranch.IsEmpty() ? TArray<FName>() : UCataclysmEmpireTree::NodesIn(NodeTable(), ShownBranch);
+	TArray<FName> Out;
+	for (const FString& Branch : UCataclysmEmpireTree::BranchNames())
+	{
+		Out.Append(UCataclysmEmpireTree::NodesIn(NodeTable(), Branch));
+	}
+	return Out;
 }
 
 bool UCataclysmEmpireTreeWidget::BuyPoint(FName Node)
@@ -262,10 +287,8 @@ FText UCataclysmEmpireTreeWidget::BranchText() const
 	{
 		return FText::GetEmpty();
 	}
-	const FCataclysmPassiveAllocation& Spent = Allocation();
 	return FText::FromString(UCataclysmEmpireTreeLayout::BranchLine(
-		ShownBranch, UCataclysmEmpireTree::SpentInBranch(NodeTable(), Spent, ShownBranch),
-		UCataclysmEmpireTree::SpentInTree(Spent)));
+		ShownBranch, SpentInView(ShownBranch), SpentInView(UCataclysmEmpireTreeLayout::WholeTreeView)));
 }
 
 FText UCataclysmEmpireTreeWidget::RefusalText() const
@@ -318,7 +341,7 @@ void UCataclysmEmpireTreeWidget::NativeConstruct()
 		CloseButton->OnClicked.AddUniqueDynamic(this, &UCataclysmEmpireTreeWidget::HandleCloseClicked);
 	}
 
-	// THE FIRST VIEW, the Architect branch, when none was chosen: the file's own first branch.
+	// THE FIRST VIEW, the whole tree, when none was chosen: the tree as the owner built it.
 	if (ShownBranch.IsEmpty())
 	{
 		const TArray<FString> Views = UCataclysmEmpireTreeLayout::Views();
@@ -336,9 +359,9 @@ void UCataclysmEmpireTreeWidget::RefreshDisplay()
 {
 	FillList();
 
-	// THE GRAPH IS BUILT ONLY WHEN THE VIEW ON IT CHANGED, for the class tree screen's reason: a refresh happens on
-	// every click, and rebuilding then would destroy the button whose click is still being dispatched.
-	if (BuiltBranch != ShownBranch)
+	// THE DRAWING IS MADE ONCE, for the class tree screen's reason: a refresh happens on every click, and rebuilding then
+	// would destroy the button whose click is still being dispatched. Every view draws the same tree.
+	if (!bGraphBuilt)
 	{
 		BuildGraph();
 		FitToBranch();
@@ -463,7 +486,10 @@ void UCataclysmEmpireTreeWidget::FillList()
 			Button->SetDimmed(!WaitsOn.IsEmpty());
 			continue;
 		}
-		Button->SetChoice(Value, FText::FromString(UCataclysmEmpireTreeLayout::ViewLabel(Value.ToString())),
+		// EACH VIEW WITH ITS POINTS: the list is where a branch's points are read, with the whole tree drawn at once.
+		Button->SetChoice(Value,
+						  FText::FromString(UCataclysmEmpireTreeLayout::ViewButtonLabel(Value.ToString(),
+																					   SpentInView(Value.ToString()))),
 						  ShownBranch == Value.ToString(), true);
 		Button->SetDimmed(false);
 	}
@@ -515,12 +541,19 @@ void UCataclysmEmpireTreeWidget::HandleNodeClicked(FName Node)
 
 void UCataclysmEmpireTreeWidget::HandleNodeHovered(FName Node)
 {
-	// READING A NODE COSTS NOTHING, and not while a capstone's options are being read.
+	// READING A NODE COSTS NOTHING, and not while a capstone's options are being read. The name beside the mark follows
+	// the cursor either way, as on the class tree screen: it is one short line beside the graph, and the description
+	// below, which is what is read while deciding, is left alone.
 	if (!ChoosingOptionFor.IsNone())
 	{
+		const FName Deciding = LastTouched;
+		LastTouched = Node;
+		PlaceNodeName();
+		LastTouched = Deciding;
 		return;
 	}
 	LastTouched = Node;
+	PlaceNodeName();
 	if (DescriptionLabel)
 	{
 		DescriptionLabel->SetText(DescriptionText());
@@ -564,7 +597,10 @@ void UCataclysmEmpireTreeWidget::DescribeNodeButton(UCataclysmChoiceButton& Butt
 	const bool bAwaitsChoice = UCataclysmEmpireTree::AwaitsAnOptionChoice(NodeTable(), Spent, Node)
 		|| UCataclysmEmpireTree::OffersAnExtraOption(NodeTable(), UCataclysmEmpireTree::LoadEffectTable(), Spent, Node);
 
-	Button.SetChoice(Node, FText::FromString(UCataclysmEmpireTreeLayout::NodeLabel(*Row, Points)), Points > 0, true);
+	// THE SPENT COUNT ON THE MARK, AND NOTHING ELSE, as on the class tree screen: the name and count are drawn beside the
+	// mark of the node hovered or selected (`PlaceNodeName`), and the whole detail goes under the tree.
+	Button.SetChoice(Node, FText::FromString(UCataclysmPassiveTreeLayout::MarkCaption(Points, Row->MaxPoints)), Points > 0,
+					 true);
 	Button.SetDimmed(!Refusal.IsEmpty() && !bAwaitsChoice);
 	Button.SetToolTipText(FText::FromString(bAwaitsChoice ? FString() : Refusal));
 }
@@ -594,7 +630,12 @@ FVector2D UCataclysmEmpireTreeWidget::CanvasSize() const
 
 void UCataclysmEmpireTreeWidget::FitToBranch()
 {
-	const FCataclysmTreeExtent Extent = UCataclysmEmpireTreeLayout::ExtentOf(NodeTable(), ShownBranch);
+	FCataclysmTreeExtent Extent = UCataclysmEmpireTreeLayout::ExtentOf(NodeTable(), ShownBranch);
+	// THE WHOLE TREE'S VIEW HOLDS ITS OUTERMOST RING, which is wider than the nodes, so the circle is seen whole.
+	if (ShownBranch == UCataclysmEmpireTreeLayout::WholeTreeView)
+	{
+		Extent = UCataclysmEmpireTreeLayout::WithDecorations(Extent, DecorationTable());
+	}
 	if (!Extent.bAny)
 	{
 		return;
@@ -632,14 +673,38 @@ void UCataclysmEmpireTreeWidget::PanBy(FVector2D Pixels)
 	PlaceGraph();
 }
 
+FVector2D UCataclysmEmpireTreeWidget::NodeScreenPositionForTests(FName Node) const
+{
+	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable(), Node);
+	return Row ? UCataclysmPassiveTreeLayout::ScreenPositionFor(FVector2D(Row->PositionX, Row->PositionY), Focus, Zoom,
+															   CanvasSize())
+			   : FVector2D::ZeroVector;
+}
+
+FVector2D UCataclysmEmpireTreeWidget::NodeMarkSizeForTests(FName Node) const
+{
+	// THE SCALE WORKED OUT HERE, since a headless test has no canvas and `BuildGraph` never reaches the line that keeps
+	// it; the same function, so the same number.
+	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable(), Node);
+	return Row ? UCataclysmEmpireTreeLayout::MarkSizeFor(*Row) * UCataclysmEmpireTreeLayout::MarkScaleFor(NodeTable()) * Zoom
+			   : FVector2D::ZeroVector;
+}
+
 void UCataclysmEmpireTreeWidget::BuildGraph()
 {
-	BuiltBranch = ShownBranch;
-	BuiltNodeScale = UCataclysmEmpireTreeLayout::NodeScaleFor(NodeTable(), ShownBranch);
+	bGraphBuilt = true;
+	BuiltMarkScale = UCataclysmEmpireTreeLayout::MarkScaleFor(NodeTable());
 	NodeButtons.Reset();
 	NodeButtonNames.Reset();
 	EdgeImages.Reset();
 	EdgeEnds.Reset();
+	DecorationPieces.Reset();
+	DecorationPieceEnds.Reset();
+	DecorationPieceThickness.Reset();
+	DecorationLabels.Reset();
+	DecorationLabelCentres.Reset();
+	DecorationLabelSizes.Reset();
+	NodeNameLabel = nullptr;
 
 	if (!GraphCanvas)
 	{
@@ -647,27 +712,102 @@ void UCataclysmEmpireTreeWidget::BuildGraph()
 	}
 	GraphCanvas->ClearChildren();
 	UClass* ButtonClass = LoadedChoiceButtonClass();
-	if (!ButtonClass || ShownBranch.IsEmpty())
+	if (!ButtonClass)
 	{
 		return;
 	}
 
-	// THE EDGES FIRST, SO THE NODES ARE DRAWN OVER THEM: a canvas draws its children in the order they were added.
-	for (const TPair<FName, FName>& Edge : UCataclysmEmpireTreeLayout::EdgesIn(NodeTable(), EdgeTable(), ShownBranch))
+	// A STRAIGHT PIECE ON THE CANVAS: an image turned to point at its far end, placed by the middle of its left edge, as
+	// an edge is. The rings are drawn as many of them and the lines as one each.
+	const auto AddPiece = [this](const FLinearColor& Colour) -> UImage*
 	{
-		UImage* Line = NewObject<UImage>(this);
-		if (!Line)
+		UImage* Piece = NewObject<UImage>(this);
+		if (!Piece)
 		{
-			continue;
+			return nullptr;
 		}
-		Line->SetColorAndOpacity(EdgeColour);
-		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(GraphCanvas->AddChild(Line)))
+		Piece->SetColorAndOpacity(Colour);
+		Piece->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(GraphCanvas->AddChild(Piece)))
 		{
 			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
 			Placement->SetAlignment(UCataclysmPassiveTreeLayout::EdgePivot());
 			Placement->SetAutoSize(false);
 		}
-		Line->SetRenderTransformPivot(UCataclysmPassiveTreeLayout::EdgePivot());
+		Piece->SetRenderTransformPivot(UCataclysmPassiveTreeLayout::EdgePivot());
+		return Piece;
+	};
+
+	// THE BUILDER'S DRAWN ELEMENTS, ON THE SIDE OF THE NODES THE BUILDER DRAWS THEM: a canvas draws its children in the
+	// order they were added, so the rings and lines (layer below nought) are added before the edges and nodes, and the
+	// labels (layer nought or above) after them, where a quadrant's name is drawn over the capstone beside it. Hit-test
+	// invisible, so a click passes through them to a mark.
+	const auto AddDecorations = [this, &AddPiece](bool bBelowTheNodes)
+	{
+		const UDataTable* Drawn = DecorationTable();
+		if (!Drawn)
+		{
+			return;
+		}
+		for (const TPair<FName, uint8*>& Pair : Drawn->GetRowMap())
+		{
+			const FCataclysmEmpireTreeDecorationRow* Row = reinterpret_cast<const FCataclysmEmpireTreeDecorationRow*>(Pair.Value);
+			if (!Row || (Row->Layer < 0) != bBelowTheNodes)
+			{
+				continue;
+			}
+			const FLinearColor Colour = UCataclysmEmpireTreeLayout::ColourOf(Row->Colour, Row->Opacity);
+			const FVector2D Centre(Row->CentreX, Row->CentreY);
+			if (Row->Kind == TEXT("circle"))
+			{
+				const TArray<FVector2D> Points = UCataclysmEmpireTreeLayout::RingPoints(Centre, Row->Radius);
+				for (int32 Index = 0; Index + 1 < Points.Num(); ++Index)
+				{
+					if (UImage* Piece = AddPiece(Colour))
+					{
+						DecorationPieces.Add(Piece);
+						DecorationPieceEnds.Emplace(Points[Index], Points[Index + 1]);
+						DecorationPieceThickness.Add(Row->Thickness);
+					}
+				}
+			}
+			else if (Row->Kind == TEXT("line"))
+			{
+				if (UImage* Piece = AddPiece(Colour))
+				{
+					DecorationPieces.Add(Piece);
+					DecorationPieceEnds.Emplace(Centre, UCataclysmEmpireTreeLayout::LineEnd(*Row));
+					DecorationPieceThickness.Add(Row->Thickness);
+				}
+			}
+			else if (UTextBlock* Label = NewObject<UTextBlock>(this))
+			{
+				Label->SetText(FText::FromString(Row->Text));
+				Label->SetColorAndOpacity(FSlateColor(Colour));
+				Label->SetVisibility(ESlateVisibility::HitTestInvisible);
+				if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(GraphCanvas->AddChild(Label)))
+				{
+					// CENTRED ON ITS POINT, which is the middle of the builder's box for it.
+					Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+					Placement->SetAlignment(FVector2D(0.5, 0.5));
+					Placement->SetAutoSize(true);
+				}
+				DecorationLabels.Add(Label);
+				DecorationLabelCentres.Add(Centre);
+				DecorationLabelSizes.Add(Row->FontSize);
+			}
+		}
+	};
+	AddDecorations(/*bBelowTheNodes=*/true);
+
+	// THE EDGES NEXT, SO THE NODES ARE DRAWN OVER THEM.
+	for (const TPair<FName, FName>& Edge : UCataclysmEmpireTreeLayout::EdgesOf(NodeTable(), EdgeTable()))
+	{
+		UImage* Line = AddPiece(EdgeColour);
+		if (!Line)
+		{
+			continue;
+		}
 		EdgeImages.Add(Line);
 		EdgeEnds.Add(Edge);
 	}
@@ -681,7 +821,8 @@ void UCataclysmEmpireTreeWidget::BuildGraph()
 		}
 		Button->OnChoiceClicked.AddDynamic(this, &UCataclysmEmpireTreeWidget::HandleNodeClicked);
 		Button->OnChoiceHovered.AddDynamic(this, &UCataclysmEmpireTreeWidget::HandleNodeHovered);
-		// A NAME TOO LONG FOR ITS NODE IS CUT, not drawn over the next; the whole of it is in the line under the view.
+		// A COUNT TOO WIDE FOR ITS MARK IS CUT, not drawn over the next; the name and count are drawn in full beside the
+		// mark of the node hovered or selected.
 		Button->SetClipping(EWidgetClipping::ClipToBounds);
 		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(GraphCanvas->AddChild(Button)))
 		{
@@ -691,6 +832,53 @@ void UCataclysmEmpireTreeWidget::BuildGraph()
 		}
 		NodeButtons.Add(Button);
 		NodeButtonNames.Add(Node);
+	}
+
+	// THE LABELS OVER THE NODES, as the builder draws them.
+	AddDecorations(/*bBelowTheNodes=*/false);
+
+	// THE NAME OF THE NODE HOVERED OR SELECTED, ADDED LAST SO IT IS DRAWN OVER THE MARKS, and hit-test invisible so a
+	// click meant for a mark under it reaches the mark. The class tree screen's label.
+	NodeNameLabel = NewObject<UTextBlock>(this);
+	if (NodeNameLabel)
+	{
+		NodeNameLabel->SetVisibility(ESlateVisibility::HitTestInvisible);
+		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(GraphCanvas->AddChild(NodeNameLabel)))
+		{
+			Placement->SetAnchors(FAnchors(0.0f, 0.0f));
+			Placement->SetAlignment(FVector2D(0.0, 0.5));
+			Placement->SetAutoSize(true);
+		}
+	}
+}
+
+FString UCataclysmEmpireTreeWidget::NodeNameCaptionText() const
+{
+	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable(), LastTouched);
+	return Row ? UCataclysmEmpireTreeLayout::NodeLabel(*Row, Allocation().PointsIn(LastTouched)) : FString();
+}
+
+void UCataclysmEmpireTreeWidget::PlaceNodeName()
+{
+	if (!NodeNameLabel)
+	{
+		return;
+	}
+	const FString Caption = NodeNameCaptionText();
+	NodeNameLabel->SetText(FText::FromString(Caption));
+	NodeNameLabel->SetVisibility(Caption.IsEmpty() ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+
+	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable(), LastTouched);
+	if (!Row || Caption.IsEmpty())
+	{
+		return;
+	}
+	if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(NodeNameLabel->Slot))
+	{
+		const FVector2D Centre = UCataclysmPassiveTreeLayout::ScreenPositionFor(FVector2D(Row->PositionX, Row->PositionY),
+																			   Focus, Zoom, CanvasSize());
+		Placement->SetPosition(UCataclysmPassiveTreeLayout::NameCaptionPosition(
+			Centre, UCataclysmEmpireTreeLayout::MarkSizeFor(*Row) * BuiltMarkScale * Zoom));
 	}
 }
 
@@ -702,13 +890,55 @@ void UCataclysmEmpireTreeWidget::PlaceGraph()
 	}
 
 	const FVector2D Size = CanvasSize();
+
+	// A STRAIGHT PIECE PLACED BETWEEN TWO POINTS OF THE PANEL, as an edge is.
+	const auto PlacePiece = [](UImage* Piece, const FVector2D& From, const FVector2D& To, float Thickness)
+	{
+		FVector2D At;
+		FVector2D Extent;
+		float Angle = 0.0f;
+		UCataclysmPassiveTreeLayout::EdgeGeometry(From, To, Thickness, At, Extent, Angle);
+		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(Piece->Slot))
+		{
+			Placement->SetPosition(At);
+			Placement->SetSize(Extent);
+		}
+		Piece->SetRenderTransformAngle(Angle);
+	};
+
+	for (int32 Index = 0; Index < DecorationPieces.Num(); ++Index)
+	{
+		UImage* Piece = DecorationPieces[Index];
+		if (!Piece || !DecorationPieceEnds.IsValidIndex(Index) || !DecorationPieceThickness.IsValidIndex(Index))
+		{
+			continue;
+		}
+		PlacePiece(Piece,
+				   UCataclysmPassiveTreeLayout::ScreenPositionFor(DecorationPieceEnds[Index].Key, Focus, Zoom, Size),
+				   UCataclysmPassiveTreeLayout::ScreenPositionFor(DecorationPieceEnds[Index].Value, Focus, Zoom, Size),
+				   UCataclysmEmpireTreeLayout::DecorationThicknessPx(DecorationPieceThickness[Index], Zoom));
+	}
+
+	for (int32 Index = 0; Index < DecorationLabels.Num(); ++Index)
+	{
+		UTextBlock* Label = DecorationLabels[Index];
+		if (!Label || !DecorationLabelCentres.IsValidIndex(Index) || !DecorationLabelSizes.IsValidIndex(Index))
+		{
+			continue;
+		}
+		// THE WORDS SCALE WITH THE VIEW, as the builder's do, so a quadrant's name keeps its place against the rings.
+		FSlateFontInfo Font = Label->GetFont();
+		Font.Size = UCataclysmEmpireTreeLayout::LabelFontSize(DecorationLabelSizes[Index], Zoom);
+		Label->SetFont(Font);
+		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(Label->Slot))
+		{
+			Placement->SetPosition(
+				UCataclysmPassiveTreeLayout::ScreenPositionFor(DecorationLabelCentres[Index], Focus, Zoom, Size));
+		}
+	}
+
 	TMap<FName, FVector2D> Placed;
 	Placed.Reserve(NodeButtonNames.Num());
-
-	// THE WORDS SHRINK WITH THE BOX, up to the Blueprint's own size (`UCataclysmChoiceButton::SetLabelScale`), since a
-	// node of 57 pixels at a fitted zoom cannot hold text of the size a list's button has.
-	const float Scale = FMath::Min(1.0f, BuiltNodeScale * Zoom);
-
 	for (int32 Index = 0; Index < NodeButtons.Num(); ++Index)
 	{
 		UCataclysmChoiceButton* Button = NodeButtons[Index];
@@ -718,16 +948,18 @@ void UCataclysmEmpireTreeWidget::PlaceGraph()
 		{
 			continue;
 		}
+		// AT THE TREE FILE'S OWN POSITION, through the one focus and zoom every node shares: no branch is rescaled.
 		const FVector2D At = UCataclysmPassiveTreeLayout::ScreenPositionFor(FVector2D(Row->PositionX, Row->PositionY),
 																			 Focus, Zoom, Size);
 		Placed.Add(Node, At);
+		const FVector2D Mark = UCataclysmEmpireTreeLayout::MarkSizeFor(*Row);
 		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(Button->Slot))
 		{
 			Placement->SetPosition(At);
-			Placement->SetSize(FVector2D(UCataclysmPassiveTreeLayout::NodeWidthPx * BuiltNodeScale * Zoom,
-										 UCataclysmPassiveTreeLayout::NodeHeightPx * BuiltNodeScale * Zoom));
+			Placement->SetSize(Mark * BuiltMarkScale * Zoom);
 		}
-		Button->SetLabelScale(Scale);
+		// THE COUNT ON THE MARK SHRINKS WITH IT, in the proportion the class tree screen uses.
+		Button->SetLabelScale(static_cast<float>(Mark.Y / UCataclysmPassiveTreeLayout::NodeHeightPx) * BuiltMarkScale * Zoom);
 		DescribeNodeButton(*Button, Node);
 	}
 
@@ -746,18 +978,11 @@ void UCataclysmEmpireTreeWidget::PlaceGraph()
 			continue;
 		}
 		Line->SetVisibility(ESlateVisibility::HitTestInvisible);
-		FVector2D At;
-		FVector2D Extent;
-		float Angle = 0.0f;
-		UCataclysmPassiveTreeLayout::EdgeGeometry(*From, *To, UCataclysmPassiveTreeLayout::EdgeThicknessPx * Zoom, At,
-												  Extent, Angle);
-		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(Line->Slot))
-		{
-			Placement->SetPosition(At);
-			Placement->SetSize(Extent);
-		}
-		Line->SetRenderTransformAngle(Angle);
+		// AS THICK AS A CLASS TREE'S EDGE, SCALED AS THE MARKS ARE, so a line keeps its proportion to the marks it joins.
+		PlacePiece(Line, *From, *To, UCataclysmPassiveTreeLayout::MarkEdgeThicknessPx * BuiltMarkScale * Zoom);
 	}
+
+	PlaceNodeName();
 }
 
 FReply UCataclysmEmpireTreeWidget::NativeOnMouseWheel(const FGeometry& Geometry, const FPointerEvent& Event)

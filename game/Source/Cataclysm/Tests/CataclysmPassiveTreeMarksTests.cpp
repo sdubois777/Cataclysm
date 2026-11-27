@@ -139,9 +139,8 @@ bool FCataclysmPassiveMarkByKindTest::RunTest(const FString&)
 	Layout::EdgeGeometry(FVector2D(0.0, 0.0), FVector2D(100.0, 0.0), Layout::MarkEdgeThicknessPx * 0.5f, At, Extent,
 						 Angle);
 	TestEqual(TEXT("an edge is 10 px at zoom one, so 5 at a half"), static_cast<float>(Extent.Y), 5.0f, 0.001f);
-	TestTrue(TEXT("CONTROL: the empire tree's box is still 150 by 44"),
-			 Layout::NodeWidthPx == 150.0f && Layout::NodeHeightPx == 44.0f);
-	TestEqual(TEXT("CONTROL: and its edge 3 px"), Layout::EdgeThicknessPx, 3.0f);
+	TestEqual(TEXT("CONTROL: the height a mark's count is scaled against is still the old box's 44"), Layout::NodeHeightPx,
+			  44.0f);
 	return true;
 }
 

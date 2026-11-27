@@ -497,6 +497,10 @@ public:
 	/** The generated edge table, the same way. */
 	static const UDataTable* LoadEdgeTable();
 
+	/** The generated table of the tree's drawn rings, lines and labels, `DT_EmpireTreeDecorations`, the same way. The
+	 *  screen draws them; nothing else reads them. */
+	static const UDataTable* LoadDecorationTable();
+
 	/** The generated effect table, `DT_EmpireTreeEffects`, the same way. Issue #2741 slice 3a. */
 	static const UDataTable* LoadEffectTable();
 

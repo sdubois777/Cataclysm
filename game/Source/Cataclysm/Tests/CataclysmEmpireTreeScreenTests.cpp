@@ -55,8 +55,9 @@
  *
  * WHAT IS NOT HERE: the Widget Blueprint (the editor's compile of `WBP_EmpireTree` checks its bindings, and
  * `tools/tests/test_the_empire_tree_screen_is_generated_with_its_bindings.py` checks the generator adds them); opening
- * the screen through the player controller, which loads that Blueprint; the first view, the Architect branch, which
- * `NativeConstruct` chooses and only a constructed Blueprint runs; and what a bought node does (slices 3 to 5).
+ * the screen through the player controller, which loads that Blueprint; the first view, the whole tree, which
+ * `NativeConstruct` chooses and only a constructed Blueprint runs; what a bought node does (slices 3 to 5); and how the
+ * drawing looks, which no headless test can see (the automation command passes `-nullrhi`).
  */
 namespace CataclysmEmpireTreeScreenTest
 {
@@ -184,10 +185,10 @@ namespace CataclysmEmpireTreeScreenTest
 // ---------------------------------------------------------------------------
 
 /**
- * Every sentence the screen shows comes from `UCataclysmEmpireTreeLayout`, and these are its words: the five views in
- * the file's order with the centre named "The centre", the bank (an account's, and a Solo Self-Found character's own),
- * a branch's points, a node's box and its line, a capstone's options, and the Respec button's two faces. Prints
- * "WORDS".
+ * Every sentence the screen shows comes from `UCataclysmEmpireTreeLayout`, and these are its words: the six views, the
+ * whole tree first and then the branches in the file's order with the centre named "The centre", each view's button
+ * with its points, the bank (an account's, and a Solo Self-Found character's own), a view's points, a node's name and
+ * its line, a capstone's options, and the Respec button's two faces. Prints "WORDS".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenWordsTest,
 	"Cataclysm.EmpireTreeScreen.TheLayoutSaysWhatTheScreenShows",
@@ -209,12 +210,20 @@ bool FCataclysmEmpireTreeScreenWordsTest::RunTest(const FString&)
 
 	const TArray<FString> Views = UCataclysmEmpireTreeLayout::Views();
 	AddInfo(FString::Printf(TEXT("WORDS: the views are %s"), *FString::Join(Views, TEXT(", "))));
-	TestEqual(TEXT("five views, the four branches and the centre, in the file's order"), Views,
-			  TArray<FString>({ TEXT("Architect"), TEXT("Explorer"), TEXT("Treasury"), TEXT("Artisan"), TEXT("Centre") }));
-	TestEqual(TEXT("the centre's view is named for a person"), UCataclysmEmpireTreeLayout::ViewLabel(TEXT("Centre")),
+	TestEqual(TEXT("six views: the whole tree, then the four branches and the centre in the file's order"), Views,
+			  TArray<FString>({ TEXT("Whole tree"), TEXT("Architect"), TEXT("Explorer"), TEXT("Treasury"), TEXT("Artisan"),
+								TEXT("Centre") }));
+	TestEqual(TEXT("the whole tree's view is named for a person"),
+			  UCataclysmEmpireTreeLayout::ViewLabel(UCataclysmEmpireTreeLayout::WholeTreeView),
+			  FString(TEXT("The whole tree")));
+	TestEqual(TEXT("the centre's view too"), UCataclysmEmpireTreeLayout::ViewLabel(TEXT("Centre")),
 			  FString(TEXT("The centre")));
 	TestEqual(TEXT("a branch's view by its own name"), UCataclysmEmpireTreeLayout::ViewLabel(TEXT("Explorer")),
 			  FString(TEXT("Explorer")));
+	TestEqual(TEXT("a view's button says its points"), UCataclysmEmpireTreeLayout::ViewButtonLabel(TEXT("Architect"), 26),
+			  FString(TEXT("Architect  26 points")));
+	TestEqual(TEXT("one point is one point"), UCataclysmEmpireTreeLayout::ViewButtonLabel(TEXT("Centre"), 1),
+			  FString(TEXT("The centre  1 point")));
 
 	TestEqual(TEXT("the bank, with the whole points that can be spent"), UCataclysmEmpireTreeLayout::BankLine(3.5, false),
 			  FString(TEXT("3.5 empire upgrade points banked: 3 to spend")));
@@ -226,8 +235,11 @@ bool FCataclysmEmpireTreeScreenWordsTest::RunTest(const FString&)
 			  FString(TEXT("The centre: 1 point spent here, 26 in the whole tree")));
 	TestEqual(TEXT("and more than one"), UCataclysmEmpireTreeLayout::BranchLine(TEXT("Architect"), 3, 3),
 			  FString(TEXT("Architect: 3 points spent here, 3 in the whole tree")));
+	TestEqual(TEXT("the whole tree's line says the tree's points once"),
+			  UCataclysmEmpireTreeLayout::BranchLine(UCataclysmEmpireTreeLayout::WholeTreeView, 26, 26),
+			  FString(TEXT("The whole tree: 26 points spent")));
 
-	TestEqual(TEXT("a node's box: its name and points"), UCataclysmEmpireTreeLayout::NodeLabel(*Integrity, 2),
+	TestEqual(TEXT("a node's name beside its mark: its name and points"), UCataclysmEmpireTreeLayout::NodeLabel(*Integrity, 2),
 			  FString(TEXT("Structural Integrity  2/10")));
 	const FString CapstoneLine = UCataclysmEmpireTreeLayout::NodeDetail(*Capstone, 1, 2, FString());
 	AddInfo(FString::Printf(TEXT("WORDS: \"%s\""), *CapstoneLine));
@@ -284,83 +296,259 @@ bool FCataclysmEmpireTreeScreenLogLinesTest::RunTest(const FString&)
 }
 
 // ---------------------------------------------------------------------------
-// The branches as drawn
+// The whole tree as drawn
 // ---------------------------------------------------------------------------
 
 /**
- * Over the generated tables: every view holds nodes, every edge drawn in a view joins two of that view's nodes, and
- * the views between them draw every edge in the file, so none is lost by drawing one branch at a time. Each view's
- * node scale is above nought and at most one, and at that scale no two of its node boxes overlap. Prints "BRANCHES".
+ * The owner, 2026-11-27: "not the beautiful circle json with 4 quadrants we built with the passivetreebuilder". Over the
+ * generated tables, the screen draws every node in every view and every edge of the file, and the marks at the whole
+ * tree's one scale miss each other. Prints "WHOLE".
  */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenBranchesTest,
-	"Cataclysm.EmpireTreeScreen.EveryBranchHoldsItsOwnNodesAndEdgesAndFits",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenWholeTreeTest,
+	"Cataclysm.EmpireTreeScreen.EveryViewDrawsEveryNodeAndEveryEdgeAndNoMarksOverlap",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCataclysmEmpireTreeScreenBranchesTest::RunTest(const FString&)
+bool FCataclysmEmpireTreeScreenWholeTreeTest::RunTest(const FString&)
 {
+	using namespace CataclysmEmpireTreeScreenTest;
+
 	const UDataTable* Nodes = UCataclysmEmpireTree::LoadNodeTable();
 	const UDataTable* Edges = UCataclysmEmpireTree::LoadEdgeTable();
+	UCataclysmEmpireTreeWidget* Screen = NewObject<UCataclysmEmpireTreeWidget>();
 	if (!TestNotNull(TEXT("set-up: the generated node table loads"), Nodes)
-		|| !TestNotNull(TEXT("set-up: and the edge table"), Edges))
+		|| !TestNotNull(TEXT("set-up: and the edge table"), Edges) || !TestNotNull(TEXT("set-up: and the screen"), Screen))
 	{
 		return false;
 	}
 
-	int32 EdgesDrawn = 0;
-	int32 NodesDrawn = 0;
+	// EVERY NODE, IN EVERY VIEW: a view points the drawing, it does not choose what is drawn.
 	TArray<FString> Parts;
 	for (const FString& View : UCataclysmEmpireTreeLayout::Views())
 	{
-		const TArray<FName> InView = UCataclysmEmpireTree::NodesIn(Nodes, View);
-		const TArray<TPair<FName, FName>> Lines = UCataclysmEmpireTreeLayout::EdgesIn(Nodes, Edges, View);
-		const FCataclysmTreeExtent Extent = UCataclysmEmpireTreeLayout::ExtentOf(Nodes, View);
-		const float Scale = UCataclysmEmpireTreeLayout::NodeScaleFor(Nodes, View);
-		Parts.Add(FString::Printf(TEXT("%s %d nodes, %d edges, scale %.3f"), *View, InView.Num(), Lines.Num(), Scale));
-		NodesDrawn += InView.Num();
-		EdgesDrawn += Lines.Num();
+		Screen->ShowBranch(View);
+		Parts.Add(FString::Printf(TEXT("%s %d nodes"), *View, Screen->ShownNodes().Num()));
+		TestEqual(FString::Printf(TEXT("the %s view draws every node of the table"), *View), Screen->ShownNodes().Num(),
+				  Nodes->GetRowMap().Num());
+	}
+	TArray<FName> Drawn = Screen->ShownNodes();
+	Drawn.Sort(FNameLexicalLess());
+	TArray<FName> InTable = Nodes->GetRowNames();
+	InTable.Sort(FNameLexicalLess());
+	TestEqual(TEXT("and they are the table's nodes, each once"), Drawn, InTable);
 
-		TestTrue(FString::Printf(TEXT("%s holds nodes"), *View), InView.Num() > 0);
-		TestTrue(FString::Printf(TEXT("%s has an extent"), *View), Extent.bAny);
-		for (const TPair<FName, FName>& Line : Lines)
+	const TArray<TPair<FName, FName>> Lines = UCataclysmEmpireTreeLayout::EdgesOf(Nodes, Edges);
+	TestEqual(TEXT("every edge of the file is drawn"), Lines.Num(), Edges->GetRowMap().Num());
+
+	// THE MARKS AT THE WHOLE TREE'S ONE SCALE MISS EACH OTHER: two marks placed by their centres miss when they are clear
+	// on either axis by half the two marks' sizes added. The tolerance is for the float the scale is held in.
+	const float Scale = UCataclysmEmpireTreeLayout::MarkScaleFor(Nodes);
+	int32 Overlaps = 0;
+	for (int32 First = 0; First < InTable.Num(); ++First)
+	{
+		const FCataclysmEmpireTreeNodeRow* A = UCataclysmEmpireTree::FindNode(Nodes, InTable[First]);
+		for (int32 Second = First + 1; Second < InTable.Num(); ++Second)
 		{
-			TestTrue(FString::Printf(TEXT("%s's edge %s to %s joins two of its own nodes"), *View,
-									 *Line.Key.ToString(), *Line.Value.ToString()),
-					 InView.Contains(Line.Key) && InView.Contains(Line.Value));
-		}
-
-		TestTrue(FString::Printf(TEXT("%s's node scale is above nought and at most one"), *View),
-				 Scale > 0.0f && Scale <= 1.0f);
-
-		// NO TWO BOXES OVERLAP AT THAT SCALE: two boxes placed by their centres miss each other when they are clear on
-		// either axis by a whole box's width or height. The tolerance is for the float the scale is held in.
-		int32 Overlaps = 0;
-		for (int32 First = 0; First < InView.Num(); ++First)
-		{
-			const FCataclysmEmpireTreeNodeRow* A = UCataclysmEmpireTree::FindNode(Nodes, InView[First]);
-			for (int32 Second = First + 1; Second < InView.Num(); ++Second)
+			const FCataclysmEmpireTreeNodeRow* B = UCataclysmEmpireTree::FindNode(Nodes, InTable[Second]);
+			if (A == nullptr || B == nullptr)
 			{
-				const FCataclysmEmpireTreeNodeRow* B = UCataclysmEmpireTree::FindNode(Nodes, InView[Second]);
-				if (A == nullptr || B == nullptr)
-				{
-					continue;
-				}
-				const double GapX = FMath::Abs(A->PositionX - B->PositionX);
-				const double GapY = FMath::Abs(A->PositionY - B->PositionY);
-				if (GapX < UCataclysmPassiveTreeLayout::NodeWidthPx * Scale - 0.01
-					&& GapY < UCataclysmPassiveTreeLayout::NodeHeightPx * Scale - 0.01)
-				{
-					++Overlaps;
-				}
+				continue;
+			}
+			const FVector2D Half = (UCataclysmEmpireTreeLayout::MarkSizeFor(*A) + UCataclysmEmpireTreeLayout::MarkSizeFor(*B))
+				* 0.5 * Scale;
+			if (FMath::Abs(A->PositionX - B->PositionX) < Half.X - 0.01 && FMath::Abs(A->PositionY - B->PositionY) < Half.Y - 0.01)
+			{
+				++Overlaps;
 			}
 		}
-		TestEqual(FString::Printf(TEXT("no two of %s's boxes overlap at its scale"), *View), Overlaps, 0);
 	}
-	AddInfo(FString::Printf(TEXT("BRANCHES: %s; %d of %d nodes and %d of %d edges drawn"),
-							*FString::Join(Parts, TEXT("; ")), NodesDrawn, Nodes->GetRowMap().Num(), EdgesDrawn,
-							Edges->GetRowMap().Num()));
-	TestEqual(TEXT("every node is in one view"), NodesDrawn, Nodes->GetRowMap().Num());
-	TestEqual(TEXT("and every edge is drawn in one, none crossing between branches"), EdgesDrawn,
-			  Edges->GetRowMap().Num());
+	AddInfo(FString::Printf(TEXT("WHOLE: %s; %d edges; mark scale %.3f; %d overlapping pairs"),
+							*FString::Join(Parts, TEXT(", ")), Lines.Num(), Scale, Overlaps));
+	TestTrue(TEXT("the mark scale is above a half and at most one"), Scale > 0.5f && Scale <= 1.0f);
+	TestEqual(TEXT("no two marks overlap at it"), Overlaps, 0);
+	// THE CONTROL: at the full mark size, which the scale was worked out to avoid, two marks do overlap. Without this a
+	// count of nought could come from a check that compares nothing.
+	int32 OverlapsAtFullSize = 0;
+	for (int32 First = 0; First < InTable.Num() && OverlapsAtFullSize == 0; ++First)
+	{
+		const FCataclysmEmpireTreeNodeRow* A = UCataclysmEmpireTree::FindNode(Nodes, InTable[First]);
+		for (int32 Second = First + 1; Second < InTable.Num(); ++Second)
+		{
+			const FCataclysmEmpireTreeNodeRow* B = UCataclysmEmpireTree::FindNode(Nodes, InTable[Second]);
+			if (A == nullptr || B == nullptr)
+			{
+				continue;
+			}
+			const FVector2D Half = (UCataclysmEmpireTreeLayout::MarkSizeFor(*A) + UCataclysmEmpireTreeLayout::MarkSizeFor(*B)) * 0.5;
+			if (FMath::Abs(A->PositionX - B->PositionX) < Half.X && FMath::Abs(A->PositionY - B->PositionY) < Half.Y)
+			{
+				++OverlapsAtFullSize;
+				break;
+			}
+		}
+	}
+	TestTrue(TEXT("CONTROL: at the full mark size two marks would overlap"), OverlapsAtFullSize > 0);
+	return true;
+}
+
+/**
+ * The positions are the tree file's, with no branch rescaled: two nodes in different quadrants -- Structural Integrity
+ * in the Architect branch and Merchant Guild in the Treasury branch -- are as far apart on the panel, divided by the
+ * zoom, as in the file, in every view. THE CONTROL: the views' zooms differ, so a view that rescaled its own branch
+ * would change that distance; the whole tree's view is fitted further out than the Architect branch's. And the whole
+ * tree's view holds its outermost ring inside the panel. Prints "POSITIONS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenPositionsTest,
+	"Cataclysm.EmpireTreeScreen.NodesKeepTheTreeFilesPositionsInEveryView",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeScreenPositionsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeScreenTest;
+
+	const UDataTable* Nodes = UCataclysmEmpireTree::LoadNodeTable();
+	const UDataTable* Decorations = UCataclysmEmpireTree::LoadDecorationTable();
+	const FCataclysmEmpireTreeNodeRow* Integrity = UCataclysmEmpireTree::FindNode(Nodes, StructuralIntegrity);
+	const FCataclysmEmpireTreeNodeRow* Guild = UCataclysmEmpireTree::FindNode(Nodes, MerchantGuild);
+	UCataclysmEmpireTreeWidget* Screen = NewObject<UCataclysmEmpireTreeWidget>();
+	if (!TestNotNull(TEXT("set-up: the node table"), Nodes) || !TestNotNull(TEXT("set-up: the decoration table"), Decorations)
+		|| !TestNotNull(TEXT("set-up: Structural Integrity"), Integrity) || !TestNotNull(TEXT("set-up: Merchant Guild"), Guild)
+		|| !TestNotNull(TEXT("set-up: the screen"), Screen))
+	{
+		return false;
+	}
+	TestEqual(TEXT("set-up: Structural Integrity is in the Architect quadrant"), Integrity->Branch, FString(TEXT("Architect")));
+	TestEqual(TEXT("set-up: Merchant Guild in the Treasury quadrant"), Guild->Branch, FString(TEXT("Treasury")));
+
+	const FVector2D Panel(1600.0, 900.0);
+	Screen->SetPanelSizeForTests(Panel);
+	const FVector2D InFile(Integrity->PositionX - Guild->PositionX, Integrity->PositionY - Guild->PositionY);
+
+	TArray<FString> Parts;
+	float WholeZoom = 0.0f;
+	float ArchitectZoom = 0.0f;
+	for (const FString& View : UCataclysmEmpireTreeLayout::Views())
+	{
+		Screen->ShowBranch(View);
+		const float Zoom = Screen->GetZoom();
+		const FVector2D OnPanel = Screen->NodeScreenPositionForTests(StructuralIntegrity)
+			- Screen->NodeScreenPositionForTests(MerchantGuild);
+		Parts.Add(FString::Printf(TEXT("%s zoom %.3f, apart (%.1f, %.1f) px"), *View, Zoom, OnPanel.X, OnPanel.Y));
+		TestTrue(FString::Printf(TEXT("in the %s view the two are as far apart as in the file, at the zoom"), *View),
+				 (OnPanel / Zoom).Equals(InFile, 0.01));
+		WholeZoom = View == UCataclysmEmpireTreeLayout::WholeTreeView ? Zoom : WholeZoom;
+		ArchitectZoom = View == TEXT("Architect") ? Zoom : ArchitectZoom;
+	}
+	AddInfo(FString::Printf(TEXT("POSITIONS: in the file (%.1f, %.1f); %s"), InFile.X, InFile.Y,
+							*FString::Join(Parts, TEXT("; "))));
+	TestTrue(TEXT("CONTROL: the views' zooms differ, the whole tree fitted further out than one branch"),
+			 WholeZoom > 0.0f && WholeZoom < ArchitectZoom - 0.01f);
+
+	// THE WHOLE TREE'S VIEW HOLDS ITS OUTERMOST RING: the four points where the 740 ring meets the axes are on the panel.
+	Screen->ShowBranch(UCataclysmEmpireTreeLayout::WholeTreeView);
+	const FCataclysmTreeExtent Extent = UCataclysmEmpireTreeLayout::WithDecorations(
+		UCataclysmEmpireTreeLayout::ExtentOf(Nodes, UCataclysmEmpireTreeLayout::WholeTreeView), Decorations);
+	TestTrue(TEXT("the whole tree's extent reaches the outermost ring, 740 from the middle"),
+			 Extent.Least.X <= -740.0 + 0.01 && Extent.Most.X >= 740.0 - 0.01 && Extent.Least.Y <= -740.0 + 0.01
+				 && Extent.Most.Y >= 740.0 - 0.01);
+	for (const FVector2D& Edge : {FVector2D(740.0, 0.0), FVector2D(-740.0, 0.0), FVector2D(0.0, 740.0), FVector2D(0.0, -740.0)})
+	{
+		const FVector2D At = UCataclysmPassiveTreeLayout::ScreenPositionFor(Edge, Screen->GetFocus(), Screen->GetZoom(), Panel);
+		TestTrue(FString::Printf(TEXT("the ring's point (%.0f, %.0f) is on the panel"), Edge.X, Edge.Y),
+				 At.X >= 0.0 && At.X <= Panel.X && At.Y >= 0.0 && At.Y <= Panel.Y);
+	}
+	// AND A MARK IS THE SAME SIZE IN EVERY VIEW AT THE SAME ZOOM: one scale for the whole tree.
+	const FVector2D WholeMark = Screen->NodeMarkSizeForTests(StructuralIntegrity) / Screen->GetZoom();
+	Screen->ShowBranch(TEXT("Architect"));
+	TestTrue(TEXT("Structural Integrity's mark is the same size, at the zoom, in its branch's view"),
+			 (Screen->NodeMarkSizeForTests(StructuralIntegrity) / Screen->GetZoom()).Equals(WholeMark, 0.001));
+	return true;
+}
+
+/**
+ * The builder's drawn elements, as the screen draws them: six rings centred on the middle, each drawn through points on
+ * itself; four lines from the middle along the axes; the quadrant names; and the builder's colours. Prints "DRAWN".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenDecorationsTest,
+	"Cataclysm.EmpireTreeScreen.TheRingsLinesAndLabelsAreTheBuildersOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeScreenDecorationsTest::RunTest(const FString&)
+{
+	const UDataTable* Decorations = UCataclysmEmpireTree::LoadDecorationTable();
+	if (!TestNotNull(TEXT("set-up: the decoration table loads"), Decorations))
+	{
+		return false;
+	}
+
+	int32 Rings = 0;
+	int32 Lines = 0;
+	TArray<FString> Words;
+	TArray<float> Radii;
+	for (const TPair<FName, uint8*>& Pair : Decorations->GetRowMap())
+	{
+		const FCataclysmEmpireTreeDecorationRow* Row = reinterpret_cast<const FCataclysmEmpireTreeDecorationRow*>(Pair.Value);
+		if (!Row)
+		{
+			continue;
+		}
+		if (Row->Kind == TEXT("circle"))
+		{
+			++Rings;
+			Radii.Add(Row->Radius);
+			TestTrue(FString::Printf(TEXT("the %.0f ring is centred on the middle"), Row->Radius),
+					 FMath::IsNearlyZero(Row->CentreX) && FMath::IsNearlyZero(Row->CentreY));
+			const TArray<FVector2D> Points = UCataclysmEmpireTreeLayout::RingPoints(FVector2D(Row->CentreX, Row->CentreY),
+																					Row->Radius);
+			TestEqual(FString::Printf(TEXT("the %.0f ring is drawn through its pieces' ends"), Row->Radius), Points.Num(),
+					  UCataclysmEmpireTreeLayout::RingSegments(Row->Radius) + 1);
+			bool bAllOnTheRing = Points.Num() > 0;
+			for (const FVector2D& Point : Points)
+			{
+				bAllOnTheRing &= FMath::IsNearlyEqual(Point.Size(), static_cast<double>(Row->Radius), 0.01);
+			}
+			TestTrue(FString::Printf(TEXT("every point of the %.0f ring is on it"), Row->Radius), bAllOnTheRing);
+			TestTrue(FString::Printf(TEXT("and the %.0f ring closes on itself"), Row->Radius),
+					 Points.Num() > 1 && Points[0].Equals(Points.Last(), 0.01));
+		}
+		else if (Row->Kind == TEXT("line"))
+		{
+			++Lines;
+			const FVector2D End = UCataclysmEmpireTreeLayout::LineEnd(*Row);
+			TestTrue(FString::Printf(TEXT("the line at %.0f degrees runs 800 along an axis"), Row->AngleDegrees),
+					 FMath::IsNearlyEqual(End.Size(), 800.0, 0.01)
+						 && (FMath::IsNearlyZero(End.X, 0.01) || FMath::IsNearlyZero(End.Y, 0.01)));
+			if (FMath::IsNearlyEqual(Row->AngleDegrees, -90.0f))
+			{
+				TestTrue(TEXT("the line at -90 degrees points up the panel, to a negative y"), End.Equals(FVector2D(0.0, -800.0), 0.01));
+			}
+		}
+		else
+		{
+			Words.Add(Row->Text);
+		}
+	}
+	Radii.Sort();
+	AddInfo(FString::Printf(TEXT("DRAWN: %d rings (%s), %d lines, %d labels: %s"), Rings,
+							*FString::JoinBy(Radii, TEXT(", "), [](float Radius) { return FString::SanitizeFloat(Radius); }),
+							Lines, Words.Num(), *FString::Join(Words, TEXT(", "))));
+	TestEqual(TEXT("six rings"), Rings, 6);
+	TestEqual(TEXT("four lines"), Lines, 4);
+	for (const TCHAR* Quadrant : {TEXT("ARCHITECT"), TEXT("EXPLORER"), TEXT("TREASURY"), TEXT("ARTISAN")})
+	{
+		TestTrue(FString::Printf(TEXT("a label names the %s quadrant"), Quadrant), Words.Contains(Quadrant));
+	}
+
+	// THE BUILDER'S COLOURS, READ AS A WEB PAGE'S ARE: "#6366F1" at an opacity of 1 is that colour, and half opacity is
+	// half alpha. THE CONTROL: a colour that does not read is white rather than black or nothing.
+	const FLinearColor Architect = UCataclysmEmpireTreeLayout::ColourOf(TEXT("#6366F1"), 1.0f);
+	TestEqual(TEXT("#6366F1 reads as that colour"), Architect.ToFColor(true), FColor(0x63, 0x66, 0xF1, 0xFF));
+	TestEqual(TEXT("half opacity is half alpha"), UCataclysmEmpireTreeLayout::ColourOf(TEXT("#6366F1"), 0.5f).A, 0.5f);
+	TestEqual(TEXT("CONTROL: a colour that does not read is white"), UCataclysmEmpireTreeLayout::ColourOf(TEXT("blue"), 1.0f),
+			  FLinearColor::White);
+	TestEqual(TEXT("a 15 unit label at a zoom of 0.4 is 6 pixels, 5 of Slate's points"),
+			  UCataclysmEmpireTreeLayout::LabelFontSize(15.0f, 0.4f), 5);
+	TestEqual(TEXT("a ring 1 unit thick is never thinner than 1.5 pixels"),
+			  UCataclysmEmpireTreeLayout::DecorationThicknessPx(1.0f, 0.4f), 1.5f);
 	return true;
 }
 
@@ -402,8 +590,8 @@ bool FCataclysmEmpireTreeScreenClickTest::RunTest(const FString&)
 	TestTrue(TEXT("the Architect branch can be shown"), Screen->ShowBranch(TEXT("Architect")));
 	TestFalse(TEXT("a name no view has cannot"), Screen->ShowBranch(TEXT("Nowhere")));
 	TestEqual(TEXT("which leaves Architect shown"), Screen->GetShownBranch(), FString(TEXT("Architect")));
-	TestEqual(TEXT("the screen draws the branch's nodes"), Screen->ShownNodes(),
-			  UCataclysmEmpireTree::NodesIn(UCataclysmEmpireTree::LoadNodeTable(), TEXT("Architect")));
+	TestEqual(TEXT("the screen draws every node of the tree in a branch's view too"), Screen->ShownNodes().Num(),
+			  UCataclysmEmpireTree::LoadNodeTable()->GetRowMap().Num());
 	TestTrue(TEXT("Structural Integrity among them"), Screen->ShownNodes().Contains(StructuralIntegrity));
 	TestEqual(TEXT("the bank before"), Screen->BankText().ToString(),
 			  FString(TEXT("3.5 empire upgrade points banked: 3 to spend")));

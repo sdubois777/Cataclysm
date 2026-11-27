@@ -21,11 +21,16 @@ struct FCataclysmHeldEmpireTree;
  * Issue #2741, slice 2. `docs/Cataclysm_GDD_v2.md`, Empire-Wide Upgrades.
  *
  * THE CLASS TREE SCREEN'S SHAPE (`UCataclysmPassiveTreeWidget`): the logic and state here in C++, where a headless test
- * reaches them, and the layout in `WBP_EmpireTree`, made by `tools/generate_interface_assets.py`. One view at a time,
- * chosen from a list -- the four branches and the centre's four capstones -- drawn on a canvas as one button per node
- * and one line per edge, with the mouse wheel zooming, the right button panning, and F fitting the view. A click on a
- * centre capstone that has opened puts its three options in the list in place of the views. The arithmetic and every
- * word are `UCataclysmEmpireTreeLayout`'s.
+ * reaches them, and the layout in `WBP_EmpireTree`, made by `tools/generate_interface_assets.py`. The arithmetic and
+ * every word are `UCataclysmEmpireTreeLayout`'s.
+ *
+ * THE WHOLE TREE, DRAWN AS THE OWNER BUILT IT, since 2026-11-27 (the owner: "not the beautiful circle json with 4
+ * quadrants we built with the passivetreebuilder"). One drawing on the canvas holds every node at the tree file's own
+ * position, every edge, and the builder's rings, lines and labels (`DT_EmpireTreeDecorations`). A node is a mark sized
+ * by its kind, as on the class tree screen, saying only its spent count, with its name and count beside it on hover.
+ * The mouse wheel zooms, the right button pans, and F fits the view. The list offers the whole tree and each branch,
+ * each with its points; a branch's view fits the same drawing to that branch. A click on a centre capstone that has
+ * opened puts its three options in the list in place of the views.
  *
  * IT READS ONE THING AND CHANGES IT THROUGH THREE. The tree and bank are `UCataclysmGameInstance::EmpireTreeHeldBy`'s
  * -- the lethality mode's, or a Solo Self-Found character's own -- and every change goes through
@@ -50,15 +55,18 @@ class CATACLYSM_API UCataclysmEmpireTreeWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	/** Which view is shown: a branch's name, or `UCataclysmEmpireTree::CentreBranch`. */
+	/** Which view is shown: `UCataclysmEmpireTreeLayout::WholeTreeView`, a branch's name, or
+	 *  `UCataclysmEmpireTree::CentreBranch`. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|EmpireTree")
 	FString GetShownBranch() const { return ShownBranch; }
 
-	/** Show this view. Clears the last refusal and the respec's first press. @return false for a name no view has. */
+	/** Show this view: fit the drawing to the whole tree or to one branch. Clears the last refusal and the respec's
+	 *  first press. @return false for a name no view has. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|EmpireTree")
 	bool ShowBranch(const FString& Branch);
 
-	/** The nodes of the view shown, in the order `UCataclysmEmpireTree::NodesIn` gives. */
+	/** The nodes drawn: every node of the tree, whichever view is shown, branch by branch in
+	 *  `UCataclysmEmpireTree::BranchNames`'s order and each in the order `UCataclysmEmpireTree::NodesIn` gives. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|EmpireTree")
 	TArray<FName> ShownNodes() const;
 
@@ -148,8 +156,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|EmpireTree")
 	void RefreshDisplay();
 
-	/** Use these tables rather than the generated ones. For tests. */
-	void SetTables(const UDataTable* InNodeTable, const UDataTable* InEdgeTable);
+	/** Use these tables rather than the generated ones. For tests. A null decoration table means the generated one. */
+	void SetTables(const UDataTable* InNodeTable, const UDataTable* InEdgeTable,
+				   const UDataTable* InDecorationTable = nullptr);
 
 	//~ Looking around the view, as on the class tree screen.
 
@@ -165,9 +174,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|EmpireTree")
 	void PanBy(FVector2D Pixels);
 
-	/** Put the whole of the view shown inside the panel. What opening the screen does, and what F does. */
+	/** Put the whole of the view shown inside the panel: every node and the outermost ring for the whole tree, one
+	 *  branch's nodes for a branch. What opening the screen does, what choosing a view does, and what F does. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|EmpireTree")
 	void FitToBranch();
+
+	/** Where a node's mark sits on the panel, its centre, at the current zoom and focus. For tests: the same function
+	 *  that places the button. */
+	FVector2D NodeScreenPositionForTests(FName Node) const;
+
+	/** How big a node's mark is drawn on the panel now. For tests. */
+	FVector2D NodeMarkSizeForTests(FName Node) const;
+
+	/** What is drawn beside the mark of the node hovered or selected: its name and count, or nothing. */
+	FString NodeNameCaptionText() const;
 
 	//~ UUserWidget
 	virtual void NativeConstruct() override;
@@ -192,7 +212,7 @@ public:
 	void DescribeNodeButtonForTests(UCataclysmChoiceButton& Button, FName Node);
 
 protected:
-	/** Where the five views' buttons go, or a capstone's three options while one is being decided. */
+	/** Where the six views' buttons go, each with its points, or a capstone's three options while one is being decided. */
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UPanelWidget> BranchBox;
 
@@ -243,6 +263,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|EmpireTree")
 	FLinearColor EdgeColour = FLinearColor(0.35f, 0.39f, 0.44f, 1.0f);
 
+	/** The name beside the mark of the node hovered or selected, added after the nodes so it is drawn over them. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NodeNameLabel;
+
 private:
 	UFUNCTION()
 	void HandleBranchClicked(FName Value);
@@ -261,6 +285,10 @@ private:
 
 	const UDataTable* NodeTable() const;
 	const UDataTable* EdgeTable() const;
+	const UDataTable* DecorationTable() const;
+
+	/** The points spent in a view: the whole tree's, or one branch's. */
+	int32 SpentInView(const FString& View) const;
 
 	/** What `EmpireTreeHeldBy` is asked with: the test's context, else this widget. */
 	const UObject* Context() const;
@@ -274,14 +302,17 @@ private:
 	/** `ChoiceButtonClass` loaded, or null with one complaint in the log. */
 	UClass* LoadedChoiceButtonClass();
 
-	/** Fill the list with the five views, or with a capstone's three options while one is being decided. */
+	/** Fill the list with the six views, or with a capstone's three options while one is being decided. */
 	void FillList();
 
-	/** Make one button per node and one line per edge for the view shown. */
+	/** Make the drawing once: the rings, lines and labels, one line per edge, one button per node, and the name. */
 	void BuildGraph();
 
-	/** Move every node and edge to where it belongs at the current zoom and focus, and relabel the nodes. */
+	/** Move everything drawn to where it belongs at the current zoom and focus, and relabel the nodes. */
 	void PlaceGraph();
+
+	/** Put the name of the node hovered or selected beside its mark. */
+	void PlaceNodeName();
 
 	/** One node's label, whether it is drawn dimmed, and the reason on its tool tip. */
 	void DescribeNodeButton(UCataclysmChoiceButton& Button, FName Node);
@@ -301,6 +332,9 @@ private:
 	TObjectPtr<const UDataTable> Edges;
 
 	UPROPERTY(Transient)
+	TObjectPtr<const UDataTable> Decorations;
+
+	UPROPERTY(Transient)
 	TSubclassOf<UCataclysmChoiceButton> ResolvedChoiceButtonClass;
 
 	UPROPERTY(Transient)
@@ -313,9 +347,10 @@ private:
 	FVector2D FittedAgainst = FVector2D::ZeroVector;
 	FVector2D PanelSizeForTests = FVector2D::ZeroVector;
 
-	/** Which view the canvas holds widgets for, and how big a node may be drawn in it. */
-	FString BuiltBranch;
-	float BuiltNodeScale = 1.0f;
+	/** Whether the canvas holds the drawing, and how large the marks may be drawn (`MarkScaleFor`). Built once: every
+	 *  view draws the same tree. */
+	bool bGraphBuilt = false;
+	float BuiltMarkScale = 1.0f;
 
 	UPROPERTY(Transient)
 	FName ChoosingOptionFor;
@@ -334,6 +369,20 @@ private:
 	TArray<TObjectPtr<UImage>> EdgeImages;
 
 	TArray<TPair<FName, FName>> EdgeEnds;
+
+	/** The rings and lines, one straight piece each, and their two ends in the tree's units and thickness. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UImage>> DecorationPieces;
+
+	TArray<TPair<FVector2D, FVector2D>> DecorationPieceEnds;
+	TArray<float> DecorationPieceThickness;
+
+	/** The labels, each with its centre in the tree's units and its size. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTextBlock>> DecorationLabels;
+
+	TArray<FVector2D> DecorationLabelCentres;
+	TArray<float> DecorationLabelSizes;
 
 	FVector2D DragFrom = FVector2D::ZeroVector;
 	bool bDragging = false;

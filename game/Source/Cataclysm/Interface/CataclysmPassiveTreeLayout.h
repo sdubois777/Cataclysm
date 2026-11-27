@@ -90,15 +90,15 @@ public:
 	static constexpr float ZoomPerNotch = 1.15f;
 
 	/**
-	 * How wide and tall an EMPIRE TREE node is drawn at a zoom of one, in pixels, and how thick its edges are.
+	 * The height of the labelled box every tree node was drawn as, in pixels at a zoom of one: the height the choice
+	 * button's designed font size was made for. A mark's spent count is scaled by the mark's height over this one, on
+	 * both screens.
 	 *
-	 * THE EMPIRE TREE'S AND NO LONGER A CLASS TREE'S. A class tree drew every node as this labelled box until
-	 * 2026-11-24 and now draws marks (below); `UCataclysmEmpireTreeLayout` and `UCataclysmEmpireTreeWidget` still
-	 * read these, so they keep their values. An empire node holds its own name, which is why it is this wide.
+	 * THE BOX ITSELF IS GONE. A class tree drew every node as a 150 by 44 box until 2026-11-24 and the empire tree until
+	 * 2026-11-27; both now draw marks (below), so the box's width and its 3 px edge were removed with the last screen
+	 * that read them.
 	 */
-	static constexpr float NodeWidthPx = 150.0f;
 	static constexpr float NodeHeightPx = 44.0f;
-	static constexpr float EdgeThicknessPx = 3.0f;
 
 	/**
 	 * How big a class tree's mark is drawn at a zoom of one, in pixels, by kind. Since 2026-11-24.

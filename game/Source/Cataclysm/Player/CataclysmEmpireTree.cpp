@@ -23,6 +23,7 @@ namespace CataclysmEmpireTreeTables
 	const TCHAR* NodeAssetPath = TEXT("/Game/Data/DT_EmpireTreeNodes.DT_EmpireTreeNodes");
 	const TCHAR* EdgeAssetPath = TEXT("/Game/Data/DT_EmpireTreeEdges.DT_EmpireTreeEdges");
 	const TCHAR* EffectAssetPath = TEXT("/Game/Data/DT_EmpireTreeEffects.DT_EmpireTreeEffects");
+	const TCHAR* DecorationAssetPath = TEXT("/Game/Data/DT_EmpireTreeDecorations.DT_EmpireTreeDecorations");
 
 	/**
 	 * Kept alive deliberately, as `UCataclysmPassiveTree` keeps its tables: nothing else references the asset, so
@@ -31,6 +32,7 @@ namespace CataclysmEmpireTreeTables
 	TWeakObjectPtr<const UDataTable> CachedNodes;
 	TWeakObjectPtr<const UDataTable> CachedEdges;
 	TWeakObjectPtr<const UDataTable> CachedEffects;
+	TWeakObjectPtr<const UDataTable> CachedDecorations;
 
 	const UDataTable* LoadAndKeep(const TCHAR* Path, TWeakObjectPtr<const UDataTable>& Cache)
 	{
@@ -117,6 +119,12 @@ const UDataTable* UCataclysmEmpireTree::LoadEdgeTable()
 {
 	return CataclysmEmpireTreeTables::LoadAndKeep(CataclysmEmpireTreeTables::EdgeAssetPath,
 												  CataclysmEmpireTreeTables::CachedEdges);
+}
+
+const UDataTable* UCataclysmEmpireTree::LoadDecorationTable()
+{
+	return CataclysmEmpireTreeTables::LoadAndKeep(CataclysmEmpireTreeTables::DecorationAssetPath,
+												  CataclysmEmpireTreeTables::CachedDecorations);
 }
 
 const UDataTable* UCataclysmEmpireTree::LoadEffectTable()

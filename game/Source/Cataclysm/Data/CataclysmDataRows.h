@@ -2287,6 +2287,72 @@ struct FCataclysmEmpireTreeEdgeRow : public FTableRowBase
 };
 
 /**
+ * One drawn shape or label of the empire upgrade tree's canvas: a ring, a line or a word, as the owner placed it in the
+ * tree builder (`docs/Empire_Development_Tree_Final.json`, its `uiElements`). Issue: the empire tree drawn as built.
+ *
+ * WHY THEY ARE CARRIED. The rings around the centre, the four lines between the quadrants and the quadrant and tier
+ * names are what draw the tree as a circle in four quadrants; the nodes alone do not. The game cannot read `docs/`, so
+ * they reach it as this table, as the nodes and edges do.
+ *
+ * IN THE TREE FILE'S UNITS, THE NODES' OWN, centred rather than cornered: the builder places a shape by the top-left
+ * corner of its box, and the generator turns that into the point the screen draws around. A ring's centre and radius; a
+ * line's start, length, angle and thickness; a label's centre, words and size.
+ */
+USTRUCT(BlueprintType)
+struct FCataclysmEmpireTreeDecorationRow : public FTableRowBase
+{
+	GENERATED_BODY()
+
+	/** "circle", "line" or "label". */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Kind;
+
+	/** A ring's or a label's centre; a line's start. In the tree file's units, y growing downwards. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float CentreX = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float CentreY = 0.0f;
+
+	/** A ring's radius. Nought for a line or a label. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float Radius = 0.0f;
+
+	/** A line's length. Nought for a ring or a label. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float Length = 0.0f;
+
+	/** A line's direction in degrees, clockwise from pointing right, as the builder states it (-90 points up). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float AngleDegrees = 0.0f;
+
+	/** A line's thickness in the tree file's units. A ring is drawn at the builder's own 1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float Thickness = 0.0f;
+
+	/** A label's words. Empty for a ring or a line. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Text;
+
+	/** A label's size in the tree file's units, as the builder states it. Nought for a ring or a line. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float FontSize = 0.0f;
+
+	/** The colour, "#RRGGBB" as the builder writes it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	FString Colour;
+
+	/** How opaque, 0 to 1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	float Opacity = 1.0f;
+
+	/** Which side of the nodes it is drawn on, the builder's `zIndex`: below them when negative (the rings and lines),
+	 *  over them otherwise (the labels), as the builder draws it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Empire Tree")
+	int32 Layer = 0;
+};
+
+/**
  * What one effect of an empire upgrade tree node changes. Issue #2741 slice 3a, the city nodes; slices 3b to 5 add more.
  *
  * ONE VALUE PER NUMBER THE EMPIRE LAYER READS AND PER WAY IT COMBINES, so `UCataclysmEmpireTree::CityBonusesFor` is one

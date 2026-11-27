@@ -6,28 +6,42 @@
 #include "Interface/CataclysmEmpireMapLayout.h"
 #include "Player/CataclysmEmpireTree.h"
 
+const FString UCataclysmEmpireTreeLayout::WholeTreeView = TEXT("Whole tree");
+
 TArray<FString> UCataclysmEmpireTreeLayout::Views()
 {
-	return UCataclysmEmpireTree::BranchNames();
+	TArray<FString> Out = {WholeTreeView};
+	Out.Append(UCataclysmEmpireTree::BranchNames());
+	return Out;
 }
 
-FString UCataclysmEmpireTreeLayout::ViewLabel(const FString& Branch)
+FString UCataclysmEmpireTreeLayout::ViewLabel(const FString& View)
 {
-	return Branch == UCataclysmEmpireTree::CentreBranch ? FString(TEXT("The centre")) : Branch;
+	if (View == WholeTreeView)
+	{
+		return TEXT("The whole tree");
+	}
+	return View == UCataclysmEmpireTree::CentreBranch ? FString(TEXT("The centre")) : View;
 }
 
-FCataclysmTreeExtent UCataclysmEmpireTreeLayout::ExtentOf(const UDataTable* NodeTable, const FString& Branch)
+FString UCataclysmEmpireTreeLayout::ViewButtonLabel(const FString& View, int32 SpentInView)
+{
+	return FString::Printf(TEXT("%s  %d point%s"), *ViewLabel(View), SpentInView, SpentInView == 1 ? TEXT("") : TEXT("s"));
+}
+
+FCataclysmTreeExtent UCataclysmEmpireTreeLayout::ExtentOf(const UDataTable* NodeTable, const FString& View)
 {
 	FCataclysmTreeExtent Extent;
-	if (!NodeTable || Branch.IsEmpty())
+	if (!NodeTable || View.IsEmpty())
 	{
 		return Extent;
 	}
 
+	const bool bWhole = View == WholeTreeView;
 	for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
 	{
 		const FCataclysmEmpireTreeNodeRow* Row = reinterpret_cast<const FCataclysmEmpireTreeNodeRow*>(Pair.Value);
-		if (!Row || Row->Branch != Branch)
+		if (!Row || (!bWhole && Row->Branch != View))
 		{
 			continue;
 		}
@@ -48,45 +62,100 @@ FCataclysmTreeExtent UCataclysmEmpireTreeLayout::ExtentOf(const UDataTable* Node
 	return Extent;
 }
 
-float UCataclysmEmpireTreeLayout::NodeScaleFor(const UDataTable* NodeTable, const FString& Branch)
+FCataclysmTreeExtent UCataclysmEmpireTreeLayout::WithDecorations(const FCataclysmTreeExtent& Extent,
+																 const UDataTable* DecorationTable)
 {
-	if (!NodeTable || Branch.IsEmpty())
+	FCataclysmTreeExtent Out = Extent;
+	if (!DecorationTable)
 	{
-		return 1.0f;
+		return Out;
 	}
 
-	TArray<FVector2D> Points;
-	for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+	const auto Hold = [&Out](FVector2D At)
 	{
-		const FCataclysmEmpireTreeNodeRow* Row = reinterpret_cast<const FCataclysmEmpireTreeNodeRow*>(Pair.Value);
-		if (Row && Row->Branch == Branch)
+		if (!Out.bAny)
 		{
-			Points.Add(FVector2D(Row->PositionX, Row->PositionY));
+			Out.Least = At;
+			Out.Most = At;
+			Out.bAny = true;
+			return;
+		}
+		Out.Least.X = FMath::Min(Out.Least.X, At.X);
+		Out.Least.Y = FMath::Min(Out.Least.Y, At.Y);
+		Out.Most.X = FMath::Max(Out.Most.X, At.X);
+		Out.Most.Y = FMath::Max(Out.Most.Y, At.Y);
+	};
+
+	for (const TPair<FName, uint8*>& Pair : DecorationTable->GetRowMap())
+	{
+		const FCataclysmEmpireTreeDecorationRow* Row = reinterpret_cast<const FCataclysmEmpireTreeDecorationRow*>(Pair.Value);
+		if (!Row)
+		{
+			continue;
+		}
+		const FVector2D Centre(Row->CentreX, Row->CentreY);
+		if (Row->Kind == TEXT("circle"))
+		{
+			// A RING'S BOX, the square it is drawn in.
+			Hold(Centre - FVector2D(Row->Radius, Row->Radius));
+			Hold(Centre + FVector2D(Row->Radius, Row->Radius));
+		}
+		else if (Row->Kind == TEXT("line"))
+		{
+			Hold(Centre);
+			Hold(LineEnd(*Row));
+		}
+		else
+		{
+			Hold(Centre);
 		}
 	}
-	if (Points.Num() < 2)
+	return Out;
+}
+
+FVector2D UCataclysmEmpireTreeLayout::MarkSizeFor(const FCataclysmEmpireTreeNodeRow& Row)
+{
+	return UCataclysmPassiveTreeLayout::MarkSizePx(UCataclysmPassiveTreeLayout::MarkFor(Row.Kind));
+}
+
+float UCataclysmEmpireTreeLayout::MarkScaleFor(const UDataTable* NodeTable)
+{
+	if (!NodeTable)
 	{
 		return 1.0f;
 	}
 
-	// EVERY PAIR, about 780 for a branch of 40: the class trees' reason, that the closest pair by distance is not the
-	// binding one when a node is wider than it is tall.
-	float Allowed = 1.0f;
-	for (int32 First = 0; First < Points.Num(); ++First)
+	TArray<TPair<FVector2D, FVector2D>> Marks;
+	for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
 	{
-		for (int32 Second = First + 1; Second < Points.Num(); ++Second)
+		if (const FCataclysmEmpireTreeNodeRow* Row = reinterpret_cast<const FCataclysmEmpireTreeNodeRow*>(Pair.Value))
 		{
-			const FVector2D Gap = (Points[First] - Points[Second]).GetAbs();
-			const float Pair = FMath::Max(static_cast<float>(Gap.X) / UCataclysmPassiveTreeLayout::NodeWidthPx,
-										  static_cast<float>(Gap.Y) / UCataclysmPassiveTreeLayout::NodeHeightPx);
+			Marks.Emplace(FVector2D(Row->PositionX, Row->PositionY), MarkSizeFor(*Row));
+		}
+	}
+	if (Marks.Num() < 2)
+	{
+		return 1.0f;
+	}
+
+	// EVERY PAIR, about 12,500 for the 159 nodes: the class trees' reason, that the closest pair by distance is not the
+	// binding one when one mark is larger than another or wider than it is tall.
+	float Allowed = 1.0f;
+	for (int32 First = 0; First < Marks.Num(); ++First)
+	{
+		for (int32 Second = First + 1; Second < Marks.Num(); ++Second)
+		{
+			const FVector2D Gap = (Marks[First].Key - Marks[Second].Key).GetAbs();
+			const FVector2D Half = (Marks[First].Value + Marks[Second].Value) * 0.5;
+			const float Pair = FMath::Max(static_cast<float>(Gap.X / Half.X), static_cast<float>(Gap.Y / Half.Y));
 			Allowed = FMath::Min(Allowed, Pair);
 		}
 	}
-	return Allowed;
+	return FMath::Max(Allowed, 0.05f);
 }
 
-TArray<TPair<FName, FName>> UCataclysmEmpireTreeLayout::EdgesIn(const UDataTable* NodeTable,
-																const UDataTable* EdgeTable, const FString& Branch)
+TArray<TPair<FName, FName>> UCataclysmEmpireTreeLayout::EdgesOf(const UDataTable* NodeTable,
+																const UDataTable* EdgeTable)
 {
 	TArray<TPair<FName, FName>> Out;
 	if (!NodeTable || !EdgeTable)
@@ -103,13 +172,59 @@ TArray<TPair<FName, FName>> UCataclysmEmpireTreeLayout::EdgesIn(const UDataTable
 		}
 		const FName Source(*Edge->Source);
 		const FName Target(*Edge->Target);
-		if (UCataclysmEmpireTree::BranchOf(NodeTable, Source) == Branch
-			&& UCataclysmEmpireTree::BranchOf(NodeTable, Target) == Branch)
+		if (UCataclysmEmpireTree::FindNode(NodeTable, Source) && UCataclysmEmpireTree::FindNode(NodeTable, Target))
 		{
 			Out.Emplace(Source, Target);
 		}
 	}
 	return Out;
+}
+
+int32 UCataclysmEmpireTreeLayout::RingSegments(float Radius)
+{
+	return FMath::Clamp(FMath::CeilToInt(Radius / 8.0f), 24, 96);
+}
+
+TArray<FVector2D> UCataclysmEmpireTreeLayout::RingPoints(FVector2D Centre, float Radius)
+{
+	const int32 Segments = RingSegments(Radius);
+	TArray<FVector2D> Out;
+	Out.Reserve(Segments + 1);
+	for (int32 Index = 0; Index <= Segments; ++Index)
+	{
+		// THE LAST POINT IS THE FIRST, worked out rather than copied, so the ring closes on itself to rounding.
+		const double Angle = 2.0 * UE_DOUBLE_PI * (Index % Segments) / Segments;
+		Out.Add(Centre + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Radius);
+	}
+	return Out;
+}
+
+FVector2D UCataclysmEmpireTreeLayout::LineEnd(const FCataclysmEmpireTreeDecorationRow& Row)
+{
+	const double Angle = FMath::DegreesToRadians(static_cast<double>(Row.AngleDegrees));
+	return FVector2D(Row.CentreX, Row.CentreY) + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Row.Length;
+}
+
+FLinearColor UCataclysmEmpireTreeLayout::ColourOf(const FString& Hex, float Opacity)
+{
+	FLinearColor Colour = FLinearColor::White;
+	if (Hex.Len() == 7 && Hex.StartsWith(TEXT("#")))
+	{
+		// THE BUILDER'S COLOURS ARE sRGB, as a web page's are, so they are read as sRGB and not as linear values.
+		Colour = FLinearColor(FColor::FromHex(Hex));
+	}
+	Colour.A = FMath::Clamp(Opacity, 0.0f, 1.0f);
+	return Colour;
+}
+
+int32 UCataclysmEmpireTreeLayout::LabelFontSize(float FontSize, float Zoom)
+{
+	return FMath::Max(1, FMath::RoundToInt(FontSize * Zoom * 0.75f));
+}
+
+float UCataclysmEmpireTreeLayout::DecorationThicknessPx(float Thickness, float Zoom)
+{
+	return FMath::Max(1.5f, Thickness * Zoom);
 }
 
 FString UCataclysmEmpireTreeLayout::BankLine(double Banked, bool bTheCharactersOwn)
@@ -119,9 +234,14 @@ FString UCataclysmEmpireTreeLayout::BankLine(double Banked, bool bTheCharactersO
 						   bTheCharactersOwn ? TEXT("; this character's own") : TEXT(""));
 }
 
-FString UCataclysmEmpireTreeLayout::BranchLine(const FString& Branch, int32 SpentHere, int32 SpentInTree)
+FString UCataclysmEmpireTreeLayout::BranchLine(const FString& View, int32 SpentHere, int32 SpentInTree)
 {
-	return FString::Printf(TEXT("%s: %d point%s spent here, %d in the whole tree"), *ViewLabel(Branch), SpentHere,
+	if (View == WholeTreeView)
+	{
+		return FString::Printf(TEXT("%s: %d point%s spent"), *ViewLabel(View), SpentInTree,
+							   SpentInTree == 1 ? TEXT("") : TEXT("s"));
+	}
+	return FString::Printf(TEXT("%s: %d point%s spent here, %d in the whole tree"), *ViewLabel(View), SpentHere,
 						   SpentHere == 1 ? TEXT("") : TEXT("s"), SpentInTree);
 }
 
