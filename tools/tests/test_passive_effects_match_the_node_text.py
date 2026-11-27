@@ -1983,9 +1983,6 @@ CONDITION_WORDS = {
     # DEATH'S PATIENCE, the Death trees' slice C4a (2026-11-25): "an enemy that
     # carries your Poison or Bleed".
     "target_carries_your_poison_or_bleed": ("carries your poison or bleed", None),
-    # ANY FUEL, the Death trees' slice C4b1 (2026-11-25): "Fervour gained from
-    # sources other than kills".
-    "fervour_gain_not_from_a_kill": ("from sources other than kills", None),
     # THE CHARACTER STRUCK IS IN THE ASKER'S SIPHON, the Death trees' slice C2
     # (2026-11-25): Soul-Heavy Air, "Enemies in your Siphon take 1% increased
     # damage from you". No value.
@@ -3306,9 +3303,7 @@ VALUE_FORMS = {
                          # SOUL TIDE, the Death trees' slice C4a (2026-11-25):
                          # "give 1 extra Fervour each".
                          "give {value:g} extra Fervour"),
-    # SLICE C4a (2026-11-25): Gleaning's "5% chance per point to give 1 extra
-    # Fervour", and Clean Kill's "restores 1% of your Maximum Health".
-    "fervour_per_kill_extra_chance": ("{value:g}% chance per point to give 1 extra Fervour",),
+    # SLICE C4a (2026-11-25): Clean Kill's "restores 1% of your Maximum Health".
     "health_restored_on_critical_kill": ("restores {value:g}% of your Maximum Health",),
     # SLICE C4d1 (2026-11-25): the Shadow's starting node's "and 2 for each
     # critical strike you land", and Telling Blows' "+1 Fervour per point for
@@ -3322,13 +3317,6 @@ VALUE_FORMS = {
     # by Inches' "every 10th hit you land".
     "boss_ticks_pay_a_kill_every_seconds": ("once every {value:g} seconds",),
     "boss_hits_counted_as_a_kill_every": ("every {value:g}th hit",),
-    # SLICE C4b1 (2026-11-25): Borrowed Time's "is extended by 1 second for every
-    # 3 points".
-    "fervour_hold_extended_on_gain_seconds": ("extended by {value:g} second",),
-    # SLICE C4b2 (2026-11-25): Reclaimed's "in the 3 seconds before it", and
-    # Claimed's "if it dies within 1 second for every 2 points".
-    "decay_given_back_on_kill_seconds": ("in the {value:g} seconds before it",),
-    "fervour_claimed_within_seconds": ("within {value:g} second",),
     # SLICE C4c1 (2026-11-25): Passed On's "within 3 metres of it".
     "overkill_explosion_radius_metres": ("within {value:g} metres of it",),
     "fervour_kill_decay_per_second": ("decays at {value:g} per second",
@@ -3346,9 +3334,8 @@ VALUE_FORMS = {
     "fervour_spent_returned_percent": ("{value:g}% per point of the Fervour you spend",),
     "fervour_lethal_save_every_seconds": ("Once every {value:g} seconds",),
     # SLICE C3d (2026-11-25): Generous Count's "reached 1 Fervour sooner per
-    # point" and Long Shadow's "stays in effect for 5 seconds".
+    # point".
     "fervour_threshold_reduction": ("reached {value:g} Fervour sooner per point",),
-    "fervour_threshold_linger_seconds": ("stays in effect for {value:g} seconds",),
     # CHAINED SOULS, slice C3e: "8% per point of the Fervour your minions ...".
     "reserved_fervour_counts_as_held_percent": ("{value:g}% per point of the Fervour your minions",),
     "movement_on_cooldown_fervour_cost": ("by spending {value:g} Fervour", "reduced by {value:g} per point"),
@@ -3569,14 +3556,6 @@ VALUE_IN_WORDS = {
     # of the kill decay while its condition holds.
     ("SoulCollector_capstone_25", "fervour_kill_decay_per_second"): ("fervour does not decay", 1.0),
     ("Shadow_keystone_spine_002", "fervour_kill_decay_per_second"): ("your fervour does not drain", 1.0),
-    # SOULBOUND, the Death trees' slice C6c (2026-11-25): "Your Fervour no longer
-    # decays with time", a removal of the kill decay.
-    ("SoulCollector_keystone_spine_003", "fervour_kill_decay_per_second"): ("no longer decays", 1.0),
-    # LIVING HARVEST, the Death trees' slice C2 (2026-11-25): "Each enemy in your
-    # Siphon gives you 1 Fervour every 2 seconds" is half a Fervour a second for
-    # each, paid once a second.
-    ("SoulCollector_keystone_c_kA", "siphon_fervour_per_second"):
-        ("1 fervour every 2 seconds", 0.5),
     # DEATH SENTENCE'S BOSS HALF, the Death trees' slice C1 (2026-11-25):
     # "Bosses take double damage from you below 15%" is 100% more, in a word.
     ("Shadow_capstone_200", "attack_damage", "target_health_below"):
@@ -3969,14 +3948,10 @@ VALUE_IN_WORDS = {
     ("Ritualist_keystone_spine_003", "minion_hits_count_as_yours"):
         ("count as yours", 1.0),
 
-    # KINDRED FIRES, the Death trees' slice C4b1 (2026-11-25): "Fervour you gain
-    # from any source ... holds off decay as a kill does", a switch of 1.
-    ("SoulCollector_keystone_b_kC", "fervour_hold_restarted_by_any_gain"):
-        ("holds off decay as a kill does", 1.0),
-
-    # DEATH'S TOLL, the Death trees' slice C4b2 (2026-11-25): "count as your kills
-    # for everything this tree asks", a switch of 1.
-    ("SoulCollector_keystone_spine_001", "follower_kills_count_as_yours"):
+    # DEATH'S TOLL, the Death trees' slice C4b2 (2026-11-25), on the starting
+    # node since the keystone rework (issue #2951): "Enemies your minions,
+    # gadgets and traps kill count as your kills", a switch of 1.
+    ("SoulCollector_basic_spine_000", "follower_kills_count_as_yours"):
         ("count as your kills", 1.0),
 
     # AND THE RITUALIST'S RISEN IMPS, a flag of one. Issue #1479. The death path

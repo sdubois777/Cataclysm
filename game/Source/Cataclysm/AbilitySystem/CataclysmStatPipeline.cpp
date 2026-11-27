@@ -158,7 +158,6 @@ namespace
 		{ TEXT("fervour_threshold_reached"),    ECataclysmStatCondition::FervourThresholdReached },
 		{ TEXT("class_resource_points_below"),  ECataclysmStatCondition::ClassResourcePointsBelow },
 		{ TEXT("target_carries_your_poison_or_bleed"), ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed },
-		{ TEXT("fervour_gain_not_from_a_kill"), ECataclysmStatCondition::FervourGainNotFromAKill },
 		{ TEXT("killing_blow_was_a_hit"), ECataclysmStatCondition::KillingBlowWasAHit },
 		{ TEXT("target_near_your_kill_within_seconds"), ECataclysmStatCondition::TargetNearYourKillWithinSeconds },
 		{ TEXT("kill_was_an_execute"), ECataclysmStatCondition::KillWasAnExecute },
@@ -428,7 +427,6 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetIsMoving:
 	case ECataclysmStatCondition::TargetCarriesYourCurse:
 	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
-	case ECataclysmStatCondition::FervourGainNotFromAKill:
 	case ECataclysmStatCondition::KillingBlowWasAHit:
 	case ECataclysmStatCondition::KillWasAnExecute:
 	case ECataclysmStatCondition::NextHitIsCritical:
@@ -447,7 +445,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
 	case ECataclysmStatCondition::NoRoomForATrap:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the fifty-five says
+		// nothing for a number to be compared against. Each of the fifty-four says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -627,9 +625,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// AND A NEXT-HIT CRITICAL CHARGE, the Death trees' slice C6a (2026-11-25): it runs out after its seconds with nothing
 	// announcing it, as the two above do.
 	case C::NextHitIsCritical:
-	// AND A FERVOUR THRESHOLD, the Death trees' slice C3d (2026-11-25): it moves with the Fervour held, and Long Shadow's
-	// seconds after a fall run out with nothing announcing it, which is what puts it here rather than with the class
-	// resource's conditions.
+	// AND A FERVOUR THRESHOLD, the Death trees' slice C3d (2026-11-25): it moves with the Fervour held. It was put here
+	// for Long Shadow's seconds after a fall, which ran out with nothing announcing them; Long Shadow was retired by
+	// issue #2951, and time is the broader of the two answers, so it stays.
 	case C::FervourThresholdReached:
 		return EOn::Time;
 
@@ -725,12 +723,6 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::MinionHasYourMostMaximumHealth:
 	case C::TargetMarkedByYou:
 	case C::TargetIsYourLastAttacker:
-		return EOn::TheBlowOrSkill;
-
-	// WHETHER THE GAIN BEING SIZED IS NOT A KILL'S PAYMENT, the Death trees' slice C4b1 (2026-11-25): a fact of the gain
-	// in hand, as a skill's kind is of the skill. It changes only while a kill is being paid for, and nothing outside
-	// a gain asks it.
-	case C::FervourGainNotFromAKill:
 		return EOn::TheBlowOrSkill;
 
 	// WHETHER THE KILL BEING ACTED ON WAS MADE BY A HIT, the Death trees' slice C4c1 (2026-11-25): a fact of the kill in
@@ -1530,11 +1522,6 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// FILLED ONLY WHEN A ROW ASKS AND AN ASKER IS IN HAND, by `WithTargetState`, as the curse above is. The Death
 		// trees' slice C4a (2026-11-25).
 		return State.bTargetCarriesYourPoisonOrBleed;
-
-	case ECataclysmStatCondition::FervourGainNotFromAKill:
-		// FILLED BY `CurrentConditions` FROM THE KILL-PAYMENT MARKER, the Death trees' slice C4b1 (2026-11-25): true
-		// unless a kill's Fervour is being paid. A state with no asker in hand stays false and refuses.
-		return State.bFervourGainNotFromAKill;
 
 	case ECataclysmStatCondition::KillingBlowWasAHit:
 		// FILLED BY `CurrentConditions` FROM THE MARK THE KILL HANDLER SETS while it acts on a kill made by a hit, the

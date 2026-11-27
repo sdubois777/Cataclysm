@@ -1176,8 +1176,8 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("fervour_kill_decay_grace_seconds"),
 		// THE SOUL COLLECTOR'S SIPHON, the Death trees' slice C2 (2026-11-25):
 		// its radius, the cut to what a member deals, its slow, the linger after
-		// leaving, and the four paid once a second (Drain's damage, Necrotic
-		// Siphon's chance, Life Siphon's health, Living Harvest's Fervour). Each
+		// leaving, and the three paid once a second (Drain's damage, Necrotic
+		// Siphon's chance, Life Siphon's health). Each
 		// is asked by FCataclysmSiphon on the regeneration step, through the
 		// pipeline, and none has a gameplay attribute.
 		TEXT("siphon_radius_metres"),
@@ -1187,7 +1187,6 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("siphon_drain_weapon_percent"),
 		TEXT("siphon_necrosis_chance"),
 		TEXT("siphon_life_percent"),
-		TEXT("siphon_fervour_per_second"),
 		// THE DEATH FINISH SLICE A (2026-11-26): Soul Fuel's and Deeper Draw's most Fervour a skill spends, and Soul
 		// Fuel's increased damage for each Fervour it spent, both read by UCataclysmSkillTemplate::CommitAndBegin with
 		// the skill's tags; Pyre's increased area for every 5 Fervour a use spent, read by
@@ -1207,32 +1206,21 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("fervour_spent_returned_percent"),
 		TEXT("fervour_lethal_save_every_seconds"),
 		TEXT("movement_on_cooldown_fervour_cost"),
-		// The Death trees' slice C3d: Generous Count's reduction of every Fervour threshold and Long Shadow's seconds
-		// after one, read with no reading while the conditions are filled; and the fourth vow's faster cooldown
-		// recovery, asked on the regeneration step. No attribute and no base.
+		// The Death trees' slice C3d: Generous Count's reduction of every Fervour threshold, read with no reading while
+		// the conditions are filled; and the fourth vow's faster cooldown recovery, asked on the regeneration step. No
+		// attribute and no base.
 		TEXT("fervour_threshold_reduction"),
-		TEXT("fervour_threshold_linger_seconds"),
 		TEXT("cooldowns_recover_faster_percent"),
 		// The Death trees' slice C3e: Chained Souls' share of what followers hold back counted as Fervour held, read with
 		// no reading while the conditions are filled. No attribute and no base.
 		TEXT("reserved_fervour_counts_as_held_percent"),
-		// The Death trees' slice C4a: Gleaning's chance of 1 extra Fervour on a kill, read by
-		// UCataclysmFervour::GainOnOwnKill against the slain creature. No attribute and no base.
-		TEXT("fervour_per_kill_extra_chance"),
-		// And the Shadow's Clean Kill: the share of maximum health a kill by a critical strike restores, read by
+		// The Shadow's Clean Kill: the share of maximum health a kill by a critical strike restores, read by
 		// UCataclysmFervour::RestoreHealthOnCriticalKill. No attribute and no base.
 		TEXT("health_restored_on_critical_kill"),
-		// And the Soul Collector's Kindred Fires and Borrowed Time, the Death trees' slice C4b1: whether any gain
-		// restarts the hold before decay, and the seconds a gain that is not a kill's lengthens it by. Read by
-		// UCataclysmFervour::AfterPoolRose. No attribute and no base.
-		TEXT("fervour_hold_restarted_by_any_gain"),
-		TEXT("fervour_hold_extended_on_gain_seconds"),
-		// And the Soul Collector's Miser's Grip, Soulbound, Overflow and Unbroken Chain, the Death trees' slice C6c: the
-		// floor the kill decay stops at, every how many percent of health lost to damage costs 1 Fervour, the seconds of
-		// Overflow's window, and the seconds a chain of kills is lengthened by. Read by UCataclysmFervour and
-		// UCataclysmAbilitySystemComponent. No attribute and no base.
+		// And the Death trees' slice C6c: the floor the kill decay stops at (the War Fervour's decay reads it), the
+		// seconds of Overflow's window, and the seconds a chain of kills is lengthened by. Read by UCataclysmFervour,
+		// UCataclysmWarFervour and UCataclysmAbilitySystemComponent. No attribute and no base.
 		TEXT("fervour_decay_floor_percent"),
-		TEXT("health_percent_lost_per_fervour_lost"),
 		TEXT("fervour_overflow_attack_speed_seconds"),
 		TEXT("kill_chain_seconds"),
 		// And the Necromancer's Shared Leech, the Death trees' slice C6d2: the per cent of a minion's damage its
@@ -1329,11 +1317,8 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// attribute and no base.
 		TEXT("boss_ticks_pay_a_kill_every_seconds"),
 		TEXT("boss_hits_counted_as_a_kill_every"),
-		// And the Soul Collector's Reclaimed, Claimed and Death's Toll, the Death trees' slice C4b2: the seconds of decay
-		// a kill gives back, the seconds after a hit within which a death pays its Fervour, and the switch that makes a
-		// follower's kill this character's. Read by UCataclysmFervour. No attribute and no base.
-		TEXT("decay_given_back_on_kill_seconds"),
-		TEXT("fervour_claimed_within_seconds"),
+		// And the switch that makes a follower's kill this character's, the Death trees' slice C4b2, granted by the
+		// Soul Collector's starting node since issue #2951. Read by UCataclysmFervour. No attribute and no base.
 		TEXT("follower_kills_count_as_yours"),
 		// And the Soul Collector's Death Made Flesh, issue #2951 (2026-11-27): the switch that takes the Fervour held out
 		// of the character's damage. Read by UCataclysmAbilitySystemComponent::CurrentConditions. No attribute, no base.

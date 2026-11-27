@@ -1,7 +1,8 @@
 """Every gain to the class resource pool goes through `UCataclysmFervour::RaisePool`.
 
-WHY THIS EXISTS. The Soul Collector's Kindred Fires and Borrowed Time act on every gain of Fervour (the Death trees'
-slice C4b1, 2026-11-25), and a gain that writes the pool by itself is one they never hear of. There is no hook on the
+WHY THIS EXISTS. `RaisePool` holds every gain to the full bar after reserves and hands what does not fit to the Soul
+Collector's Overflow (since commit 61a254cbe), and a gain that writes the pool by itself skips both. The Death trees'
+slice C4b1 (2026-11-25) made it the one way for Kindred Fires and Borrowed Time, which issue #2951 retired. There is no hook on the
 attribute that could hear it instead: `UAbilitySystemComponent::ApplyModToAttribute` reaches the pool through
 `FActiveGameplayEffectsContainer::ApplyModToAttribute`, which only calls `SetAttributeBaseValue`, so the attribute
 set's `PostGameplayEffectExecute` never runs; and the hooks that do run also see `SetNumericAttributeBase`, which the
@@ -11,7 +12,7 @@ Fervour add gain paths when they merge.
 
 WHAT IS ASSERTED. Every `ApplyModToAttribute` call outside the tests, counted by file and the function it sits in, is
 in `INVENTORY` with the reason it is not a gain to the pool, and nothing listed has gone; each function that gains
-the pool calls `RaisePool`; and a kill's payment reaches neither Kindred Fires nor Borrowed Time, as ruled. A new call fails until it is listed, which is the point: listing it means saying why it is
+the pool calls `RaisePool`; and a kill's payment is marked. A new call fails until it is listed, which is the point: listing it means saying why it is
 not a gain. Read from the source with comments and strings removed, because continuous integration compiles no C++.
 """
 
@@ -38,7 +39,6 @@ INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
     (FERVOUR, "UCataclysmFervour::Move"): (1, "the loss branch only; its gain branch calls RaisePool"),
     (FERVOUR, "UCataclysmFervour::DecayStep"): (1, "the Ravager's decay out of contact, a negative change"),
     (FERVOUR, "UCataclysmFervour::KillDecayStep"): (1, "the Death classes' decay after a kill, a negative change"),
-    (FERVOUR, "UCataclysmFervour::LoseFromDamage"): (1, "Soulbound's loss on health lost to damage, a negative change"),
     (FERVOUR, "UCataclysmFervour::RestoreHealthOnKill"): (1, "Wrung Out's spend of Fervour, a negative change"),
     (FERVOUR, "UCataclysmFervour::BuyDamageForEnemiesStruckTogether"): (1, "a spend of Fervour, a negative change"),
     (FERVOUR, "UCataclysmFervour::SpendAll"): (1, "Requiem's spend of every Fervour held, a negative change"),
@@ -96,7 +96,6 @@ GAINS = (
     (FERVOUR, "UCataclysmFervour::GainStated"),
     (ASC, "UCataclysmAbilitySystemComponent::ReturnFervourDue"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp", "UCataclysmRegeneration::TopUp"),
-    ("game/Source/Cataclysm/AbilitySystem/CataclysmSiphon.cpp", "FCataclysmSiphon::FervourOnce"),
     # AND THE WAR LINE'S TWO, since the bundle 3 merge: every rate (`GainByRate`) and Cleave's net gain.
     (WAR, "FCataclysmWarFervour::GainByRate"),
     (WAR, "FCataclysmWarFervour::TradeForEnemiesStruckTogether"),
@@ -139,7 +138,7 @@ def test_every_call_site_is_in_the_inventory():
         "these ApplyModToAttribute calls are not in INVENTORY, or not as many as it says:\n"
         + "\n".join(f"  {path}  {function}: {count}" for (path, function), count in unlisted)
         + "\n\nA positive change to the class resource pool must go through UCataclysmFervour::RaisePool, or "
-          "Kindred Fires and Borrowed Time never hear of it. Anything else: list it with why it is not a gain. "
+          "Overflow never hears of it. Anything else: list it with why it is not a gain. "
           f"Scope: {sum(found.values())} calls in {len(found)} functions, every .cpp under game/Source but the tests.")
 
 
@@ -157,21 +156,9 @@ def test_every_gain_to_the_pool_calls_the_helper():
     assert not skipping, f"these functions gain the pool without UCataclysmFervour::RaisePool: {skipping}"
 
 
-def test_a_kills_payment_reaches_neither_kindred_fires_nor_borrowed_time():
-    """Ruled by the coordinating session on 2026-11-25: a kill's payment sets the hold only through the kill's own
-    stamp, so the rise handler returns on the marker before either node is asked."""
-    body = bodies()[(FERVOUR, "UCataclysmFervour::AfterPoolRose")]
-    guard = re.search(r"if\s*\(\s*Cataclysm->IsPayingForAKill\(\)\s*\)\s*\{\s*return;\s*\}", body)
-    kindred = body.find("HoldRestartedByAnyGainStat")
-    borrowed = body.find("HoldExtendedOnGainSecondsStat")
-    assert guard and 0 <= kindred and 0 <= borrowed, "AfterPoolRose must return on a kill's payment and ask both nodes"
-    assert guard.start() < kindred and guard.start() < borrowed, (
-        "AfterPoolRose asks Kindred Fires or Borrowed Time before it returns on a kill's payment, so a kill's payment "
-        "restarts or lengthens the hold, which the coordinating session ruled it must not")
-
-
 def test_the_kill_payment_is_marked_for_its_whole_length():
-    """Any Fuel and Borrowed Time tell a kill's payment apart by the marker GainOnOwnKill opens."""
+    """The marker GainOnOwnKill opens. Any Fuel and Borrowed Time, which read it, were retired by issue #2951; the
+    marker stays until it is removed on its own."""
     body = bodies()[(FERVOUR, "UCataclysmFervour::GainOnOwnKill")]
     opened = body.find("BeginKillPayment()")
     closed = body.find("EndKillPayment()")
@@ -199,8 +186,8 @@ def test_a_skills_stated_fervour_marks_a_kills_payment_before_it_is_scaled():
     scaled = body.find("ClassResourceGainScaled(")
     paid = body.find("RaisePool(")
     assert 0 <= opened < min(scaled, paid), (
-        "GainStated must open the kill-payment marker before ClassResourceGainScaled asks the rate, so Any Fuel refuses "
-        "a kill's payment, and pay through RaisePool")
+        "GainStated must open the kill-payment marker before ClassResourceGainScaled asks the rate, and pay through "
+        "RaisePool")
     assert re.search(r"ON_SCOPE_EXIT\s*\{[^}]*Paying->EndKillPayment\(\);", body), (
         "the marker must be closed on every way out of GainStated, by ON_SCOPE_EXIT")
     assert "bForAKill" in body[:opened], "the marker opens only for a kill's payment"

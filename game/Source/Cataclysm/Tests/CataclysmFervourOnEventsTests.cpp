@@ -23,7 +23,7 @@
 /**
  * Fervour on events and decay held by who is near (the Death trees' slice C6b3, 2026-11-25). A `points` row pays its
  * value, scaled by `class_resource_generation`; every class resource gain a pool action makes stops at the bar after its
- * conditioned maximum and is seen by Kindred Fires; a row with a chance rolls before it pays and before it waits; the
+ * conditioned maximum; a row with a chance rolls before it pays and before it waits; the
  * three conditions read their state, two of them from a real walk; and the real rows and copies.
  */
 
@@ -181,15 +181,15 @@ bool FCataclysmFervourOnEventsPointsTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourOnEventsBarTest,
-	"Cataclysm.FervourOnEvents.AClassResourceGainStopsAtTheBarAndKindredFiresSeesIt",
+	"Cataclysm.FervourOnEvents.AClassResourceGainStopsAtTheBar",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * The bar is the maximum attribute of 100 lowered to 80 by a conditioned row on `class_resource` that holds once the
  * movement skill has ended, so `MaximumClassResourceAsked` is 80 and the attribute 100. From 70, an enchantment-shaped
  * row of 50% of the maximum (50) stops at 80, in the current value AND THE STORED BASE, which a payment through `TopUp`
- * would have written to 100; and Kindred Fires, given by hand with a grace of 4 seconds, holds decay off, which a payment
- * through `TopUp` would not. A `points` row of 50 does the same. THE CONTROL: before the row, nothing holds decay off.
+ * would have written to 100. A `points` row of 50 does the same. THE CONTROL is the set-up's: the attribute is 100 and
+ * the bar asked is 80.
  */
 bool FCataclysmFervourOnEventsBarTest::RunTest(const FString&)
 {
@@ -208,10 +208,6 @@ bool FCataclysmFervourOnEventsBarTest::RunTest(const FString&)
 		Maximum.Base = 100.0f;
 		Maximum.Modifiers = {EventsRow(ECataclysmStatBucket::Flat, -20.0f,
 									   ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd, 10.0f)};
-		Lines.Add(FName(UCataclysmFervour::KillDecayGraceSecondsStat)).Modifiers = {
-			EventsRow(ECataclysmStatBucket::Flat, 4.0f)};
-		Lines.Add(FName(UCataclysmFervour::HoldRestartedByAnyGainStat)).Modifiers = {
-			EventsRow(ECataclysmStatBucket::Flat, 1.0f)};
 		System->SetStatInputs(MoveTemp(Lines));
 		System->NoteMovementSkillEnded();
 		const UCataclysmClassResourceAttributeSet* Resource = System->GetSet<UCataclysmClassResourceAttributeSet>();
@@ -221,14 +217,11 @@ bool FCataclysmFervourOnEventsBarTest::RunTest(const FString&)
 		{
 			return false;
 		}
-		TestFalse(FString::Printf(TEXT("control (%s): before the row, decay is not held"), Kind),
-				  System->KillDecayIsHeld());
 
 		System->SetPoolActions({FervourOnDodge(50.0f, Base)});
 		System->ActOnEvent(FName(TEXT("dodge")));
 		TestEqual(FString::Printf(TEXT("%s from 70: 80 held"), Kind), Holder.Fervour(), 80.0f, 0.001f);
 		TestEqual(FString::Printf(TEXT("%s: and 80 stored"), Kind), Holder.FervourBase(), 80.0f, 0.001f);
-		TestTrue(FString::Printf(TEXT("%s: Kindred Fires holds decay off"), Kind), System->KillDecayIsHeld());
 	}
 	return true;
 }

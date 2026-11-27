@@ -623,7 +623,7 @@ public:
 	 * maximum and gives Overflow what does not fit, as every gain here is.
 	 *
 	 * A ROW'S `KillFervour` IS A KILL'S PAYMENT: `bForAKill` opens the kill-payment marker for the whole gain, as
-	 * `GainOnOwnKill` does, so Any Fuel refuses it and Kindred Fires and Borrowed Time leave the hold alone. Every
+	 * `GainOnOwnKill` does (its readers were retired by issue #2951). Every
 	 * `KillFervour` route passes true; a row's `HitFervour` does not. The Death skills merge, obligation 4.
 	 *
 	 * @param AbilitySystem  whoever's skill it was: the caster's, never the dying creature's
@@ -704,14 +704,6 @@ public:
 	 * `target_rarity_at_least`, ASKED WITH THE SLAIN CREATURE AS THE TARGET, so the rung is read where it is needed.
 	 */
 	static const TCHAR* PerKillStat;
-
-	/**
-	 * The stat holding the chance, in per cent, that a kill gives 1 Fervour more than `PerKillStat` pays: the Soul
-	 * Collector's Gleaning, "Each enemy you kill has a 5% chance per point to give 1 extra Fervour". The Death trees'
-	 * slice C4a (2026-11-25). ROLLED ON EACH KILL, as ruled, in `GainOnOwnKill`, and asked against the slain creature as
-	 * the payment is; `Cataclysm.KillFervourExtraRoll` pins the roll for tests. No attribute and no base.
-	 */
-	static const TCHAR* PerKillExtraChanceStat;
 
 	/**
 	 * Fervour a second the Death classes' decay takes once the grace after the last kill has run out:
@@ -826,42 +818,18 @@ public:
 	 * gain (read in the UE 5.8 source on 2026-11-25).
 	 *
 	 * CLAMPED AT THE MAXIMUM, here as well as by every caller, as every gain was before this: what does not fit is lost.
-	 * A rise is then handed to Kindred Fires and Borrowed Time. Nought, and nothing written, for a change of nought or
+	 * Nought, and nothing written, for a change of nought or
 	 * less, a full bar, or an ability system with no class resource set.
 	 */
 	static float RaisePool(UAbilitySystemComponent* AbilitySystem, float Change);
 
 	/**
-	 * The stat that makes every gain hold off decay as a kill does: the Soul Collector's Kindred Fires, "Fervour you gain
-	 * from any source, not only a kill, holds off decay as a kill does: the time before your Fervour begins to decay
-	 * starts again". Above nought, a rise of the pool that is not a kill's payment restarts the hold at its full length
-	 * (`KillDecayHoldFullSeconds`); a kill sets the hold only through its own stamp, as ruled. The Death trees' slice
-	 * C4b1 (2026-11-25). No attribute and no base.
-	 */
-	static const TCHAR* HoldRestartedByAnyGainStat;
-
-	/**
-	 * The seconds a gain that is not a kill's payment lengthens a running hold by: the Soul Collector's Borrowed Time,
-	 * "extended by 1 second for every 3 points, never past its full length", a row at 3 points and one at 6. The Death
-	 * trees' slice C4b1 (2026-11-25). No attribute and no base.
-	 */
-	static const TCHAR* HoldExtendedOnGainSecondsStat;
-
-	/**
-	 * The share of the full bar after reserves, in percent, below which the kill decay does not take Fervour: the Soul
-	 * Collector's Miser's Grip, "Your Fervour never decays below 3% of your maximum Fervour per point". The Death trees'
-	 * slice C6c (2026-11-25), as ruled. Only the decay stops at it; a spend, a loss to healing and Soulbound's loss go
+	 * The share of the full bar after reserves, in percent, below which the kill decay does not take Fervour. The Death
+	 * trees' slice C6c (2026-11-25), for the Soul Collector's Miser's Grip, as ruled; that node was reworked by issue
+	 * #2951, and the War Fervour's decay still reads this. Only the decay stops at it; a spend and a loss to healing go
 	 * below it. No attribute and no base.
 	 */
 	static const TCHAR* DecayFloorPercentStat;
-
-	/**
-	 * Every how many percent of maximum health lost to damage costs 1 Fervour: the Soul Collector's Soulbound, "you lose 1
-	 * Fervour for every 2% of your maximum health that you lose to damage". The Death trees' slice C6c (2026-11-25), as
-	 * ruled. Health lost only: an energy shield or mana that absorbs the blow costs nothing, and health paid as a skill's
-	 * cost is not lost to damage; a tick of damage over time is. No attribute and no base.
-	 */
-	static const TCHAR* HealthPercentLostPerFervourLostStat;
 
 	/**
 	 * The seconds of the shared window Overflow's stacks last, and whether a character has Overflow at all: the Soul
@@ -885,20 +853,6 @@ public:
 	static float KillDecayHoldFullSeconds(const UAbilitySystemComponent* AbilitySystem);
 
 	/**
-	 * The seconds before a kill whose decay a kill gives back: the Soul Collector's Reclaimed, "A kill made after your
-	 * Fervour has begun to decay gives back the Fervour that decay took from you in the 3 seconds before it". The Death
-	 * trees' slice C4b2 (2026-11-25). No attribute and no base.
-	 */
-	static const TCHAR* DecayGivenBackOnKillSecondsStat;
-
-	/**
-	 * The seconds after your hit within which an enemy's death pays you its Fervour, whatever kills it: the Soul
-	 * Collector's Claimed, "within 1 second for every 2 points of that hit", a row at each second point. The Death trees'
-	 * slice C4b2 (2026-11-25). No attribute and no base.
-	 */
-	static const TCHAR* ClaimedWithinSecondsStat;
-
-	/**
 	 * The switch that makes a follower's kill this character's for the Soul Collector tree: Death's Toll, "Enemies your
 	 * minions, gadgets and traps kill give you their Fervour, and count as your kills for everything this tree asks".
 	 * The Death trees' slice C4b2 (2026-11-25). No attribute and no base.
@@ -914,25 +868,9 @@ public:
 	static const TCHAR* FervourHeldAddsNoDamageStat;
 
 	/**
-	 * Reclaimed: give back, as a kill's payment and unscaled, what the decays took in the stat's seconds before now.
-	 * Called by the player's kill handler for a kill credited to the character, and for a follower's kill Death's Toll
-	 * makes its own, before the kill is paid. Answers what arrived. Nothing when nothing decayed in that time, which is
-	 * every kill made before decay began. The Death trees' slice C4b2 (2026-11-25), as ruled: both decays count.
-	 */
-	static float GiveBackDecayOnKill(UAbilitySystemComponent* AbilitySystem);
-
-	/**
-	 * Claimed: for a death not credited to this character, pay what this character's kill of `Slain` would pay
-	 * (`GainOnOwnKill`, Gleaning's roll included) when its last hit on `Slain` landed within the stat's seconds. As a
-	 * kill's payment, with no kill clock and no hold, as ruled. The player's kill handler does not call it for a kill
-	 * Death's Toll has made the character's. Answers what arrived. The Death trees' slice C4b2 (2026-11-25).
-	 */
-	static float ClaimOnDeath(UAbilitySystemComponent* AbilitySystem, const AActor* Slain);
-
-	/**
 	 * Death's Toll: when `Notice`'s killer is a follower of `Commander` (`UCataclysmCommand::CommanderOf`: a minion, a
 	 * gadget, a trap or a thrall) and the stat is held, treat the kill as `Commander`'s for everything the Soul Collector
-	 * tree asks: Reclaimed's give-back, the payment and every row inside it, the kill clock and the hold
+	 * tree asks: the payment and every row inside it, the kill clock and the hold
 	 * (`NoteOwnKill`), Last Breath (`RestoreHealthOnKillAtNoCost`), and `kill` raised to the Soul Collector's own rows
 	 * only. Not the run's kill count, not the weapon's, and no other tree's rows, as ruled. Answers whether it did. The
 	 * Death trees' slice C4b2 (2026-11-25).
@@ -1011,8 +949,7 @@ public:
 	static bool CountAHitOnABoss(UAbilitySystemComponent* AbilitySystem, AActor* Struck);
 
 	/**
-	 * Credit the character with a kill of `Slain` that has not died, as ruled for Death by Inches (Q7): decay given back
-	 * (Reclaimed), the kill's Fervour, the stamp (the hold before decay and `seconds_after_kill`), Grim Wake's marks, and
+	 * Credit the character with a kill of `Slain` that has not died, as ruled for Death by Inches (Q7): the kill's Fervour, the stamp (the hold before decay and `seconds_after_kill`), Grim Wake's marks, and
 	 * `kill` raised to every row with `Slain` as its target and its maximum health as its amount. LEFT OUT, because each
 	 * needs a body: the overkill explosion, The Ferryman's burst and Passed On (the shares the rows record are taken and
 	 * dropped), `afflicted_death`, risen imps, the corpse; and the player state's and weapon's kill tallies, because
@@ -1152,16 +1089,6 @@ public:
 									float HealthSpent);
 
 	/**
-	 * Take Fervour for health this character lost to damage, under Soulbound (`HealthPercentLostPerFervourLostStat`): 1
-	 * for each whole step of that share of maximum health, the remainder kept. The Death trees' slice C6c (2026-11-25).
-	 * Not stopped by Miser's Grip's floor, which is about decay.
-	 *
-	 * @param HealthLost  what reached HEALTH, as `GainFromDamage` takes it
-	 * @return how much Fervour was really taken, as a positive number
-	 */
-	static float LoseFromDamage(UAbilitySystemComponent* AbilitySystem, float HealthLost);
-
-	/**
 	 * Empty the bar because this character was healed.
 	 *
 	 * @param HealthRestored  what really went into the pool. Healing that
@@ -1197,13 +1124,6 @@ public:
 	static const TArray<const TCHAR*>& GainStats();
 
 private:
-	/**
-	 * What a rise of the pool does to the hold before decay. A kill's payment does nothing here: the kill's own stamp
-	 * sets its hold. Any other rise: Kindred Fires restarts the hold; otherwise Borrowed Time lengthens a running one.
-	 * Called by `RaisePool` only.
-	 */
-	static void AfterPoolRose(UAbilitySystemComponent* AbilitySystem, float Rise);
-
 	/** The three stat names above, and the attribute each drives. Built once. */
 	static const TMap<FString, FGameplayAttribute>& RateAttributes();
 

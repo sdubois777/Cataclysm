@@ -882,7 +882,6 @@ def test_reapers_edge_marks_an_executes_kill_for_its_payment_and_rows() -> None:
     assert re.search(r"if \(System\)\s*\{\s*Notice\.bByAnExecute = System->IsBeingExecuted\(\);", events)
     player = code_without_comments(SOURCE.parents[1] / "Character" / "CataclysmPlayerCharacter.cpp")
     assert re.search(r"Acting->SetActingOnAKillByAnExecute\(Notice\.bByAnExecute\);\s*"
-                     r"UCataclysmFervour::GiveBackDecayOnKill\(Acting\);\s*"
                      r"UCataclysmFervour::GainOnOwnKill\(Acting, Notice\.Victim\);", player)
     assert re.search(r"Acting->SetActingOnAKillByAHit\(false\);\s*\}\s*"
                      r"Acting->SetActingOnAKillByAnExecute\(false\);", player)
@@ -987,7 +986,7 @@ def test_death_by_inches_credits_every_nth_hit_on_a_boss_as_a_kill_without_a_dea
     assert re.search(r"if \(Cataclysm->CountBossHit\(Struck\) % Nth != 0\)", count)
     credit = fervour[fervour.index("void UCataclysmFervour::CreditAKillWithoutADeath("):]
     credit = credit[:credit.index("\n}\n")]
-    assert re.search(r"GiveBackDecayOnKill\(AbilitySystem\);\s*GainOnOwnKill\(AbilitySystem, Slain\);\s*"
+    assert re.search(r"GainOnOwnKill\(AbilitySystem, Slain\);\s*"
                      r"NoteOwnKill\(AbilitySystem, Slain\);\s*MarkNearAKill\(AbilitySystem, Slain,", credit)
     assert re.search(r"Acting->ActOnEvent\(FName\(TEXT\(\"kill\"\)\), nullptr, SlainMaximum, true, Slain\);", credit)
     for taken in ("TakePendingOverkillExplosionSharePercent", "TakePendingOverkillExplosionRadiusCm",
@@ -1296,10 +1295,9 @@ def test_a_doubled_evasion_and_an_unbroken_poison_are_recorded_and_read() -> Non
 
 
 def test_how_fervour_is_lost_and_what_fills_past_the_bar_are_wired() -> None:
-    """The Death trees' slice C6c (2026-11-25), as ruled. Miser's Grip: the kill decay stops at a share of the full bar
-    after reserves. Soulbound: health lost to damage takes Fervour beside the Masochist's gain from it, through an
-    accumulator that keeps the remainder, never below nought and not held by the floor. Overflow: RaisePool measures what
-    did not fit and records whole Fervour of it. Unbroken Chain: a passive row's stack granted on a kill lasts the
+    """The Death trees' slice C6c (2026-11-25), as ruled. The decay floor (Miser's Grip's before issue #2951): the kill
+    decay stops at a share of the full bar after reserves. Overflow: RaisePool measures what did not fit and records
+    whole Fervour of it. Soulbound's loss was retired by issue #2951, and the Masochist's gain from damage stands alone. Unbroken Chain: a passive row's stack granted on a kill lasts the
     chain's extra seconds, and Soul Tide's condition adds them. Read from the code with comments taken out."""
     fervour = code_without_comments(SOURCE.parent / "CataclysmFervour.cpp")
     assert re.search(r"const float Floor = Resource->MaximumClassResourceAsked\(\) \* FloorPercent / 100\.0f;\s*"
@@ -1307,23 +1305,17 @@ def test_how_fervour_is_lost_and_what_fills_past_the_bar_are_wired() -> None:
     assert "FMath::Clamp(Before - PerSecond * SecondsInStep, Floor, Resource->MaximumClassResourceAsked())" in fervour
     assert re.search(r"const float Overflow = Change - FMath::Max\(0\.0f, Added\);.*?"
                      r"Overflowing->NoteFervourOverflow\(Overflow, Window\);.*?if \(Added <= 0\.0f\)", fervour, re.S)
-    assert re.search(r"Cataclysm->AccumulateHealthLostForFervour\(HealthLost / MaximumHealth \* 100\.0f, PerFervour\);",
-                     fervour)
-    assert "FMath::Min(static_cast<float>(Whole), FMath::Max(0.0f, Before))" in fervour
     vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
     # SINCE THE MERGE OF development (2026-11-25), the Masochist's gain reads the health AND the energy shield a blow
-    # took (#2873); Soulbound's loss reads the health alone, as ruled.
+    # took (#2873).
     assert re.search(r"UCataclysmFervour::GainFromDamage\(\s*GetOwningAbilitySystemComponent\(\), "
-                     r"HealthLostToTheBlow \+ ShieldLostToTheBlow, AssetTags\);\s*"
-                     r"UCataclysmFervour::LoseFromDamage\(GetOwningAbilitySystemComponent\(\), HealthLostToTheBlow\);",
-                     vitals)
+                     r"HealthLostToTheBlow \+ ShieldLostToTheBlow, AssetTags\);\s*\}", vitals)
+    assert "LoseFromDamage" not in vitals
     engine = code_without_comments(SOURCE)
     assert re.search(r'const float ChainSeconds = Event == FName\(TEXT\("kill"\)\)\s*'
                      r'&& Action\.StackKey\.ToString\(\)\.StartsWith\(TEXT\("Passive_"\)\)\s*\? KillChainSecondsHeld\(\)\s*'
                      r": 0\.0f;\s*GrantOwnStack\(Action\.StackKey, Action\.StackSeconds \+ ChainSeconds, Action\.StackCap\);",
                      engine)
-    assert re.search(r"HealthPercentLostTowardsFervour = FMath::Max\(0\.0f, HealthPercentLostTowardsFervour - Whole \* "
-                     r"PercentPerFervour\);", engine)
     assert "State.KillChainSeconds = KillChainSecondsHeld();" in engine
     pipeline = code_without_comments(SOURCE.parent / "CataclysmStatPipeline.cpp")
     assert re.search(r"case ECataclysmStatCondition::KillChainWithinSeconds:\s*return State\.SecondsSinceOwnKill >= 0\.0f\s*"

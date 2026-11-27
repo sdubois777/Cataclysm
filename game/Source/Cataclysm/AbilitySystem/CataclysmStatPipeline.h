@@ -1822,8 +1822,8 @@ enum class ECataclysmStatCondition : uint8
 	 *
 	 * WORKED OUT ONCE A CONDITIONS FILL, by `UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor`, into
 	 * `FCataclysmStatConditions::FervourThresholdsReached`: the threshold is OPEN (25, 50, 100 or 200 passive points
-	 * spent, as the vows' sentences say), and either the Fervour held reaches its figure less Generous Count's
-	 * reduction or Long Shadow's seconds have not passed since it last did. A figure that is none of the four is never
+	 * spent, as the vows' sentences say), and the Fervour held reaches its figure less Generous Count's reduction. A
+	 * figure that is none of the four is never
 	 * reached, and the generator refuses one. See `CataclysmFervourThresholds`.
 	 */
 	FervourThresholdReached
@@ -1856,21 +1856,6 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetCarriesYourPoisonOrBleed
 		UMETA(DisplayName = "Target Carries Your Poison Or Bleed"),
-
-	/**
-	 * The class resource being gained is not a kill's payment: the Soul Collector's Any Fuel, "+2% increased Fervour
-	 * gained from sources other than kills per point". The Death trees' slice C4b1 (2026-11-25), as ruled: Any Fuel is a
-	 * row on `class_resource_generation`, the rate every gain is scaled by, under this condition, so its increase adds
-	 * to the rate's other increases.
-	 *
-	 * READ FROM THE KILL-PAYMENT MARKER: `UCataclysmAbilitySystemComponent::IsPayingForAKill`, set while a kill's
-	 * Fervour is paid (`UCataclysmFervour::GainOnOwnKill`). It holds whenever no kill is being paid for, so it is
-	 * meaningful only on the rate a gain asks.
-	 *
-	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
-	 */
-	FervourGainNotFromAKill
-		UMETA(DisplayName = "Fervour Gain Not From A Kill"),
 
 	/**
 	 * The kill being acted on was made by a hit, not by a tick of damage over time: the Soul Collector's Passed On,
@@ -4233,14 +4218,6 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bTargetCarriesYourPoisonOrBleed = false;
 
 	/**
-	 * Whether the class resource being gained is not a kill's payment. The Death trees' slice C4b1 (2026-11-25). Filled
-	 * by `UCataclysmAbilitySystemComponent::CurrentConditions` as the opposite of `IsPayingForAKill`; false in a state
-	 * nobody filled, which refuses. See `ECataclysmStatCondition::FervourGainNotFromAKill`.
-	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
-	bool bFervourGainNotFromAKill = false;
-
-	/**
 	 * Whether the kill being acted on was made by a hit. The Death trees' slice C4c1 (2026-11-25). Filled by
 	 * `UCataclysmAbilitySystemComponent::CurrentConditions` from the kill handler's mark; false otherwise, which
 	 * refuses. See `ECataclysmStatCondition::KillingBlowWasAHit`.
@@ -6247,7 +6224,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-seventeenth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-sixteenth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -6264,7 +6241,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FIFTY-FIVE OF THE HUNDRED-AND-SIXTEEN COMPARE NOTHING. They are the case labels
+	 * FIFTY-FOUR OF THE HUNDRED-AND-FIFTEEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

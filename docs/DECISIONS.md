@@ -138,6 +138,32 @@ Of the small nodes, Ossuary and Deep Urn now lead to Heavy Urn. Between the Dead
 movement speed, crowd control resistance and a longer chain. Chained Souls and Bound Offering count Fervour held back for
 minions, which answer 5 keeps useful.
 
+### The retired stats' code, deleted
+
+The coordinating session ruled on 2026-11-27 that the code of a stat no row under `game/Data` uses any more is deleted
+in this change, with the tests that only test it, and a stat something else still uses is kept. **Deleted**, each read
+only by a retired node:
+
+| Stat or condition | Was read for |
+| :-- | :-- |
+| `decay_given_back_on_kill_seconds` | Reclaimed |
+| `fervour_claimed_within_seconds` | Claimed |
+| `health_percent_lost_per_fervour_lost` | Soulbound's loss on health lost |
+| `fervour_threshold_linger_seconds` | Long Shadow, with its record of thresholds held |
+| `fervour_hold_restarted_by_any_gain` | Kindred Fires |
+| `fervour_hold_extended_on_gain_seconds` | Borrowed Time |
+| `siphon_fervour_per_second` | Living Harvest |
+| `fervour_per_kill_extra_chance` | Gleaning, with the console variable `Cataclysm.KillFervourExtraRoll` |
+| the condition `fervour_gain_not_from_a_kill` | Any Fuel |
+
+**Kept:**
+- `fervour_decay_floor_percent`, Miser's Grip's before the rework: the War Fervour's decay out of combat reads it
+  (`CataclysmWarFervour.cpp`).
+- `class_resource_generation`, Any Fuel's before the rework: every gain of the class resource is scaled by it.
+- **The kill-payment marker** (`BeginKillPayment`, `IsPayingForAKill`, and `GainStated`'s `bForAKill`). Its readers
+  were Any Fuel's condition and Kindred Fires and Borrowed Time, so nothing in the game reads it now. It is not a stat
+  and it has callers in five files and Python checks of its own, so it was left for a change of its own.
+
 **Not built or run when this was written.** The run table follows when the window runs.
 
 ---

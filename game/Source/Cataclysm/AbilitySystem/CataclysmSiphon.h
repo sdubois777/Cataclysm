@@ -24,9 +24,9 @@ class UCataclysmAbilitySystemComponent;
  * and attack speed (`siphon_enemy_slow_percent`, Sapping Cold) through `ACataclysmEnemyCharacter::NoteGroundDown`.
  *
  * WHAT IS PAID ONCE A SECOND, as ruled on 2026-11-25 for the sentences that say "each second": Drain's Death damage
- * (`siphon_drain_weapon_percent`), Necrotic Siphon's chance of Necrosis (`siphon_necrosis_chance`), Life Siphon's
- * health (`siphon_life_percent`) and Living Harvest's Fervour (`siphon_fervour_per_second`). The last two are rows scaled
- * by `enemies_in_siphon` with their caps, so the count is applied by the pipeline and not here.
+ * (`siphon_drain_weapon_percent`), Necrotic Siphon's chance of Necrosis (`siphon_necrosis_chance`) and Life Siphon's
+ * health (`siphon_life_percent`). The last is a row scaled by `enemies_in_siphon` with its cap, so the count is applied
+ * by the pipeline and not here.
  *
  * THE AREA IS THE RADIUS'S INCREASE. Reaching Cold's and Pall of Souls' "increased area of your Siphon" are increased
  * rows on `siphon_radius_metres`, because an area in this game multiplies its radius
@@ -62,9 +62,6 @@ public:
 	/** The percent of the holder's maximum health restored once a second: Life Siphon's, scaled by the members. */
 	static const TCHAR* LifeStat;
 
-	/** The Fervour gained once a second: Living Harvest's, scaled by the members. */
-	static const TCHAR* FervourStat;
-
 	/** Necrotic Siphon: "An enemy that has been in your Siphon for 3 seconds". */
 	static constexpr float NecrosisAfterSeconds = 3.0f;
 
@@ -85,7 +82,7 @@ public:
 	 */
 	static int32 Step(ACataclysmCharacterBase* Holder, float StepSeconds);
 
-	/** What is paid once a second: `DrainOnce`, `NecrosisOnce`, `LifeOnce` and `FervourOnce`. */
+	/** What is paid once a second: `DrainOnce`, `NecrosisOnce` and `LifeOnce`. */
 	static void Pulse(ACataclysmCharacterBase* Holder);
 
 	/** Drain's Death damage to every member, once. @return the damage sent */
@@ -96,9 +93,6 @@ public:
 
 	/** Life Siphon's health, once. @return the health restored */
 	static float LifeOnce(UAbilitySystemComponent* Holder);
-
-	/** Living Harvest's Fervour, once, at the generation rate and clamped at the maximum. @return what arrived */
-	static float FervourOnce(UAbilitySystemComponent* Holder);
 
 	/**
 	 * The line the screen shows above the skill bar for a character with a Siphon: how many enemies are in it and its

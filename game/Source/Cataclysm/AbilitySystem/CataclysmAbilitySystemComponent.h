@@ -4960,13 +4960,6 @@ public:
 	static const TCHAR* FervourThresholdReductionStat;
 
 	/**
-	 * The stat holding how many seconds a Fervour threshold stays reached after the Fervour held falls below it: Long
-	 * Shadow, "Each Fervour threshold you reach stays in effect for 5 seconds after you fall below it". The Death trees'
-	 * slice C3d. Read with no reading, as the reduction above is.
-	 */
-	static const TCHAR* FervourThresholdLingerSecondsStat;
-
-	/**
 	 * The stat holding how much faster running cooldowns recover, in per cent: the fourth vow's clause, "while you hold
 	 * 100 or more Fervour ... your skill cooldowns recover twice as fast", is 100. The Death trees' slice C3d. A RATE, as
 	 * the coordinating session ruled on 2026-11-25: `FervourThresholdStep` takes that share of each regeneration step's
@@ -4988,23 +4981,14 @@ public:
 	/**
 	 * Which of the four Fervour thresholds are reached by a character holding `Held` Fervour with `PointsSpent` passive
 	 * points spent: one bit each, bit 0 the threshold at 20. A threshold is reached when it is OPEN (its points spent)
-	 * and either `Held` reaches its figure less `FervourThresholdReductionStat`, or `FervourThresholdLingerSecondsStat`
-	 * seconds have not passed since `NoteFervourThresholdsHeld` last saw it held. -1 when `Held` or `PointsSpent` is
-	 * unknown (negative). `CurrentConditions` asks it once a fill; public for tests.
+	 * and `Held` reaches its figure less `FervourThresholdReductionStat`. -1 when `Held` or `PointsSpent` is unknown
+	 * (negative). `CurrentConditions` asks it once a fill; public for tests.
 	 */
 	int32 FervourThresholdsReachedFor(float Held, int32 PointsSpent) const;
 
 	/**
-	 * Record now as the last time each threshold `Held` Fervour reaches was held, whether or not it is open, for Long
-	 * Shadow. Called JUST BEFORE THE FERVOUR HELD FALLS, by `UCataclysmClassResourceAttributeSet::PreAttributeChange`
-	 * with the amount it is falling from, and on every regeneration step with the amount held, which catches a threshold
-	 * lost without a fall. The Death trees' slice C3d.
-	 */
-	void NoteFervourThresholdsHeld(float Held);
-
-	/**
-	 * The regeneration step's work for the Fervour thresholds: record the thresholds held now (Long Shadow), and take
-	 * `CooldownsRecoverFasterPercentStat`'s share of `StepSeconds` off every running cooldown (the fourth vow). Returns
+	 * The regeneration step's work for the Fervour thresholds: raise `FervourThresholdReachedEvent` for a threshold
+	 * reached since the last step (Tolling Count), and take `CooldownsRecoverFasterPercentStat`'s share of `StepSeconds` off every running cooldown (the fourth vow). Returns
 	 * the seconds taken off, nought when none. The Death trees' slice C3d.
 	 */
 	float FervourThresholdStep(float StepSeconds);
@@ -5062,24 +5046,11 @@ public:
 	int32 FervourOverflowStacksHeld() const;
 
 	/**
-	 * Add `PercentLost` of maximum health lost to damage towards Soulbound's loss, and answer how many whole Fervour it
-	 * now costs at `PercentPerFervour` each, keeping the remainder. The Death trees' slice C6c (2026-11-25), as ruled.
-	 */
-	int32 AccumulateHealthLostForFervour(float PercentLost, float PercentPerFervour);
-
-	/**
 	 * The grace the last kill set, in seconds: the full length of the hold it began. -1 for a character that has never
 	 * killed. Recorded by `NoteOwnKill`. The Death trees' slice C4b1 (2026-11-25), for Kindred Fires and Borrowed Time,
 	 * whose "full length" it is, as ruled.
 	 */
 	float LastKillGraceSeconds() const { return LastKillDecayGraceSeconds; }
-
-	/**
-	 * Hold the decay off from now for `Seconds`, as a kill does: Kindred Fires, "the time before your Fervour begins to
-	 * decay starts again". THE HOLD NEVER SHORTENS, as `NoteOwnKill` says: a hold already running longer is kept. The
-	 * Death trees' slice C4b1 (2026-11-25).
-	 */
-	void RestartKillDecayHold(float Seconds);
 
 	/**
 	 * Lengthen a hold that is still running by `Seconds`, never past now plus `FullLengthSeconds` and never shortening
@@ -5091,9 +5062,7 @@ public:
 
 	/**
 	 * Mark the start and the end of paying a kill's Fervour (`UCataclysmFervour::GainOnOwnKill`). The Death trees' slice
-	 * C4b1 (2026-11-25). While one is open, a gain is a kill's payment: Any Fuel's condition
-	 * (`ECataclysmStatCondition::FervourGainNotFromAKill`) refuses, and neither Kindred Fires nor Borrowed Time touches
-	 * the hold, which the kill's own stamp sets. COUNTED
+	 * C4b1 (2026-11-25). While one is open, a gain is a kill's payment. COUNTED
 	 * RATHER THAN A FLAG, so a payment made inside another leaves the outer one marked. A skill's own kill Fervour must
 	 * open one too when it lands, as the coordinating session ruled.
 	 */
@@ -5104,20 +5073,11 @@ public:
 	bool IsPayingForAKill() const { return KillPaymentsOpen > 0; }
 
 	/**
-	 * Record Fervour a decay just took, with the time: the Death decay after a kill and the Ravager's decay out of
-	 * contact both call this. Reclaimed gives back what was taken shortly before a kill (`TakeFervourDecayedWithin`).
-	 * The Death trees' slice C4b2 (2026-11-25), as ruled: both decays count. Nothing for an amount of nought or less.
-	 * AND IT RAISES `FervourDecayedEvent` once for each whole `FervourDecayedPerEvent` taken, counting across steps,
-	 * so a decay of 1.25 a step raises it on every fourth (issue #2951).
+	 * Note Fervour a decay just took: the Death decay after a kill and the Ravager's decay out of contact both call this.
+	 * It raises `FervourDecayedEvent` once for each whole `FervourDecayedPerEvent` taken, counting across steps, so a
+	 * decay of 1.25 a step raises it on every fourth (issue #2951). Nothing for an amount of nought or less.
 	 */
 	void NoteFervourDecayed(float Amount);
-
-	/**
-	 * Answer the Fervour the decays took in the last `Seconds`, and forget every record, so a second kill a moment later
-	 * gives nothing back twice. Older records are forgotten too, because a later kill's window starts later still and
-	 * could never reach them. The Death trees' slice C4b2 (2026-11-25), for Reclaimed.
-	 */
-	float TakeFervourDecayedWithin(float Seconds);
 
 	/**
 	 * A stat as if asked against a creature of rarity rung `RarityStep` (0 common, 1 Elite ...) with no creature in
@@ -7160,9 +7120,6 @@ protected:
 	/** Each returned share of a spend still to come: when it is due, in world seconds, and how much. Cinders Kept. */
 	TArray<TPair<float, float>> FervourToReturn;
 
-	/** What the decays took, and when, in world seconds. See `NoteFervourDecayed`. The Death trees' slice C4b2. */
-	TArray<TPair<float, float>> FervourDecayed;
-
 	/**
 	 * Fervour decayed since `FervourDecayedEvent` was last raised, below `FervourDecayedPerEvent`. Issue #2951. It is
 	 * not cleared by a kill: "every 5 Fervour you lose to decay" counts the losses, and what one pause leaves over is
@@ -7170,17 +7127,8 @@ protected:
 	 */
 	float FervourDecayedTowardAnEvent = 0.0f;
 
-	/** How long a record of decay is kept with no kill to read it, so the list cannot grow without end. */
-	static constexpr float FervourDecayedKeptSeconds = 30.0f;
-
 	/** When Phylactery's save may next be made, in world seconds. Negative means now. */
 	float FervourLethalSaveNextAllowedSeconds = -1.0f;
-
-	/**
-	 * The last time each Fervour threshold was seen held, in world seconds, in the order of `CataclysmFervourThresholds`;
-	 * negative, or no entry yet, means never. Long Shadow reads it. See `NoteFervourThresholdsHeld`.
-	 */
-	TArray<float> FervourThresholdLastHeldAtSeconds;
 
 	/**
 	 * The thresholds reached at the last `FervourThresholdStep`, as `FCataclysmStatConditions::FervourThresholdsReached`
@@ -7623,10 +7571,6 @@ protected:
 	/** Overflow's stacks and when their shared window runs out, in world seconds. See `NoteFervourOverflow`. */
 	int32 FervourOverflowStacks = 0;
 	float FervourOverflowUntilSeconds = -1.0f;
-
-	/** The share of maximum health lost to damage not yet paid for in Fervour, in percent. See
-	 *  `AccumulateHealthLostForFervour`. */
-	float HealthPercentLostTowardsFervour = 0.0f;
 
 	/** When each applier's Poison began on this character without a break since, in world seconds. See
 	 *  `NotePoisonBeganBy`. */

@@ -26,7 +26,7 @@
 
 /**
  * The first Death nodes that act on a kill (the Death trees' slice C4a, 2026-11-25): the Soul Collector's Soul Tide,
- * Gleaning and Thinning the Herd, and the Shadow's Death's Patience, Flicker, Clean Kill and Hunting Leap. The mechanism
+ * and the Shadow's Death's Patience, Flicker, Clean Kill and Hunting Leap. The mechanism
  * of each is read with stats given by hand, so each figure is exact; one test reads the seven nodes' real rows.
  */
 
@@ -103,45 +103,6 @@ namespace CataclysmKillHooksTest
 														   /*DurationSeconds=*/10.0f, Tag,
 														   /*bScalesWithInstigator=*/false);
 	}
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillHooksGleaningTest,
-	"Cataclysm.KillHooks.GleaningRollsForOneExtraFervourOnAKill",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * Gleaning at six points, a 30% chance, rolled on each kill: a kill that pays 3 pays 4 on a roll of 29.9 and 3 on a roll
- * of 30, which fails as a roll equal to a chance does. THE CONTROL: without the node a roll of 0 still pays 3.
- */
-bool FCataclysmKillHooksGleaningTest::RunTest(const FString&)
-{
-	using namespace CataclysmKillHooksTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.KillFervourExtraRoll"));
-	UCataclysmAbilitySystemComponent* System = KillerAt(World, FVector::ZeroVector);
-	if (!TestNotNull(TEXT("set-up: the roll can be pinned"), Roll) || !TestNotNull(TEXT("set-up: a killer"), System))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByConsole); };
-
-	TMap<FName, FCataclysmStatInputs> Plain;
-	Plain.FindOrAdd(FName(UCataclysmFervour::PerKillStat)).Modifiers = {FlatRow(3.0f)};
-	System->SetStatInputs(MoveTemp(Plain));
-	Roll->Set(0.0f, ECVF_SetByConsole);
-	TestEqual(TEXT("control: without Gleaning a roll of 0 pays 3"), PaidForAKill(System, nullptr), 3.0f, 0.001f);
-
-	TMap<FName, FCataclysmStatInputs> Gleaning;
-	Gleaning.FindOrAdd(FName(UCataclysmFervour::PerKillStat)).Modifiers = {FlatRow(3.0f)};
-	Gleaning.FindOrAdd(FName(UCataclysmFervour::PerKillExtraChanceStat)).Modifiers = {FlatRow(30.0f)};
-	System->SetStatInputs(MoveTemp(Gleaning));
-	Roll->Set(29.9f, ECVF_SetByConsole);
-	TestEqual(TEXT("at 30%, a roll of 29.9 pays 4"), PaidForAKill(System, nullptr), 4.0f, 0.001f);
-	Roll->Set(30.0f, ECVF_SetByConsole);
-	TestEqual(TEXT("and a roll of 30 pays 3"), PaidForAKill(System, nullptr), 3.0f, 0.001f);
-	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillHooksThinningTest,

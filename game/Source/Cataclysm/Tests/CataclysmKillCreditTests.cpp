@@ -27,9 +27,9 @@
 #include "Misc/ScopeExit.h"
 
 /**
- * Deaths the Soul Collector did not make, and decay given back (the Death trees' slice C4b2, 2026-11-25): Reclaimed,
- * Claimed and Death's Toll. The mechanism of each is read with stats given by hand, so each figure is exact; one test
- * reads the three nodes' real rows. `tools/tests/test_kill_credit_reaches_the_soul_collector.py` checks the order the
+ * Deaths the Soul Collector did not make (the Death trees' slice C4b2, 2026-11-25): Death's Toll's follower kill, which
+ * the starting node grants since the keystone rework (issue #2951), when Reclaimed and Claimed were retired. Its
+ * mechanism is read with stats given by hand, so each figure is exact. `tools/tests/test_kill_credit_reaches_the_soul_collector.py` checks the order the
  * player's kill handler calls them in. ONE CASE GOES THROUGH THE WHOLE PLAYER, as the coordinating session asked:
  * `AMinionsKillPaysTheRealPlayerUnderDeathsToll`, on the scene `Cataclysm.Swarm.` builds, a real player on a real player
  * state whose real imp kills a creature, heard by `ACataclysmPlayerCharacter::OnSomethingDied` as the game hears it.
@@ -119,106 +119,6 @@ namespace CataclysmKillCreditTest
 		Notice.Victim = Victim;
 		return Notice;
 	}
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillCreditReclaimedTest,
-	"Cataclysm.KillCredit.ReclaimedGivesBackWhatDecayTookInTheSecondsBeforeAKill",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * Reclaimed at its 3 seconds, on a character holding 50 Fervour that decays at 5 a second, with a generation rate of
- * 200%. Steps of decay at 0, 1, 2 and 3 seconds take 20; a kill at 3.5 seconds gives back the 15 the last three took,
- * not doubled by the rate, and a second kill straight after gives nothing back twice. THE CONTROL: without Reclaimed
- * the same kill gives nothing back.
- */
-bool FCataclysmKillCreditReclaimedTest::RunTest(const FString&)
-{
-	using namespace CataclysmKillCreditTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	const FKillCreditHolder Holder(World);
-	UCataclysmAbilitySystemComponent* System = Holder.AbilitySystem;
-	Holder.SetFervour(50.0f);
-
-	const auto Lines = [](bool bWithReclaimed)
-	{
-		TMap<FName, FCataclysmStatInputs> Made;
-		CreditLine(Made, UCataclysmFervour::KillDecayPerSecondStat, 5.0f);
-		// A RATE OF 200%, so a give-back that were scaled as a gain is would come back doubled.
-		Made.FindOrAdd(FName(UCataclysmAbilitySystemComponent::ClassResourceGenerationStat)).Base = 200.0f;
-		if (bWithReclaimed)
-		{
-			CreditLine(Made, UCataclysmFervour::DecayGivenBackOnKillSecondsStat, 3.0f);
-		}
-		return Made;
-	};
-
-	System->SetStatInputs(Lines(false));
-	for (int32 Step = 0; Step < 4; ++Step)
-	{
-		if (Step > 0)
-		{
-			RunClock(World, 1.0f);
-		}
-		UCataclysmFervour::KillDecayStep(System, 1.0f);
-	}
-	RunClock(World, 0.5f);
-	TestEqual(TEXT("set-up: four steps of decay took 20"), Holder.Fervour(), 30.0f, 0.001f);
-	TestEqual(TEXT("control: without Reclaimed a kill gives nothing back"),
-			  UCataclysmFervour::GiveBackDecayOnKill(System), 0.0f, 0.001f);
-
-	System->SetStatInputs(Lines(true));
-	TestEqual(TEXT("with Reclaimed, the 15 taken in the 3 seconds before the kill comes back, not doubled"),
-			  UCataclysmFervour::GiveBackDecayOnKill(System), 15.0f, 0.001f);
-	TestEqual(TEXT("so 45 is held"), Holder.Fervour(), 45.0f, 0.001f);
-	TestEqual(TEXT("and a second kill straight after gives nothing back twice"),
-			  UCataclysmFervour::GiveBackDecayOnKill(System), 0.0f, 0.001f);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillCreditClaimedTest,
-	"Cataclysm.KillCredit.ClaimedPaysForAnEnemyYouHitWhateverKillsIt",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * Claimed, on a character paying 10 Fervour a kill, for an enemy it struck 1.5 seconds before the enemy died to
- * something else. At 4 points, 2 seconds, the death pays 10, as a kill's payment with no kill clock and no hold. THE
- * CONTROLS: at 2 points, 1 second, it pays nothing; and an enemy never struck pays nothing.
- */
-bool FCataclysmKillCreditClaimedTest::RunTest(const FString&)
-{
-	using namespace CataclysmKillCreditTest;
-
-	UWorld* World = MakeWorldThatHasBegunPlay();
-	ON_SCOPE_EXIT { World->DestroyWorld(false); };
-	const FKillCreditHolder Claimer(World);
-	const FKillCreditHolder Struck(World);
-	const FKillCreditHolder NeverStruck(World);
-	UCataclysmAbilitySystemComponent* System = Claimer.AbilitySystem;
-
-	const auto Lines = [](float ClaimedSeconds)
-	{
-		TMap<FName, FCataclysmStatInputs> Made;
-		CreditLine(Made, UCataclysmFervour::PerKillStat, 10.0f);
-		CreditLine(Made, UCataclysmFervour::ClaimedWithinSecondsStat, ClaimedSeconds);
-		return Made;
-	};
-
-	Struck.AbilitySystem->NoteStruckBy(System, /*bCritical=*/false);
-	RunClock(World, 1.5f);
-
-	System->SetStatInputs(Lines(1.0f));
-	TestEqual(TEXT("control: within 1 second, a hit 1.5 seconds before the death pays nothing"),
-			  UCataclysmFervour::ClaimOnDeath(System, Struck.Actor), 0.0f, 0.001f);
-	System->SetStatInputs(Lines(2.0f));
-	TestEqual(TEXT("within 2 seconds it pays the kill's 10"), UCataclysmFervour::ClaimOnDeath(System, Struck.Actor),
-			  10.0f, 0.001f);
-	TestEqual(TEXT("control: an enemy never struck pays nothing"),
-			  UCataclysmFervour::ClaimOnDeath(System, NeverStruck.Actor), 0.0f, 0.001f);
-	TestTrue(TEXT("no kill clock was stamped"), System->SecondsSinceOwnKill() < 0.0f);
-	TestFalse(TEXT("and no hold began"), System->KillDecayIsHeld());
-	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillCreditDeathsTollTest,

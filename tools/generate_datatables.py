@@ -6259,14 +6259,6 @@ CONDITIONS = {
     # as the curse above. IT TAKES NO VALUE, and it is one of
     # `CONDITIONS_OF_A_HIT_DEALT`, a fact of the target in hand.
     "target_carries_your_poison_or_bleed": None,
-    # "Fervour gained from sources other than kills" is
-    # `fervour_gain_not_from_a_kill`: the Soul Collector's Any Fuel, the Death
-    # trees' slice C4b1 (2026-11-25), a row on `class_resource_generation`, the
-    # rate every gain is scaled by. It holds unless a kill's Fervour is being paid
-    # (`UCataclysmAbilitySystemComponent::IsPayingForAKill`). IT TAKES NO VALUE. A
-    # fact of the gain in hand, read by `CurrentConditions`, so not one of
-    # `CONDITIONS_OF_A_HIT_DEALT`.
-    "fervour_gain_not_from_a_kill": None,
     # "the damage your hit deals" is `killing_blow_was_a_hit`: the Soul
     # Collector's Passed On, the Death trees' slice C4c1 (2026-11-25), as ruled.
     # True while the player's kill handler acts on an own kill made by a hit and
@@ -12733,14 +12725,12 @@ STATS_WITH_AN_ASKER = frozenset({
     "health_restored_on_kill_at_no_cost",
     "ultimate_fervour_cost_reduction",
     # THE SOUL COLLECTOR'S SIPHON, the Death trees' slice C2 (2026-11-25). Its
-    # radius (Pall of Souls scales it by the Fervour held), Life Siphon's health
-    # and Living Harvest's Fervour (each scaled by the enemies in the Siphon):
-    # `FCataclysmSiphon` asks each through `StatForSkill` with the holder's
-    # state; `ProbeScaledSiphonRadius`, `ProbeScaledSiphonLife` and
-    # `ProbeScaledSiphonFervour` measure them.
+    # radius (Pall of Souls scales it by the Fervour held) and Life Siphon's
+    # health (scaled by the enemies in the Siphon): `FCataclysmSiphon` asks each
+    # through `StatForSkill` with the holder's state; `ProbeScaledSiphonRadius`
+    # and `ProbeScaledSiphonLife` measure them.
     "siphon_radius_metres",
     "siphon_life_percent",
-    "siphon_fervour_per_second",
     # AND DRAIN'S DAMAGE, SINCE THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951,
     # 2026-11-27): Hungering Siphon scales it by the Fervour held. Asked through
     # `StatForSkill` by `FCataclysmSiphon::DrainOnce`; `ProbeScaledSiphonDrain`
@@ -12969,8 +12959,8 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # Probed by `ProbeConditionedSkillRange`.
     "skill_range": ASKER_PASSES_NOTHING_MORE,
     # AND THE RATE EVERY GAIN OF THE CLASS RESOURCE IS SCALED BY, the Death trees'
-    # slice C4b1, for the Soul Collector's Any Fuel under
-    # `fervour_gain_not_from_a_kill`: asked with no tags by
+    # slice C4b1, for the Soul Collector's Any Fuel (retired by issue #2951):
+    # asked with no tags by
     # `UCataclysmAbilitySystemComponent::ClassResourceGainScaled`, with the
     # wearer's state. Probed by `ProbeConditionedClassResourceGeneration`.
     "class_resource_generation": ASKER_PASSES_NOTHING_MORE,
