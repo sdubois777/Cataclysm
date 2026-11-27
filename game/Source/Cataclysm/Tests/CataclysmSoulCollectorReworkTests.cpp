@@ -215,6 +215,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulCollectorReworkRowsTest,
  */
 bool FCataclysmSoulCollectorReworkRowsTest::RunTest(const FString&)
 {
+	using namespace CataclysmSoulCollectorReworkTest;
+
 	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
 	if (!TestNotNull(TEXT("set-up: the passive effects table"), Effects))
 	{
