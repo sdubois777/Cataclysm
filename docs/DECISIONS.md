@@ -172,10 +172,31 @@ and a future save change needs no upgrade step. Current versions, unchanged: run
   as development and differing only by two renames on that unmerged branch (more performed than declared, because some
   tests report more than one result). This branch removes 52 names and adds 7, all simple tests: 6145 - 45. **Test
   saves 895** and **skipped halves 62**, as in that log; read per test from its running total, none of the removed
-  tests wrote a save, and none is among the skipped halves.
+  tests wrote a save, and none is among the skipped halves. **THE SAVE FIGURE WAS WRONG: it is 893**, because a
+  trimmed test writes 2 fewer (below).
 - **One C++ guard proof, SV1**, that the older-record refusal is tested: in `CataclysmSaveVersion.cpp`,
   `if (Version < CurrentVersion)` read as `if (false && Version < CurrentVersion)`. Predicted, narrowed to
   `Cataclysm.SaveVersion.`: 3 performed, 1 failed, `AnOlderRecordIsRefusedAndACurrentOneLoads`; restored, 3 passed.
+
+### What the windows measured, on 05a9d49b5
+
+**s12-w1 STOPPED BEFORE THE PROOF, ON THE SAVE COUNT, WHICH WAS MY REGISTRATION'S FAULT.** The suite wrote "Test saves:
+893 written and deleted, 0 left behind" against the 895 registered. Compared test by test with fr-w1's log:
+`Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds` wrote 4 there and 2 here, because this branch removed its
+migration half, which noted an old record's slot and its backup; the registration's per-test check had covered the
+deleted tests and not the trimmed one. The other lines that differ are slice 4's two renames, 1 save each under either
+name. **The right figure for this branch is 893.**
+
+- **s12-w1:** three builds succeeded (77, 71 and 27 files compiled, 0 warning or error lines). `Cataclysm.SaveVersion.`
+  alone: 3 performed, 3 succeeded; its line, "the record is version 17 and this build reads version 18. It was written
+  by an older build; saves from before version 18 are not kept, and the file is left as it is", older slot unchanged,
+  no backup, listed unreadable. The whole suite: "6100 tests performed, 6100 succeeded, 0 failed. 62 skipped part of
+  what they check"; "Declared: 6049 tests in the tree at 05a9d49b5; 6100 performed, gap -51; every declared test was
+  reported by the run"; saves 893, 0 left behind. Python beside it: "9665 passed, 10 skipped", JUnit 9675, 0 failures;
+  `ruff` clean.
+- **s12-w2, the proof alone on the same head** (the coordinating session's word): **SV1 PROVED**, "with the break in: 3
+  tests performed, 2 succeeded, 1 failed: AnOlderRecordIsRefusedAndACurrentOneLoads | restored: 3 tests performed, 3
+  succeeded, 0 failed", as predicted.
 
 ---
 
