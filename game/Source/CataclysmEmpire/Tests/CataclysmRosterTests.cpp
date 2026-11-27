@@ -397,6 +397,27 @@ bool FCataclysmRosterAdjacentSeedsTest::RunTest(const FString& Parameters)
 // test stuff that isn't even in the game."
 // ---------------------------------------------------------------------------
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRosterBuiltNamesTest,
+	"Cataclysm.Roster.TheBuiltCataclysmsAreDemonicAndDeathAndNotWar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * WHICH CATACLYSMS ARE BUILT, BY NAME. The project owner, play-testing on 2026-11-26: "it put me in the war cataclysm,
+ * which as far as i'm aware is not built yet". Every other roster test reads `Built` and its count, so none of them
+ * would notice War put back in the list; this one does. When another Cataclysm is built, it changes here with the list.
+ * THE CONTROL: a Cataclysm nobody counts as built, Pestilence, is not built either.
+ */
+bool FCataclysmRosterBuiltNamesTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("two Cataclysms are built"), UCataclysmRoster::Built().Num(), 2);
+	TestTrue(TEXT("Demonic is built"), UCataclysmRoster::IsBuilt(ECataclysmType::Demonic));
+	TestTrue(TEXT("Death is built"), UCataclysmRoster::IsBuilt(ECataclysmType::Death));
+	TestFalse(TEXT("War is not built: it has no creatures of its own, and its enemy modifiers work only on enemies"),
+			  UCataclysmRoster::IsBuilt(ECataclysmType::War));
+	TestFalse(TEXT("CONTROL: Pestilence is not built"), UCataclysmRoster::IsBuilt(ECataclysmType::Pestilence));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRosterOnlyBuiltAtLowTiersTest,
 	"Cataclysm.Roster.ATierNoHigherThanTheBuiltCountFacesOnlyBuiltCataclysms",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -407,9 +428,10 @@ bool FCataclysmRosterOnlyBuiltAtLowTiersTest::RunTest(const FString& Parameters)
 
 	const int32 BuiltCount = UCataclysmRoster::Built().Num();
 
-	// SET-UP: THE LIST IS A LIST OF CATACLYSMS. Three since the ruling --
-	// Demonic, Death and War -- but written against the count, so building a
-	// fourth is the one line in `Built` and not a second one here.
+	// SET-UP: THE LIST IS A LIST OF CATACLYSMS. Two -- Demonic and Death, War
+	// having been taken off the list the same day -- but written against the
+	// count, so building another is the one line in `Built` and not a second one
+	// here. `TheBuiltCataclysmsAreDemonicAndDeathAndNotWar` below pins the names.
 	TestTrue(FString::Printf(TEXT("set-up: some Cataclysms are built (%d)"), BuiltCount),
 			 BuiltCount > 0 && BuiltCount <= UCataclysmRoster::Count);
 	TestEqual(TEXT("set-up: no built Cataclysm is listed twice"),
