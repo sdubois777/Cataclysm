@@ -9,6 +9,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Player/CataclysmEmpireTree.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The empire upgrade tree's slice 6c: the gold held and the day's income. Issue #2741, the coordinating session's B6 to
@@ -39,6 +40,7 @@ namespace CataclysmEmpireTreeGoldHeldTest
 	UCataclysmEmpireRun* QuietHeldRun(int32 Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();

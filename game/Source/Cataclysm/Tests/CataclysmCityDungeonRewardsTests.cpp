@@ -16,6 +16,7 @@
 #include "Items/CataclysmDroppedItem.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The five city upgrades that change what a kill pays in a dungeon standing on the city. Issue #2781, the coordinating
@@ -76,6 +77,7 @@ namespace CataclysmCityDungeonRewardsTest
 	UCataclysmEmpireRun* QuietRewardsRun(int32 Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();

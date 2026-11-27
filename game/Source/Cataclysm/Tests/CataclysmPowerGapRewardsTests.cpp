@@ -21,6 +21,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Player/CataclysmPowerScore.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * A kill's experience and loot by the gap between the dungeon's score and the player's. Issue #2824, slice c: the
@@ -238,6 +239,7 @@ bool FCataclysmPowerGapRewardsKillTest::RunTest(const FString&)
 	}
 	Mode->StartPlay();
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(2824);
 	Run->AdvanceDay();
 	Run->Dungeons.Empty();
@@ -340,6 +342,7 @@ bool FCataclysmPowerGapRewardsMapLineTest::RunTest(const FString&)
 {
 	using namespace CataclysmPowerGapRewardsTest;
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(2824);
 	if (!TestNotNull(TEXT("set-up: the run has a map"), Run->Map.Get())
 		|| !TestNotNull(TEXT("set-up: and a clock"), Run->Clock.Get()))
@@ -416,6 +419,7 @@ bool FCataclysmPowerGapRewardsKillLootTest::RunTest(const FString&)
 	}
 	Mode->StartPlay();
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(2824);
 	Mode->SetEmpireRunForTests(Run);
 	Controller->SetPlayerState(State);

@@ -23,6 +23,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The merchant, issue #48, slice S1: what a carried piece sells for, the sale, and the Merchant screen.
@@ -93,6 +94,7 @@ namespace CataclysmMerchantTest
 			Out.State->SetOwnGold(Gold);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 48, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		if (Out.Character && Out.Character->GetInventory() && Out.Character->GetEquipment())
@@ -371,6 +373,7 @@ bool FCataclysmMerchantMapButtonPressTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(3);
 	Screen->SetRunForTests(Run);
 	const int32 Before = Screen->MerchantRequestCount();

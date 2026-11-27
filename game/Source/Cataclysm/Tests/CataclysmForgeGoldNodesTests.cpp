@@ -28,6 +28,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * THE EMPIRE TREE'S FIVE FORGE GOLD NODES. Issue #47, slice F6a, ruled by the coordinating session on 2026-11-22 (Q1 to
@@ -148,6 +149,7 @@ namespace CataclysmForgeGoldNodesTest
 			Out.State->SetOwnGold(1000000);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 4706, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		if (Out.Character && Out.Character->GetInventory() && Out.Character->GetEquipment())

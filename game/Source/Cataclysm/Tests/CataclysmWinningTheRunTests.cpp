@@ -41,6 +41,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Clearing the Cataclysm boss dungeon wins the run: the character is paid the first-kill passive points, its tier rises
@@ -289,6 +290,7 @@ namespace CataclysmWinningTheRunTest
 	int32 BeginAtTierWithTheBoss(FWinScene& Scene, int32 Tier, int32 RunSeed)
 	{
 		Scene.State->SetDifficultyTier(Tier);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		UCataclysmEmpireRun* Run = Scene.Instance->BeginACharactersEmpireRun(
 			RunSeed, Scene.State->GetCataclysmOrderSeed(), ECataclysmSurgeMode::Static, /* LethalityRung */ 0, Tier);
 		if (Run == nullptr || Run->Map == nullptr || Run->Clock == nullptr)
@@ -310,6 +312,7 @@ namespace CataclysmWinningTheRunTest
 	/** The Cataclysm the character's draw puts at this tier: `OrderFor(seed)[Tier - 1]`, the ruling R4's. */
 	ECataclysmType DrawnAtTier(int32 OrderSeed, int32 Tier)
 	{
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten; // Issue #2928: the same named list a run's begin holds.
 		const TArray<ECataclysmType> Order = UCataclysmRoster::OrderFor(OrderSeed);
 		return Order.IsValidIndex(Tier - 1) ? Order[Tier - 1] : ECataclysmType::None;
 	}
@@ -402,6 +405,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunWrittenTest,
  */
 bool FCataclysmWinningTheRunWrittenTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmWinningTheRunTest;
 
 	FWinScene Scene = MakeWinScene();
@@ -490,6 +494,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunPointsTest,
  */
 bool FCataclysmWinningTheRunPointsTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmWinningTheRunTest;
 
 	FWinScene Scene = MakeWinScene();
@@ -574,6 +579,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunNextRunTest,
  */
 bool FCataclysmWinningTheRunNextRunTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: this test reads the draw itself, so it holds the named list throughout.
 	using namespace CataclysmWinningTheRunTest;
 
 	FWinScene Scene = MakeWinScene();
@@ -652,6 +658,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunTierEightTest,
  */
 bool FCataclysmWinningTheRunTierEightTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmWinningTheRunTest;
 
 	FWinScene Scene = MakeWinScene();
@@ -723,6 +730,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunOwedDaysTest,
  */
 bool FCataclysmWinningTheRunOwedDaysTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmWinningTheRunTest;
 
 	FWinScene Scene = MakeWinScene();
@@ -795,6 +803,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunUnclearedTest,
  */
 bool FCataclysmWinningTheRunUnclearedTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmWinningTheRunTest;
 
 	FWinScene Scene = MakeWinScene();
@@ -881,6 +890,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunThroughTheStairsTest,
  */
 bool FCataclysmWinningTheRunThroughTheStairsTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: this test reads the draw itself, so it holds the named list throughout.
 	using namespace CataclysmWinningTheRunTest;
 
 	FWinScene Scene = MakeWinScene();
@@ -900,6 +910,7 @@ bool FCataclysmWinningTheRunThroughTheStairsTest::RunTest(const FString& Paramet
 
 	// A TIER 1 RUN, BEGUN AS A CHARACTER'S RUN IS, ON DAY 1, WITH ITS BOSS EARNED.
 	Scene.State->SetDifficultyTier(1);
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* WonRun = Scene.Instance->BeginACharactersEmpireRun(
 		/* Seed */ 11, Scene.State->GetCataclysmOrderSeed(), ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
 		/* Tier */ 1);
@@ -1041,9 +1052,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunLineTest,
  */
 bool FCataclysmWinningTheRunLineTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	using namespace CataclysmWinningTheRunTest;
 
 	UCataclysmEmpireRun* AtFour = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	AtFour->Begin(/* Seed */ 5, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
 	const FString Fresh = UCataclysmEmpireMapLayout::LastRunWonLine(AtFour);
 	AtFour->NoteLastRunWon(380, 3, ECataclysmType::Death, 10);
@@ -1052,6 +1065,7 @@ bool FCataclysmWinningTheRunLineTest::RunTest(const FString& Parameters)
 	const FString Unpaid = UCataclysmEmpireMapLayout::LastRunWonLine(AtFour);
 
 	UCataclysmEmpireRun* AtEight = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	AtEight->Begin(/* Seed */ 5, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 8);
 	AtEight->NoteLastRunWon(512, 8, ECataclysmType::Void, 10);
 	const FString Top = UCataclysmEmpireMapLayout::LastRunWonLine(AtEight);
@@ -1125,6 +1139,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunSavedTest,
  */
 bool FCataclysmWinningTheRunSavedTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	const auto SavedAndRestored = [this](const UCataclysmEmpireRun& Live) -> UCataclysmEmpireRun*
 	{
 		UCataclysmRunSave* Record = NewObject<UCataclysmRunSave>();
@@ -1156,6 +1171,7 @@ bool FCataclysmWinningTheRunSavedTest::RunTest(const FString& Parameters)
 	const auto Begun = []()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* Seed */ 11, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
 		Run->AdvanceDays(2);
 		return Run;
@@ -1203,6 +1219,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunMigrationTest,
  */
 bool FCataclysmWinningTheRunMigrationTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	FString Text;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v4.json"), Text, Reason))
@@ -1325,6 +1342,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWinningTheRunCommittedFileTest,
  */
 bool FCataclysmWinningTheRunCommittedFileTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: a win reads the character's draw (`BeginTheRunAfterAWin`), so this test holds the named list throughout.
 	FString Text;
 	FString Reason;
 	if (!CataclysmSaveFixtures::Read(TEXT("Run_v22.json"), Text, Reason))

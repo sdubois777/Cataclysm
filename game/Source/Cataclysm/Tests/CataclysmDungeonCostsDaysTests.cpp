@@ -21,6 +21,7 @@
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for walking a dungeon costing the empire days, issue #1092.
@@ -68,6 +69,7 @@ namespace CataclysmDungeonCostsDaysTest
 		}
 
 		Out.Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(Seed);
 
 		// ONE DAY, WHICH IS THE FIRST SURGE. A run begins with an intact empire
@@ -820,6 +822,7 @@ bool FCataclysmDungeonCarriesItsSubTypeTest::RunTest(const FString& Parameters)
 	for (int32 Seed = 1; Seed <= 500 && CowSeed == INDEX_NONE; ++Seed)
 	{
 		UCataclysmEmpireRun* Trial = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 		Trial->Begin(Seed);
 		Trial->AdvanceDay();
 
@@ -903,6 +906,7 @@ bool FCataclysmDungeonCarriesItsSubTypeTest::RunTest(const FString& Parameters)
 	for (int32 Seed = 1; Seed <= 500 && PlainSeed == INDEX_NONE; ++Seed)
 	{
 		UCataclysmEmpireRun* Trial = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 		Trial->Begin(Seed);
 		Trial->AdvanceDay();
 
@@ -1074,6 +1078,7 @@ namespace CataclysmDeathEndsDungeonTest
 		Out.Mode->StartPlay();
 
 		Out.Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(1, ECataclysmSurgeMode::Static, LethalityRung);
 		Out.Run->AdvanceDay();
 		Out.Run->Dungeons.Empty();

@@ -14,6 +14,7 @@
 #include "Engine/DataTable.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The real dungeon modifier table becoming a pool the empire layer can draw
@@ -252,6 +253,7 @@ bool FCataclysmDungeonModifierEnteringCarriesItTest::RunTest(const FString& Para
 	// TIER 4, SO A DUNGEON CARRIES FOUR MODIFIERS. At tier 1 a single modifier
 	// could coincide with several wrong rules, and a score built from one row
 	// could coincide with a stray constant.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static,
 			   /* LethalityRung */ 0, /* DifficultyTier */ 4);
 	Run->AdvanceDay();
@@ -375,6 +377,7 @@ bool FCataclysmDungeonModifierLeftEdictTest::RunTest(const FString& Parameters)
 	// THE REAL TABLE, so the Edict's danger is the row's.
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);

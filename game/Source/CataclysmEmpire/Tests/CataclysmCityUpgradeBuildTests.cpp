@@ -9,6 +9,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * A city upgrade takes days to build. Issue #2825: the owner's reversal of 2026-11-21 ("They need build times.
@@ -30,6 +31,7 @@ namespace CataclysmCityUpgradeBuildTest
 	UCataclysmEmpireRun* MakeRun()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 12345, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		return Run;
 	}

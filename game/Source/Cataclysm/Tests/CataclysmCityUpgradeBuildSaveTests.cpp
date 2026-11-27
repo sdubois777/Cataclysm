@@ -14,6 +14,7 @@
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The run record at version 13: a city's build list and the days left on each build. Issue #2825, ruled 2026-11-21.
@@ -135,6 +136,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCityUpgradeBuildSaveRestoreTest,
 bool FCataclysmCityUpgradeBuildSaveRestoreTest::RunTest(const FString&)
 {
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* InSeed */ 2825, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 	const int32 PillarId = Run->Map->PillarId;
 

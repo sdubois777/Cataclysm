@@ -9,6 +9,7 @@
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
 #include "HAL/IConsoleManager.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Which dungeon modifiers a dungeon carries, and how dangerous they make it.
@@ -103,6 +104,7 @@ namespace CataclysmDungeonModifierTest
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 		Run->ModifierPool = WholeTable();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
 				   DifficultyTier);
 		return Run;
@@ -510,6 +512,7 @@ bool FCataclysmDungeonModifierNoPoolTest::RunTest(const FString& Parameters)
 	// when the DataTable cannot be read. It has to behave exactly as the game
 	// did before dungeon modifiers existed rather than refusing to run.
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 42, ECataclysmSurgeMode::Static,
 			   /* LethalityRung */ 0, /* DifficultyTier */ 4);
 
@@ -603,6 +606,7 @@ bool FCataclysmDungeonModifierStreamTest::RunTest(const FString& Parameters)
 	UCataclysmEmpireRun* WithPool = MakeRun(/* Seed */ 5, /* DifficultyTier */ 8);
 
 	UCataclysmEmpireRun* WithoutPool = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	WithoutPool->Begin(/* Seed */ 5, ECataclysmSurgeMode::Static,
 					   /* LethalityRung */ 0, /* DifficultyTier */ 8);
 
@@ -741,6 +745,7 @@ bool FCataclysmDungeonModifierDescribedTest::RunTest(const FString& Parameters)
 	// That is every headless test and the game itself when the DataTable cannot
 	// be read, so it is the common case rather than an edge one.
 	UCataclysmEmpireRun* Bare = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	Bare->Begin(/* Seed */ 42, ECataclysmSurgeMode::Static,
 				/* LethalityRung */ 0, /* DifficultyTier */ 4);
 	Bare->AdvanceDay();

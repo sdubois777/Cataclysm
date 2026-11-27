@@ -20,6 +20,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * THE FORGE CHARGES THE CRAFTING SHEET'S COSTS. Issue #2830, slice G7 of the gems work (#46).
@@ -100,6 +101,7 @@ namespace CataclysmForgeCostsTest
 			Out.State->SetOwnGold(Gold);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2830, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		if (Out.Character && Out.Character->GetInventory() && Out.Character->GetEquipment())
