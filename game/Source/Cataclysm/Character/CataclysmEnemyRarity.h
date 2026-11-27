@@ -154,6 +154,29 @@ public:
 								  int32 Step);
 
 	/**
+	 * How big a creature is drawn for a health multiple of a Common's, on the
+	 * same ladder the rarity steps make: each step's health multiple (its
+	 * `HealthPerScore` over Common's) drawn at that step's `BodyScale`.
+	 *
+	 * THE OWNER, 2026-11-27, of the Bone Colossus: "it should start larger, and
+	 * grow with the same scale as enemies". So a body with an Elite's health
+	 * multiple is drawn at an Elite's size, and so on up the steps.
+	 *
+	 * BETWEEN TWO STEPS, interpolated in log-log space, which on today's table is
+	 * exact: health climbs by 1.85 and size by 1.2 a step, so size is the health
+	 * multiple to the power ln 1.2 / ln 1.85, about 0.296, at every step and
+	 * between them.
+	 * BELOW COMMON, the first pair's power carried on down, since no enemy is
+	 * smaller than Common and a hurt body still has to shrink.
+	 * ABOVE THE LAST STEP, the last step's size: nothing in the game is drawn
+	 * bigger than a Cataclysm Boss.
+	 *
+	 * @return 1 when the table is missing or holds fewer than two usable steps
+	 */
+	static float BodyScaleForHealthMultiple(const UDataTable* EnemyRarityTable,
+											float HealthMultiple);
+
+	/**
 	 * The value a sandbox setting carries to mean "draw one" rather than "use
 	 * this rung".
 	 *

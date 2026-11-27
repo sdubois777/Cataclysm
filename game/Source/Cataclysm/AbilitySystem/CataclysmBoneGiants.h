@@ -26,10 +26,11 @@ struct FCataclysmGiantsOfAPlayer
 	TWeakObjectPtr<ACataclysmMinion> Abomination;
 	bool bAbominationRose = false;
 
-	/** The Bone Colossus, while it stands, and the health and blow it rose with. */
+	/** The Bone Colossus, while it stands, and the health, blow and reach it rose with. */
 	TWeakObjectPtr<ACataclysmMinion> Colossus;
 	float ColossusStartHealth = 0.0f;
 	float ColossusStartDamage = 0.0f;
+	float ColossusStartReach = 0.0f;
 };
 
 /**
@@ -65,12 +66,30 @@ struct FCataclysmGiantsOfAPlayer
  * remains and shrinks when hurt."
  *   - IT RISES on the first remains of the player's on a floor (the vow makes remains appear, as Bone Fuse says), and
  *     consumes them; a Barrow Guard's figures to start (Q3). It reserves 20 Fervour (Q4); with no room it does not rise.
- *   - FED: every remains of the player's that lands within `ColossusFeedReachCm` of it is consumed, adding 10% of that
- *     creature's maximum health to its maximum and current health. A fed remains is not a raise (Q4), and not one of
- *     Picked Clean's "raising a minion on them or detonating them", so it raises no event.
- *   - SHRINKS WHEN HURT: its blow and its drawn size follow its health against the health it rose with, stepped every
+ *   - FED: every remains of the player's that lands within `ColossusFeedReachCm` of it is consumed, adding
+ *     `ColossusFedStartHealthPercent` (2%) of the health the Colossus ROSE with, times the dead creature's rarity health
+ *     multiple (`UCataclysmEnemyRarity::ScalingFromCommon`: a Common 1, an Elite 1.85 and so on up the steps), to its
+ *     maximum and current health. The owner's choice of 2026-11-27, replacing 10% of that creature's maximum health,
+ *     which against a Colossus of twenty thousand was a few health a feed and could not be seen. Remains with no rung
+ *     (a minion's) feed as a Common's. A fed remains is not a raise (Q4), and not one of Picked Clean's "raising a
+ *     minion on them or detonating them", so it raises no event.
+ *   - SHRINKS WHEN HURT: its blow follows its health against the health it rose with, stepped every
  *     `ColossusStepSeconds`. Being fed grows it back.
- *   - ONE AT A TIME. Killed, the next remains raises a new one at the start. Gone when the floor changes.
+ *   - ITS SIZE IS AN ENEMY'S FOR THE SAME HEALTH (the owner, 2026-11-27: "it should start larger, and grow with the
+ *     same scale as enemies"). It rises with the health multiple of a `ColossusStartsAtStep` creature (Legendary,
+ *     1.44 times a normal minion), and that multiple follows its health against the health it rose with;
+ *     `UCataclysmEnemyRarity::BodyScaleForHealthMultiple` turns it into a size on the rarity steps' own ladder. Never
+ *     smaller than `ColossusSmallestScale`, never bigger than a Cataclysm Boss.
+ *   - ITS REACH GROWS WITH ITS BODY (the coordinating session, 2026-11-27): a minion's reach is measured centre to
+ *     centre, so a Colossus drawn larger would touch a creature and still be out of reach. Its reach is the reach it
+ *     rose with plus its capsule's growth (`ACataclysmEnemyCharacter::CapsuleGrowthCm`), so its reach from its
+ *     body's edge is what it
+ *     was at a normal minion's size.
+ *   - ONE AT A TIME. Killed, the next remains raises a new one at the start. Gone when the floor changes, A HORDE
+ *     DUNGEON'S NEXT FLOOR INCLUDED: its floors are waves into one kept arena, which ends nothing on the floor
+ *     (`ACataclysmDungeonGameMode::GoToFloor`), so `EndTheColossi` ends the Colossus there. Until 2026-11-27 one was
+ *     carried down a Horde dungeon's floors (the owner's play log: one Colossus from floor 1 to floor 6 of seven). The
+ *     Abomination is not ended there: it "stays through a kept Horde arena's waves", above.
  */
 UCLASS()
 class CATACLYSM_API UCataclysmBoneGiants : public UWorldSubsystem
@@ -95,10 +114,19 @@ public:
 
 	static constexpr float ColossusReserve = 20.0f;
 	static constexpr float ColossusFeedReachCm = 600.0f;
-	static constexpr float ColossusFedHealthSharePercent = 10.0f;
+	/** What a fed remains adds, as a share of the health the Colossus rose with, before its rarity multiple. */
+	static constexpr float ColossusFedStartHealthPercent = 2.0f;
 	static constexpr float ColossusStepSeconds = 0.25f;
+
+	/**
+ * The rarity step whose health multiple the Colossus rises with, for its drawn size. A JUDGEMENT of 2026-11-27 on
+ * the owner's "it should start larger": Legendary, drawn 1.44 times a normal minion, because an Elite's 1.2 is hard
+ * to pick out among the cones every minion is drawn as.
+ */
+	static constexpr int32 ColossusStartsAtStep = 2;
+
+	/** The least it is drawn at however hurt, so it never shrinks out of sight. Its largest is a Cataclysm Boss's. */
 	static constexpr float ColossusSmallestScale = 0.6f;
-	static constexpr float ColossusLargestScale = 3.0f;
 
 	/** The body both giants are drawn with. */
 	static const TCHAR* GiantTypeName;
@@ -145,6 +173,16 @@ public:
 
 	/** The floor is left: every giant destroyed and every tally forgotten. Called by `ClearTheFloor`. */
 	static int32 EndTheFloor(UWorld& World);
+
+	/**
+	 * A Horde dungeon's next floor, in the arena it keeps: every Bone Colossus destroyed, and nothing else. The
+	 * Abomination and the floor's tally stay, as a kept arena's waves keep them. Called by `GoToFloor`. Returns how
+	 * many were ended.
+	 */
+	static int32 EndTheColossi(UWorld& World);
+
+	/** What remains of a creature at `RarityStep` feed a Colossus that rose with `StartHealth`. -1 feeds as Common. */
+	static float FedHealthFor(float StartHealth, int32 RarityStep);
 
 private:
 	FCataclysmGiantsOfAPlayer& TallyOf(const AActor* Player);

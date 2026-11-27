@@ -115,11 +115,18 @@ def test_the_growth_is_measured_by_one_helper_on_the_enemy_character():
         r"float\s+ACataclysmEnemyCharacter::BodyGrowthCm\(\)\s*const",
         "CataclysmEnemyCharacter.cpp")
     squashed = re.sub(r"\s+", "", body_text)
+    # THE SUBTRACTION LIVES IN `CapsuleGrowthCm` SINCE 2026-11-27, which the Bone Colossus's reach asks too; this
+    # helper holds it at nought. Both halves are read, so the figure is still max(0, scaled - unscaled).
+    growth = re.sub(r"\s+", "", function_body(
+        source(CHARACTER / "CataclysmEnemyCharacter.cpp"),
+        r"float\s+ACataclysmEnemyCharacter::CapsuleGrowthCm\([^)]*\)",
+        "CataclysmEnemyCharacter.cpp"))
 
-    assert ("FMath::Max(0.0f,Capsule->GetScaledCapsuleRadius()"
-            "-Capsule->GetUnscaledCapsuleRadius())") in squashed, (
+    assert ("FMath::Max(0.0f,CapsuleGrowthCm(GetCapsuleComponent()))" in squashed
+            and "Capsule->GetScaledCapsuleRadius()-Capsule->GetUnscaledCapsuleRadius()" in growth), (
         "ACataclysmEnemyCharacter::BodyGrowthCm no longer answers "
-        "max(0, the capsule's scaled radius - its unscaled radius). That is "
+        "max(0, the capsule's scaled radius - its unscaled radius), through "
+        "CapsuleGrowthCm. That is "
         "the growth issue #2706 ruled for a contact reach and issue #2716 for "
         "a lob's minimum; the unscaled radius is the capsule's own, so no "
         "creature's designed body is written twice.")
@@ -154,5 +161,6 @@ def test_the_unscaled_radius_is_read_in_exactly_one_place_in_the_game():
         "game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp"], (
         f"of {len(searched)} game source files under game/Source (tests "
         f"excluded), these read a capsule's unscaled radius: {readers}. Only "
-        f"ACataclysmEnemyCharacter::BodyGrowthCm should, so a creature's growth "
-        f"has one definition (issues #2706 and #2716).")
+        f"ACataclysmEnemyCharacter::CapsuleGrowthCm should, which BodyGrowthCm "
+        f"and the Bone Colossus's reach both ask, so growth has one definition "
+        f"(issues #2706 and #2716).")

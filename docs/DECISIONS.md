@@ -2,6 +2,131 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmEnemyRarity.h` and `.cpp`: `UCataclysmEnemyRarity::BodyScaleForHealthMultiple`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmBoneGiants.h` and `.cpp`: `ColossusStartsAtStep`; `StepColossusOf` draws
+  the Colossus on the enemies' ladder; `RemainsLanded` draws it at its size as it rises, and its rise line says its size
+  and where it stands. `ColossusLargestScale` is removed.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `GoToFloor` ends the Colossus on a kept Horde arena.
+  `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`: `CapsuleGrowthCm`, split out of
+  `BodyGrowthCm`.
+- Tests: `Cataclysm.EnemyRarity.ABodyWithARungsHealthIsDrawnAtThatRungsSize` (new) in
+  `game/Source/Cataclysm/Tests/CataclysmEnemyRarityTests.cpp`;
+  `Cataclysm.Remains.TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder` (new) and one line of
+  `Cataclysm.Remains.TheBoneColossusRisesOnTheFirstRemainsIsFedWithinSixMetresAndShrinksWhenHurt` in
+  `game/Source/Cataclysm/Tests/CataclysmRemainsTests.cpp`; `tools/tests/test_the_bone_colossus_is_drawn_on_the_enemies_ladder.py`
+  (new).
+
+### SAID FIRST
+
+- **WINDOW bc-w1 PASSED IN UNREAL ON `ab09edba1`, AND NOTHING HAS BEEN SEEN IN PLAY.** The owner is asked to look at a Colossus
+  rising, being hurt and being fed, and at a Horde dungeon's next floor.
+- **Two faults of this branch's own tests were found in the window and fixed before the passing run:** four `TestEqual`
+  calls compared a `double` scale with `float` figures and did not compile (C2666), and the Horde floor test's
+  creature was refused by the arena's geometry at 3 m and now spawns whatever stands there.
+- **No fault was found in whether the Colossus is present.** The owner's log says it rose, stayed alive and stayed with
+  the player; what it does not say is what it looked like. See below.
+
+### The owner's words, verbatim
+
+"it should start larger, and grow with the same scale as enemies. Also, i'm in a dungeon right now and there isn't one
+with me" (2026-11-27, play-testing The First Rite's option 2).
+
+### Why the owner did not see it: the log of 2026-11-27, read-only
+
+- **It rose**: `16.23.35:994 ... BONE COLOSSUS: CataclysmPlayerCharacter_0's Colossus rose on the remains of Wraith,
+  20976 health`, seven seconds into dungeon 5's first floor, where a Wraith a Wisp's blast killed fell; the player
+  stood at X=6478 Y=4550. The log gives no minion's position, which is why its rise line now does.
+- **It stayed alive**: no DIED line and no release names it, no second Colossus rose on that floor, and every Fervour
+  line to the end of the log holds "1 BarrowGuard 20". That count is of minions standing
+  (`UCataclysmSkillTemplate::ReservedFervourByKindText`), and nothing else in this log summons a Barrow Guard.
+- **It stayed with the player**: it is `CataclysmMinion_8` (the eight Wisps blasting at the same moment are 0 to 7), and
+  at `16.27.57:483` the player's own area attack hit it with five other minions, `HIT OUT: attack on CataclysmMinion_8`,
+  with the player at X=-747 Y=4539: 72 metres from where the player stood when it rose. The minion numbers are read
+  from their order; that `CataclysmMinion_8` is the Colossus is an inference, not a logged fact. `ACataclysmEnemyController::FollowCommander` walks a
+  minion with nothing to fight back to its commander, and the Barrow Guard type walks at 4.4 m/s.
+- **It looked like every other minion.** Every minion is drawn as the engine's placeholder cone. It rose at scale 1.0,
+  a normal minion's, among seven Wisps and four Skeletal Mages, and being fed barely moved it: the six feeds at
+  `16.23.36` added 15 health to 20976, so its cube-root size grew by 0.02%.
+
+### A Colossus carried down a Horde dungeon's floors, and now ended there
+
+In dungeon 1 (from `15.59.27`), floors 2 to 6 show "1 BarrowGuard 20" throughout and no Colossus rose on them, so one
+Colossus was carried down five floors; a new one rose on floor 7. In dungeon 8 a new one rose on every floor.
+**Dungeon 1 is a Horde dungeon and dungeon 8 an Elite one.** A Horde dungeon's floors are waves into one arena it keeps
+(`bKeptTheArena`), and `ACataclysmDungeonGameMode::GoToFloor` clears nothing on a kept arena, so `ClearTheFloor`, the
+only caller of `UCataclysmBoneGiants::EndTheFloor`, never ran; its last floor was carved afresh and cleared, which is
+why floor 7 raised a new one. The header says the Colossus is "Gone when the floor changes", and the coordinating
+session ruled (2026-11-27) that this holds here too.
+
+- `GoToFloor` now calls `UCataclysmBoneGiants::EndTheColossi` when it keeps the arena: every Colossus ends, and nothing
+  else does. **The Abomination is not ended there**: its own rule, in the same header, is that it "stays through a
+  kept Horde arena's waves". The floor's tally and the player's other followers stay as a kept arena keeps them.
+- Tested by `Cataclysm.Remains.AHordeDungeonsNextFloorEndsTheBoneColossusAndKeepsTheRest`, with the player's Imp carried
+  as the control, and the next remains raising a new Colossus on floor 2.
+
+### The size
+
+The enemies' rule is a ladder in `game/Data/EnemyRarities.csv`: each rarity step multiplies health by 1.85 (its
+`HealthPerScore` over Common's) and drawn size by 1.2 (`BodyScale`). So size is the health multiple to the power
+ln 1.2 / ln 1.85, about 0.296, at every step.
+
+- **`BodyScaleForHealthMultiple`** reads that table and interpolates between steps in log-log space, which reproduces
+  every step exactly and follows the same power between them. Below Common it carries the first pair's power down;
+  above the last step it holds the Cataclysm Boss's 2.49.
+- **THE STARTING STEP IS A JUDGEMENT: Legendary.** The enemy rule gives 1.0 to a Common's health, so "start larger" needs
+  a step. An Elite's 1.2 is hard to pick out among cones that are all one size; a Legendary's 1.44 is not, and leaves
+  room to grow. `ColossusStartsAtStep` is one constant.
+- **Its multiple** is that step's (3.42) times its health over the health it rose with, so hurt to half it is drawn as
+  an enemy with 1.71 times a Common's health (1.17), and fed it grows on the same ladder.
+- **The clamps:** the 3.0 ceiling is gone, replaced by the table's last step. The 0.6 floor stays: the rule carried
+  below Common reaches nought as health does, and a Colossus at one health must still be seen.
+- Its blow still follows its health against the health it rose with, as before.
+- **Its reach grows with its body** (the coordinating session, 2026-11-27): a minion's reach is measured centre to
+  centre, so a Colossus drawn larger beside a wide creature could touch it and be out of reach. Its reach is the reach
+  it rose with plus its capsule's growth, `ACataclysmEnemyCharacter::CapsuleGrowthCm` (split out of `BodyGrowthCm` so
+  growth keeps one definition), so its reach from its body's edge is what it was at a normal minion's size: at 1.44,
+  13.2 cm further from its centre; hurt below a normal minion's size, shorter. How it chooses and lands an attack is not
+  changed; the empire-tree session's `fix/minions-that-do-not-attack` holds why minions dealt no damage.
+
+### What a feed adds
+
+Feeding added 10% of the fed creature's maximum health, which on these floors was a few health against a Colossus of
+20,000: the six feeds at `16.23.36` added 15. Asked, **the owner chose the recommended option (2026-11-27, relayed by
+the coordinating session): each remains fed adds 2% of the health the Colossus ROSE with, times the dead creature's
+rarity health multiple from `game/Data/EnemyRarities.csv`**, the multiples the size rule reads: a Common's +2%, an
+Elite's +3.7%, and so on up the steps. It adds to maximum and current health, as before.
+
+- `ColossusFedStartHealthPercent` (2) replaces `ColossusFedHealthSharePercent` (10); `UCataclysmBoneGiants::FedHealthFor`
+  computes it, and the FED log line now gives the rung, the share and the health it rose with.
+- **A JUDGEMENT:** remains with no rung, a minion's (`RarityStep` -1), feed as a Common's.
+- The vow's sentence, "it grows with each creature's remains", still reads true, so no text changed.
+- Tested by `Cataclysm.Remains.TheBoneColossusIsFedTwoPercentOfItsStartHealthTimesTheRungsMultiple`: a Common's 2%, an
+  Elite's 2% times its multiple; CONTROL: 10% of the creature no longer holds. The existing Colossus test's feed line
+  was moved to the new figure.
+
+**Starting at Legendary (1.44) was approved by the coordinating session as a judgement.**
+
+### Window bc-w1, on `ab09edba1`
+
+- Merged with development at `79d3da751` (#2957, the Living Bombs reach). `CataclysmRemainsTests.cpp` kept both sides;
+  `tools/check_resolved_cpp.py --changed`: 5 files read, 0 with complaints.
+- Build: "Succeeded - 4 actions, 1 file compiled".
+- `Cataclysm.Remains.` alone: "20 tests performed, 20 succeeded, 0 failed". `Cataclysm.EnemyRarity.` alone: "7 tests
+  performed, 7 succeeded, 0 failed". Neither left a save behind.
+- The whole suite: "6105 tests performed, 6105 succeeded, 0 failed", the 6101 on development and this branch's 4; 62
+  skipped part of what they check; "Test saves: 893 written and deleted, 0 left behind".
+- Python beside it: "9672 passed, 10 skipped"; JUnit 9,682 tests, 0 failures. ruff: all checks passed.
+- C++ proof, prefix `Cataclysm.Remains.`, two breaks together: the Colossus's size read without its starting
+  multiple (`ColossusStartsAtStep < 0 ? StartMultiple * Mass : Mass`), and the kept-arena branch in `GoToFloor`
+  made unreachable (`&& FloorNumber < 0`). PROVED: with them in, "20 tests performed, 18 succeeded, 2 failed:
+  AHordeDungeonsNextFloorEndsTheBoneColossusAndKeepsTheRest, TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder",
+  the two predicted; restored, "20 tests performed, 20 succeeded, 0 failed".
+
+---
+
 ## 2026-11-27 — Under Living Bombs a minion touching an enemy is in reach, measured body to body, and the Bone Colossus and the Abomination keep their own reach
 
 **Said first:**

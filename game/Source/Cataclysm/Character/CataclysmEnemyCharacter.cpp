@@ -2137,12 +2137,12 @@ void ACataclysmEnemyCharacter::SetAttackDamage(float NewAttackDamage)
 float ACataclysmEnemyCharacter::BodyGrowthCm() const
 {
 	// THE CAPSULE AS IT STANDS AGAINST THE CAPSULE AS DESIGNED. See the header. Issues #2706 and #2716.
-	const UCapsuleComponent* Capsule = GetCapsuleComponent();
-	if (!Capsule)
-	{
-		return 0.0f;
-	}
-	return FMath::Max(0.0f, Capsule->GetScaledCapsuleRadius() - Capsule->GetUnscaledCapsuleRadius());
+	return FMath::Max(0.0f, CapsuleGrowthCm(GetCapsuleComponent()));
+}
+
+float ACataclysmEnemyCharacter::CapsuleGrowthCm(const UCapsuleComponent* Capsule)
+{
+	return Capsule ? Capsule->GetScaledCapsuleRadius() - Capsule->GetUnscaledCapsuleRadius() : 0.0f;
 }
 
 void ACataclysmEnemyCharacter::SetRarityStep(int32 NewStep)

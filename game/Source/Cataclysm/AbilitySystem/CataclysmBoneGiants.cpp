@@ -14,6 +14,8 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 
 const TCHAR* UCataclysmBoneGiants::AbominationRisesStat = TEXT("abomination_rises");
@@ -324,10 +326,14 @@ void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemainsMarker
 		{
 			return;
 		}
-		const float Added = Remains->MaximumHealth * ColossusFedHealthSharePercent / 100.0f;
+		// 2% OF THE HEALTH IT ROSE WITH, TIMES THE DEAD CREATURE'S RARITY HEALTH MULTIPLE. The owner, 2026-11-27.
+		const float Added = FedHealthFor(Tally.ColossusStartHealth, Remains->RarityStep);
 		BoneGiantsWriteHealth(Colossus, BoneGiantsMaximumHealthOf(Colossus) + Added, BoneGiantsHealthOf(Colossus) + Added);
-		UE_LOG(LogCataclysm, Log, TEXT("BONE COLOSSUS FED: %s's Colossus took the remains of %s, +%.0f health."),
-			   *Player->GetName(), *Remains->Kind.ToString(), Added);
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("BONE COLOSSUS FED: %s's Colossus took the remains of %s (rung %d), +%.0f health: %.0f%% of the %.0f "
+					"it rose with, times the rung's multiple."),
+			   *Player->GetName(), *Remains->Kind.ToString(), Remains->RarityStep, Added, ColossusFedStartHealthPercent,
+			   Tally.ColossusStartHealth);
 		Remains->Destroy();
 		StepColossusOf(Player);
 		return;
@@ -349,9 +355,15 @@ void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemainsMarker
 	Tally.Colossus = Risen;
 	Tally.ColossusStartHealth = BoneGiantsMaximumHealthOf(Risen);
 	Tally.ColossusStartDamage = Risen->OwnDamagePerHit;
-	UE_LOG(LogCataclysm, Log, TEXT("BONE COLOSSUS: %s's Colossus rose on the remains of %s, %.0f health."),
-		   *Player->GetName(), *Remains->Kind.ToString(), Tally.ColossusStartHealth);
+	Tally.ColossusStartReach = Risen->ReachCm;
 	Remains->Destroy();
+	// DRAWN AT ITS STARTING SIZE AT ONCE, not a quarter of a second later at a normal minion's.
+	StepColossusOf(Player);
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("BONE COLOSSUS: %s's Colossus rose on the remains of %s, %.0f health, drawn %.2f times a minion at X=%.0f "
+				"Y=%.0f."),
+		   *Player->GetName(), *Remains->Kind.ToString(), Tally.ColossusStartHealth, Risen->GetActorScale3D().X,
+		   Risen->GetActorLocation().X, Risen->GetActorLocation().Y);
 	Giants->StartColossusStep();
 }
 
@@ -364,11 +376,26 @@ void UCataclysmBoneGiants::StepColossusOf(const AActor* Player)
 	{
 		return;
 	}
-	// ITS MASS IS ITS HEALTH: its blow follows it, and its size follows the cube root of it, as a body's volume.
+	// ITS MASS IS ITS HEALTH against the health it rose with: its blow follows it, and so does its size, below.
 	const float Mass = FMath::Max(0.0f, BoneGiantsHealthOf(Colossus) / Tally->ColossusStartHealth);
 	Colossus->OwnDamagePerHit = Tally->ColossusStartDamage * Mass;
-	Colossus->SetActorScale3D(FVector(FMath::Clamp(FMath::Pow(Mass, 1.0f / 3.0f), ColossusSmallestScale,
-													ColossusLargestScale)));
+	// AN ENEMY'S SIZE FOR ITS HEALTH: the multiple a `ColossusStartsAtStep` creature has over a Common, carried by its
+	// health against the health it rose with. The owner, 2026-11-27.
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	float StartMultiple = 1.0f;
+	float UnusedDamage = 1.0f;
+	float UnusedArmour = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(Rarities, ColossusStartsAtStep, StartMultiple, UnusedDamage, UnusedArmour);
+	const float Scale = FMath::Max(ColossusSmallestScale,
+								   UCataclysmEnemyRarity::BodyScaleForHealthMultiple(Rarities, StartMultiple * Mass));
+	Colossus->SetActorScale3D(FVector(Scale));
+	// ITS REACH FROM ITS BODY'S EDGE KEPT: a minion's reach is centre to centre, and its capsule grows with its scale.
+	// The growth is the enemies' one definition of it, negative when hurt below a normal minion's size.
+	if (Tally->ColossusStartReach > 0.0f)
+	{
+		Colossus->ReachCm =
+			Tally->ColossusStartReach + ACataclysmEnemyCharacter::CapsuleGrowthCm(Colossus->GetCapsuleComponent());
+	}
 }
 
 void UCataclysmBoneGiants::StartColossusStep()
@@ -409,6 +436,44 @@ void UCataclysmBoneGiants::StepEveryColossus()
 // ==========================================================================
 // The floor left
 // ==========================================================================
+
+float UCataclysmBoneGiants::FedHealthFor(float StartHealth, int32 RarityStep)
+{
+	float Multiple = 1.0f;
+	float UnusedDamage = 1.0f;
+	float UnusedArmour = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(UCataclysmEnemyRarity::LoadEnemyRarityTable(), FMath::Max(0, RarityStep),
+											 Multiple, UnusedDamage, UnusedArmour);
+	return StartHealth * ColossusFedStartHealthPercent / 100.0f * Multiple;
+}
+
+int32 UCataclysmBoneGiants::EndTheColossi(UWorld& World)
+{
+	UCataclysmBoneGiants* Giants = In(&World);
+	if (!Giants)
+	{
+		return 0;
+	}
+	int32 Ended = 0;
+	for (TPair<TWeakObjectPtr<const AActor>, FCataclysmGiantsOfAPlayer>& Each : Giants->Players)
+	{
+		if (ACataclysmMinion* Colossus = Each.Value.Colossus.Get(); IsValid(Colossus))
+		{
+			Colossus->Destroy();
+			++Ended;
+		}
+		Each.Value.Colossus.Reset();
+		Each.Value.ColossusStartHealth = 0.0f;
+		Each.Value.ColossusStartDamage = 0.0f;
+		Each.Value.ColossusStartReach = 0.0f;
+	}
+	if (Ended > 0)
+	{
+		UE_LOG(LogCataclysm, Log, TEXT("BONE COLOSSUS: %d ended as a Horde dungeon's next floor began in the same arena."),
+			   Ended);
+	}
+	return Ended;
+}
 
 int32 UCataclysmBoneGiants::EndTheFloor(UWorld& World)
 {
