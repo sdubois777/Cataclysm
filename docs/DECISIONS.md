@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — Under Living Bombs a minion touching an enemy is in reach, measured body to body, and the Bone Colossus and the Abomination keep their own reach
+
+**Said first:**
+
+- **The owner's play test, 2026-11-27, a level-100 Necromancer holding the First Rite's Bone Colossus and the Second
+  Rite's Living Bombs:** "none of my minions are doing damage. They're just sitting there till they explode or die";
+  Skeletal Mages "just run into an enemies face and sit there"; the Colossus is "just sitting at the front getting
+  attacked, not doing any damage".
+- **The cause, from the code and the owner's log:** Living Bombs (`minions_detonate_on_contact`, added by the Death
+  finish bundle, #2943) cuts every non-machine minion's attack reach to `UCataclysmDetonation::ContactAllowanceCm`,
+  50 cm. `ACataclysmEnemyController::IsInReach` compared that with the distance between the two CENTRES, while
+  `UCataclysmDetonation::DetonateOnContact` measures between the two BODIES. A minion whose body and its target's are
+  together wider than about 52 cm walked in, touched the enemy and was never in reach: it never swung and never went
+  off, until Marrow Lance set it off or it died. The owner's log has over 1,000 blasts by Wisps, small enough to get
+  that close, most of them contact detonations, and none on contact by a Skeletal Mage or a Husk, which went off only
+  when Marrow Lance set them off. And the cut applied to the Bone Colossus, which never detonates.
+- **Not a change to the blow itself.** `ACataclysmMinion::AttackTarget` was never reached. #2945's ailment rule, the
+  test rework (#2953, #2954) and the weapon grips (#2952) do not enter into it. Without Living Bombs, minions were not
+  affected.
+
+### What changed
+
+- **`ACataclysmEnemyController::ReachAgainstCm`**: a minion that is a living bomb has its contact reach plus both
+  bodies' radii (`UCataclysmTargeting::BodyRadiusOf`), the measure `DetonateOnContact` uses. **Ruled by the
+  coordinating session on 2026-11-27 as an exception to the ruling of 2026-10-27** that a minion's "within its reach"
+  is centre to centre: every other minion keeps the centre-to-centre measure. The header says so.
+- **`UCataclysmDetonation::IsALivingBomb`**: no vow giant (`UCataclysmBoneGiants::IsAGiant`), as `MayDetonate`
+  already exempts them, so the Abomination and the Bone Colossus keep their own reach. Accepted by the coordinating
+  session on 2026-11-27. `CataclysmBoneGiants.cpp` is not changed.
+- **`ACataclysmMinion::AttackTarget`**: every minion blow writes a Display line, "MINION BLOW: <type> (<name>) struck
+  <target>: sent X, landed Y, Z to health[, evaded][, refused by immunity]". A creature's "HIT OUT" line does not name
+  its attacker, so the owner's log could not say whether a minion swung.
+- **A test**, `Cataclysm.Remains.UnderLivingBombsAMinionTouchingAnEnemyIsInReachAndTheColossusKeepsItsOwnReach`: both
+  Rites held, a real Colossus raised on remains and real Skeletal Mages. It asks the controller's own `IsInReach`. The
+  existing Living Bombs test called `AttackTarget` directly, on an Imp 60 cm from its enemy, closer than two bodies can
+  stand, which is why it passed.
+
+**Not changed, passed to the gold session's size work:** a minion's reach does not grow with its body, so a Colossus
+grown large may stand touching a wide enemy and still be out of its 200 cm centre-to-centre reach.
+
+### Measured before the window
+
+Built under the lock as minions-repro ("Succeeded - 84 actions, 77 files compiled"), the new test alone:
+**"1 tests performed, 1 succeeded, 0 failed"** on its second run. The first run failed one check, "and strikes the
+enemy" after the mage's detonation: the test had spawned the Skeletal Mages by hand, with no blast radius recorded, as
+the skill that raises a minion records one (`RecordExplosionRadius`). It is a fault in the test's set-up, corrected
+before the second run; the Necromancer detonation tests' Imp helper records 3 m the same way. The second run logged
+"MINION BLAST: SkeletalMage ... on 1 enemy: sent 2882.2 each" and "MINION BLOW: BarrowGuard (CataclysmMinion_0) struck
+CataclysmEnemyCharacter_3: sent 960.8, landed 100.0, 100.0 to health", the Colossus's body 30.0 cm and reach 200.0 cm.
+
+### Registered for window mn-w1
+
+- **The base is window s12's whole-suite engine log** (`s12_suite_engine_05a9d49b.log`, #2928 slice 12), whose tree is
+  development `06d32a873`'s but for this log: 6100 performed, 62 skipped halves, 893 test saves written and deleted, 0
+  left behind. The branch's tree declares 6050 tests, the base's 6049; the run's gap of 51 above the declared count
+  stays.
+- **The whole suite: 6101 performed, all succeeding**, 62 skipped halves, 0 test saves left behind; the number written
+  is not predicted. The Python suite beside it.
+- **No group alone**: the new test joins `Cataclysm.Remains.`, which is not new.
+- **Two C++ guard proofs**, in one `prove_cpp_guard` call each, both against the new test:
+  - **MNR**: `ReachAgainstCm`'s `return Designed + UCataclysmTargeting::BodyRadiusOf(Minion) +
+    UCataclysmTargeting::BodyRadiusOf(Target);` becomes `return Designed;`, the reach as it was. Must fail the test, on
+    "A SKELETAL MAGE 10 CM FROM AN ENEMY'S BODY IS IN REACH".
+  - **MNG**: `IsALivingBomb` without `&& !UCataclysmBoneGiants::IsAGiant(Minion)`. Must fail the test, on "THE COLOSSUS
+    IS NO LIVING BOMB", "and keeps its own reach" and the Colossus's "in reach".
+
+### The window, mn-w1 (tested head `481a639c0`)
+
+- **Whole Unreal suite: "6101 tests performed, 6101 succeeded, 0 failed"**, 62 skipped halves, test saves "893 written
+  and deleted, 0 left behind", as registered. Python beside it: "9665 passed, 10 skipped". ruff: "All checks passed!".
+- **MNR PROVED**: with the break in, the test failed on "A SKELETAL MAGE 10 CM FROM AN ENEMY'S BODY IS IN REACH", as
+  registered, and passed restored.
+- **MNG PROVED**: with the break in, the test failed on "THE COLOSSUS IS NO LIVING BOMB" and "and keeps its own reach"
+  (50 where 200 was expected), and passed restored. **It did not fail the Colossus's "in reach", which was registered
+  too: that prediction was wrong.** With MNR's body-to-body measure in place, a Colossus wrongly given the 50 cm contact
+  reach still has 50 plus both bodies' radii, about 110 cm, which covers an enemy 10 cm from its body.
+
+---
+
 ## 2026-11-27 — A weapon is held by its grip: the Greatsword, the Sword and the Dagger were held by the tip of the blade, and each weapon mesh now names where the hand holds it
 
 **Affects:**

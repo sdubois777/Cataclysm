@@ -7,6 +7,8 @@
 // For announcing a creature's ability as a skill used. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
+// For whether a minion is a living bomb, whose contact is measured body to body. 2026-11-27.
+#include "AbilitySystem/CataclysmDetonation.h"
 // For the walking surface under an aim point. Issue #2878.
 #include "AbilitySystem/CataclysmEffectPlacement.h"
 #include "AbilitySystem/CataclysmFear.h"
@@ -1664,6 +1666,17 @@ float ACataclysmEnemyController::ReachAgainstCm(const ACataclysmCharacterBase* A
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Attacker);
 	if (!Creature)
 	{
+		// EXCEPT A LIVING BOMB'S, WHICH IS CONTACT AND IS MEASURED BODY TO BODY, as
+		// `UCataclysmDetonation::DetonateOnContact` measures it. Its reach is cut to `ContactAllowanceCm`, and
+		// this test is centre to centre, so until 2026-11-27 a minion whose body and its target's were together
+		// wider than that walked into its target and stood there: never in reach, it never detonated or struck.
+		// The owner's play test: Skeletal Mages and Husks under Living Bombs stood at an enemy's face, while
+		// Wisps, small enough to get that close, went off.
+		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Attacker);
+		if (Minion && UCataclysmDetonation::IsALivingBomb(Minion))
+		{
+			return Designed + UCataclysmTargeting::BodyRadiusOf(Minion) + UCataclysmTargeting::BodyRadiusOf(Target);
+		}
 		return Designed;
 	}
 

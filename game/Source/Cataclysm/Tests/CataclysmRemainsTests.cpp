@@ -11,6 +11,8 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
+// For Living Bombs' contact reach, the owner's play test of 2026-11-27.
+#include "AbilitySystem/CataclysmDetonation.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmRemains.h"
@@ -22,6 +24,8 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// For whether the controller counts a minion as in reach, the question it walks and swings by.
+#include "Character/CataclysmEnemyController.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Components/StaticMeshComponent.h"
@@ -72,6 +76,8 @@ namespace CataclysmRemainsTest
 	const FName PlaguePit(TEXT("Necromancer_keystone_os_kC"));
 	const FName ManyMadeOne(TEXT("Necromancer_basic_lg_d0"));
 	const FName FirstRite(TEXT("Necromancer_capstone_25"));
+	/** The Second Rite: option 2 is Living Bombs. */
+	const FName SecondRite(TEXT("Necromancer_capstone_50"));
 	const FName FinalRite(TEXT("Necromancer_capstone_200"));
 
 	/** One row's `ValuePerPoint` in the shipped effect table, or -1 when the row is missing. */
@@ -1389,6 +1395,132 @@ bool FCataclysmRemainsGiantsAreNotDetonatedTest::RunTest(const FString&)
 		TestTrue(*FString::Printf(TEXT("%s STANDS"), Name),
 				 IsValid(Giant) && !UCataclysmSkillEffects::IsDead(Giant));
 	}
+	return true;
+}
+
+// ==========================================================================
+// Living Bombs beside the Bone Colossus: the owner's play test of 2026-11-27
+// ==========================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsLivingBombsReachTest,
+	"Cataclysm.Remains.UnderLivingBombsAMinionTouchingAnEnemyIsInReachAndTheColossusKeepsItsOwnReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner held the First Rite's Bone Colossus and the Second Rite's Living Bombs, and saw Skeletal Mages "run into an
+ * enemies face and sit there" and the Colossus "sitting at the front getting attacked, not doing any damage". Living
+ * Bombs cuts a minion's reach to `UCataclysmDetonation::ContactAllowanceCm`; the controller asked it centre to centre
+ * (`ACataclysmEnemyController::IsInReach`), so two bodies touching were never in reach and the minion never struck or
+ * went off. And the Colossus, which never detonates, had its reach cut too.
+ *
+ * WITH BOTH RITES HELD: a Skeletal Mage 10 cm from an enemy, body to body, is in reach, and attacking it detonates the
+ * mage and strikes the enemy; the Colossus keeps its own reach, is not a living bomb, is in reach of an enemy 10 cm
+ * from its body, and strikes it and stands. CONTROL: a Skeletal Mage 2 m from an enemy, body to body, is not in
+ * reach, so the vow still keeps a minion from striking from across the room.
+ */
+bool FCataclysmRemainsLivingBombsReachTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRemainsNecromancer Player;
+	if (!Player.Make(*this, World))
+	{
+		return false;
+	}
+
+	// BOTH RITES, AS THE OWNER TOOK THEM: the First's option 2, the Bone Colossus; the Second's option 2, Living Bombs.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Root, 1);
+	Allocation.Add(FirstRite, 1);
+	Allocation.SetChosenOption(FirstRite, 2);
+	Allocation.Add(SecondRite, 1);
+	Allocation.SetChosenOption(SecondRite, 2);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.System);
+
+	// AN ENEMY STOOD BESIDE A MINION, this far between their bodies: spawned well clear, then put in place without a
+	// sweep, so neither is pushed.
+	const auto Beside = [World](const ACataclysmMinion* Minion, float GapCm) -> ACataclysmEnemyCharacter*
+	{
+		ACataclysmEnemyCharacter* Foe = RemainsCreatureAt(World, Minion->GetActorLocation() + FVector(0, 40 * M, 0));
+		if (Foe)
+		{
+			const float Apart =
+				UCataclysmTargeting::BodyRadiusOf(Minion) + UCataclysmTargeting::BodyRadiusOf(Foe) + GapCm;
+			Foe->SetActorLocation(Minion->GetActorLocation() + FVector(Apart, 0, 0), /*bSweep=*/false, nullptr,
+								  ETeleportType::TeleportPhysics);
+		}
+		return Foe;
+	};
+
+	// THE COLOSSUS RISES ON THE FIRST REMAINS.
+	ACataclysmEnemyCharacter* First = RemainsCreatureAt(World, FVector(3 * M, 0, 0));
+	if (!TestNotNull(TEXT("set-up: the first creature"), First))
+	{
+		return false;
+	}
+	Player.Kill(First);
+	ACataclysmMinion* Colossus = UCataclysmBoneGiants::ColossusOf(Player.Character);
+	ACataclysmMinion* Mage = ACataclysmMinion::Spawn(Player.Character, FVector(0, -20 * M, 0), 20.0f,
+													 /*bBurns=*/false, FString(TEXT("SkeletalMage")));
+	ACataclysmMinion* FarMage = ACataclysmMinion::Spawn(Player.Character, FVector(0, -60 * M, 0), 20.0f,
+														/*bBurns=*/false, FString(TEXT("SkeletalMage")));
+	if (!TestNotNull(TEXT("set-up: the Colossus rose"), Colossus) || !TestNotNull(TEXT("set-up: a Skeletal Mage"), Mage)
+		|| !TestNotNull(TEXT("set-up: a second Skeletal Mage"), FarMage))
+	{
+		return false;
+	}
+	// A BLAST'S REACH, as the skill that raises a minion records it (`RecordExplosionRadius`); a minion spawned by hand
+	// has none, and its detonation would strike nothing.
+	Mage->RecordExplosionRadius(3.0f * M);
+	FarMage->RecordExplosionRadius(3.0f * M);
+	TestTrue(TEXT("set-up: under the vow the Skeletal Mage is a living bomb"),
+			 UCataclysmDetonation::IsALivingBomb(Mage));
+	TestEqual(TEXT("set-up: and its reach is cut to contact"), Mage->AttackReachCm(),
+			  FMath::Min(Mage->ReachCm, UCataclysmDetonation::ContactAllowanceCm), 0.001f);
+
+	// CONTROL FIRST: 2 m between the bodies is out of reach.
+	ACataclysmEnemyCharacter* FarFoe = Beside(FarMage, 2 * M);
+	if (!TestNotNull(TEXT("set-up: the far enemy"), FarFoe))
+	{
+		return false;
+	}
+	TestFalse(TEXT("CONTROL: a Skeletal Mage 2 m from an enemy's body is not in reach under the vow"),
+			  ACataclysmEnemyController::IsInReach(FarMage, FarFoe));
+
+	// THE SKELETAL MAGE TOUCHING AN ENEMY.
+	ACataclysmEnemyCharacter* MagesFoe = Beside(Mage, 10.0f);
+	if (!TestNotNull(TEXT("set-up: the mage's enemy"), MagesFoe))
+	{
+		return false;
+	}
+	TestTrue(TEXT("A SKELETAL MAGE 10 CM FROM AN ENEMY'S BODY IS IN REACH, so its controller strikes"),
+			 ACataclysmEnemyController::IsInReach(Mage, MagesFoe));
+	const float MagesFoeBefore = RemainsHealthOf(MagesFoe);
+	Mage->AttackTarget(MagesFoe);
+	TestFalse(TEXT("and its attack detonates it"), IsValid(Mage) && !Mage->IsActorBeingDestroyed());
+	TestTrue(TEXT("and strikes the enemy"), RemainsHealthOf(MagesFoe) < MagesFoeBefore);
+
+	// THE COLOSSUS.
+	TestFalse(TEXT("THE COLOSSUS IS NO LIVING BOMB"), UCataclysmDetonation::IsALivingBomb(Colossus));
+	TestEqual(TEXT("and keeps its own reach"), Colossus->AttackReachCm(), Colossus->ReachCm, 0.001f);
+	ACataclysmEnemyCharacter* ColossusFoe = Beside(Colossus, 10.0f);
+	if (!TestNotNull(TEXT("set-up: the Colossus's enemy"), ColossusFoe))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(
+		TEXT("LIVING BOMBS REACH: the Colossus's body %.1f cm, reach %.1f cm; the mage's body %.1f cm"),
+							UCataclysmTargeting::BodyRadiusOf(Colossus), Colossus->AttackReachCm(),
+							UCataclysmTargeting::BodyRadiusOf(FarMage)));
+	TestTrue(TEXT("the Colossus 10 cm from an enemy's body is in reach"),
+			 ACataclysmEnemyController::IsInReach(Colossus, ColossusFoe));
+	const float ColossusFoeBefore = RemainsHealthOf(ColossusFoe);
+	Colossus->AttackTarget(ColossusFoe);
+	TestTrue(TEXT("and its blow strikes the enemy"), RemainsHealthOf(ColossusFoe) < ColossusFoeBefore);
+	TestTrue(TEXT("and it stands"), IsValid(Colossus) && !Colossus->IsActorBeingDestroyed());
 	return true;
 }
 
