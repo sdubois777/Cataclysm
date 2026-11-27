@@ -42,6 +42,10 @@ struct CATACLYSM_API FCataclysmSkillSlotNumbers
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
 	float FervourCost = 0.0f;
 
+	/** Maximum mana held while on, at skill level 1 and every character level: the Aura's 50. Ruled 2026-11-27. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
+	float ManaReserved = 0.0f;
+
 	/** False when no row was found, which is the only way this is invalid. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Slot")
 	bool bFound = false;
@@ -143,9 +147,10 @@ public:
 	 * multiplier below zero, "Your spells mana costs are quadrupled" is +300,
 	 * and a character with no row is handed its own cost back unchanged.
 	 *
-	 * ASKED IN ONE PLACE, `UCataclysmGameplayAbility::ManaCostFor`, because four
-	 * things read a cost: the check that refuses a cast, the payment, an aura's
-	 * per-pulse upkeep and the skill bar that greys a box out. Any of them
+	 * ASKED IN ONE PLACE, `UCataclysmGameplayAbility::ManaCostFor`, because three
+	 * things read a cost: the check that refuses a cast, the payment and the
+	 * skill bar that greys a box out (an aura's per-pulse upkeep was a fourth
+	 * until 2026-11-27, when auras began to reserve mana). Any of them
 	 * reading the raw cost while another read this would charge one number and
 	 * show or refuse another.
 	 */

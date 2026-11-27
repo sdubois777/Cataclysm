@@ -23,7 +23,7 @@
 /**
  * Fervour on events and decay held by who is near (the Death trees' slice C6b3, 2026-11-25). A `points` row pays its
  * value, scaled by `class_resource_generation`; every class resource gain a pool action makes stops at the bar after its
- * conditioned maximum and is seen by Kindred Fires; a row with a chance rolls before it pays and before it waits; the
+ * conditioned maximum; a row with a chance rolls before it pays and before it waits; the
  * three conditions read their state, two of them from a real walk; and the real rows and copies.
  */
 
@@ -181,15 +181,15 @@ bool FCataclysmFervourOnEventsPointsTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourOnEventsBarTest,
-	"Cataclysm.FervourOnEvents.AClassResourceGainStopsAtTheBarAndKindredFiresSeesIt",
+	"Cataclysm.FervourOnEvents.AClassResourceGainStopsAtTheBar",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * The bar is the maximum attribute of 100 lowered to 80 by a conditioned row on `class_resource` that holds once the
  * movement skill has ended, so `MaximumClassResourceAsked` is 80 and the attribute 100. From 70, an enchantment-shaped
  * row of 50% of the maximum (50) stops at 80, in the current value AND THE STORED BASE, which a payment through `TopUp`
- * would have written to 100; and Kindred Fires, given by hand with a grace of 4 seconds, holds decay off, which a payment
- * through `TopUp` would not. A `points` row of 50 does the same. THE CONTROL: before the row, nothing holds decay off.
+ * would have written to 100. A `points` row of 50 does the same. THE CONTROL is the set-up's: the attribute is 100 and
+ * the bar asked is 80.
  */
 bool FCataclysmFervourOnEventsBarTest::RunTest(const FString&)
 {
@@ -208,10 +208,6 @@ bool FCataclysmFervourOnEventsBarTest::RunTest(const FString&)
 		Maximum.Base = 100.0f;
 		Maximum.Modifiers = {EventsRow(ECataclysmStatBucket::Flat, -20.0f,
 									   ECataclysmStatCondition::WithinSecondsOfMovementSkillEnd, 10.0f)};
-		Lines.Add(FName(UCataclysmFervour::KillDecayGraceSecondsStat)).Modifiers = {
-			EventsRow(ECataclysmStatBucket::Flat, 4.0f)};
-		Lines.Add(FName(UCataclysmFervour::HoldRestartedByAnyGainStat)).Modifiers = {
-			EventsRow(ECataclysmStatBucket::Flat, 1.0f)};
 		System->SetStatInputs(MoveTemp(Lines));
 		System->NoteMovementSkillEnded();
 		const UCataclysmClassResourceAttributeSet* Resource = System->GetSet<UCataclysmClassResourceAttributeSet>();
@@ -221,14 +217,11 @@ bool FCataclysmFervourOnEventsBarTest::RunTest(const FString&)
 		{
 			return false;
 		}
-		TestFalse(FString::Printf(TEXT("control (%s): before the row, decay is not held"), Kind),
-				  System->KillDecayIsHeld());
 
 		System->SetPoolActions({FervourOnDodge(50.0f, Base)});
 		System->ActOnEvent(FName(TEXT("dodge")));
 		TestEqual(FString::Printf(TEXT("%s from 70: 80 held"), Kind), Holder.Fervour(), 80.0f, 0.001f);
 		TestEqual(FString::Printf(TEXT("%s: and 80 stored"), Kind), Holder.FervourBase(), 80.0f, 0.001f);
-		TestTrue(FString::Printf(TEXT("%s: Kindred Fires holds decay off"), Kind), System->KillDecayIsHeld());
 	}
 	return true;
 }
@@ -370,13 +363,14 @@ bool FCataclysmFervourOnEventsWalkTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourOnEventsCopiesTest,
-	"Cataclysm.FervourOnEvents.OpeningFoundsSecondRowAndTearLoosesChanceAreCopiedApart",
+	"Cataclysm.FervourOnEvents.OpeningFoundsSecondRowAndGleaningsChanceAreCopiedApart",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * The real tables. Opening Found at 3 points copies two rows, one under the node's own name and one named `_Row2`, each
- * worth 3, so they keep two keys. Tear Loose at 8 points copies one row worth 1 with a chance of 16. THE CONTROL: Tear
- * Loose at 1 point has a chance of 2, so the chance, not the amount, follows the points.
+ * worth 3, so they keep two keys. Gleaning at 6 points copies one row worth 50 with a chance of 30. THE CONTROL: Gleaning
+ * at 1 point has a chance of 5, so the chance, not the amount, follows the points. Tear Loose was the row with a chance
+ * here until the Soul Collector keystone rework (issue #2951) gave it a row without one.
  */
 bool FCataclysmFervourOnEventsCopiesTest::RunTest(const FString&)
 {
@@ -405,24 +399,24 @@ bool FCataclysmFervourOnEventsCopiesTest::RunTest(const FString&)
 		}
 	}
 
-	for (const int32 Points : {8, 1})
+	for (const int32 Points : {6, 1})
 	{
-		FCataclysmPassiveAllocation Tear;
-		Tear.Add(FName(TEXT("SoulCollector_basic_b_b1")), Points);
+		FCataclysmPassiveAllocation Gleaning;
+		Gleaning.Add(FName(TEXT("SoulCollector_basic_b_stem0")), Points);
 		const TArray<FCataclysmEnchantmentEffectRow> Copied =
-			UCataclysmPassiveTree::EnchantmentRowsFor(Tear, Nodes, Effects, Death);
+			UCataclysmPassiveTree::EnchantmentRowsFor(Gleaning, Nodes, Effects, Death);
 		int32 Rows = 0;
 		for (const FCataclysmEnchantmentEffectRow& Row : Copied)
 		{
-			if (Row.Enchantment == TEXT("Passive_SoulCollector_basic_b_b1"))
+			if (Row.Enchantment == TEXT("Passive_SoulCollector_basic_b_stem0"))
 			{
 				++Rows;
-				TestEqual(FString::Printf(TEXT("Tear Loose at %d: worth 1"), Points), Row.ValueLow, 1.0f, 0.001f);
-				TestEqual(FString::Printf(TEXT("Tear Loose at %d: a chance of %d"), Points, 2 * Points),
-						  Row.ChancePercent, 2.0f * Points, 0.001f);
+				TestEqual(FString::Printf(TEXT("Gleaning at %d: worth 50"), Points), Row.ValueLow, 50.0f, 0.001f);
+				TestEqual(FString::Printf(TEXT("Gleaning at %d: a chance of %d"), Points, 5 * Points),
+						  Row.ChancePercent, 5.0f * Points, 0.001f);
 			}
 		}
-		TestEqual(FString::Printf(TEXT("Tear Loose at %d: one row"), Points), Rows, 1);
+		TestEqual(FString::Printf(TEXT("Gleaning at %d: one row"), Points), Rows, 1);
 	}
 	return true;
 }
@@ -431,7 +425,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourOnEventsRealRowsTest,
 	"Cataclysm.FervourOnEvents.TheSixNodesRowsAreTheirSentences",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** The six nodes' real rows, read from the passive effects table: each stat or action, base, value and condition. */
+/**
+ * The six nodes' real rows, read from the passive effects table: each stat or action, base, value and condition. An
+ * action row's base is stated per row: Tear Loose's, since the Soul Collector keystone rework (issue #2951), restores 1%
+ * of maximum health, so its base is the maximum and not a flat amount.
+ */
 bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 {
 	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
@@ -448,6 +446,7 @@ bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 		float Value;
 		float Chance;
 		int32 Count;
+		const TCHAR* Base = TEXT("points");
 	};
 	const FExpected Expected[] = {
 		{TEXT("Shadow_basic_d_a2"), 0, TEXT("class_resource"), TEXT(""), 1.0f, 0.0f, 1},
@@ -455,12 +454,12 @@ bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 		{TEXT("SoulCollector_capstone_25"), 2, TEXT("class_resource"), TEXT("target_is_boss"), 5.0f, 0.0f, 1},
 		{TEXT("SoulCollector_capstone_25"), 2, TEXT("fervour_kill_decay_per_second"), TEXT("enemy_of_rarity_in_reach"),
 		 1.0f, 0.0f, 1},
-		{TEXT("SoulCollector_basic_b_b1"), 0, TEXT("class_resource"), TEXT("target_rarity_at_least"), 1.0f, 2.0f, 1},
+		{TEXT("SoulCollector_basic_b_b1"), 0, TEXT("health"), TEXT("target_rarity_at_least"), 1.0f, 0.0f, 1,
+		 TEXT("maximum")},
 		{TEXT("Shadow_basic_d_a0"), 0, TEXT("evasion"), TEXT("opponent_rarity_at_least"), 1.0f, 0.0f, 1},
 		{TEXT("Shadow_keystone_spine_002"), 0, TEXT("fervour_kill_decay_per_second"), TEXT("no_enemy_in_reach"), 1.0f,
 		 0.0f, 1},
-		{TEXT("SoulCollector_basic_b_b2"), 0, TEXT("fervour_kill_decay_per_second"), TEXT("enemy_of_rarity_in_reach"),
-		 -5.0f, 0.0f, 1},
+		{TEXT("SoulCollector_basic_b_b2"), 0, TEXT("attack_speed"), TEXT("enemy_of_rarity_in_reach"), 1.0f, 0.0f, 1},
 	};
 	for (const FExpected& Want : Expected)
 	{
@@ -479,7 +478,7 @@ bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 					  Want.Chance, 0.001f);
 			if (!Row->Action.IsEmpty())
 			{
-				TestEqual(*FString::Printf(TEXT("%s: a flat amount"), Want.Node), Row->FractionOf, FString(TEXT("points")));
+				TestEqual(*FString::Printf(TEXT("%s: the base"), Want.Node), Row->FractionOf, FString(Want.Base));
 			}
 		}
 		TestEqual(*FString::Printf(TEXT("%s %s %s: rows"), Want.Node, Want.StatOrAction, Want.Condition), Found,

@@ -72,14 +72,16 @@ def test_the_full_bar_and_phylactery_read_the_pool_alone():
             f"{signature} counts Chained Souls' share")
 
 
-def test_the_share_is_filled_from_the_reserve_and_long_shadow_counts_it():
+def test_the_share_is_filled_from_the_reserve_and_tolling_count_counts_it():
     asc = read("CataclysmAbilitySystemComponent.cpp")
     fill = body_of(asc, "FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(")
     assert "State.ClassResourceCountedAsHeld = ReservedFervourCountedAsHeld(State.ClassResourceReserved)" in fill
     assert fill.index("State.ClassResourceReserved =") < fill.index("State.ClassResourceCountedAsHeld ="), (
         "the share is worked out before the reserve it is a share of")
-    record = body_of(asc, "void UCataclysmAbilitySystemComponent::NoteFervourThresholdsHeld(")
-    assert "ReservedFervourCountedAsHeld(" in record, "Long Shadow's record does not count Chained Souls' share"
+    # TOLLING COUNT (issue #2951) READS THE CONDITIONS' OWN ANSWER, which the fill above works out on the Fervour counted
+    # as held, so Chained Souls' share counts for it. Long Shadow's record, which this checked until then, was retired.
+    raised = body_of(asc, "int32 UCataclysmAbilitySystemComponent::RaiseFervourThresholdsReached(")
+    assert "CurrentConditions().FervourThresholdsReached" in raised, "Tolling Count does not count Chained Souls' share"
     share = body_of(asc, "float UCataclysmAbilitySystemComponent::ReservedFervourCountedAsHeld(")
     assert "StatWithNoReading(" in share and "StatForSkill(" not in share, (
         "Chained Souls' stat is asked through the pipeline while the conditions are filled")

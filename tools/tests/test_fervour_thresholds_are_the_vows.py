@@ -104,7 +104,7 @@ def test_only_a_capstone_whose_sentence_states_a_clause_may_carry_a_row_with_no_
     assert not gen.capstone_states_a_clause("Unlocks at 25 points spent. Choose one. The choice is permanent.")
 
 
-def test_the_engine_works_the_answer_out_once_and_keeps_long_shadows_record():
+def test_the_engine_works_the_answer_out_once():
     asc = read("AbilitySystem/CataclysmAbilitySystemComponent.cpp")
     fill = body_of(asc, "FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(")
     # SINCE SLICE C3e, ON THE FERVOUR COUNTED AS HELD: Chained Souls' share counts for the thresholds too.
@@ -113,15 +113,8 @@ def test_the_engine_works_the_answer_out_once_and_keeps_long_shadows_record():
         "the conditions fill does not work the thresholds out on the Fervour counted as held")
     reached = body_of(asc, "int32 UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor(")
     # READ WITH NO READING: asking either through the pipeline here would fill the conditions again.
-    assert "StatForSkill(" not in reached and reached.count("StatWithNoReading(") == 2, (
-        "Generous Count's or Long Shadow's stat is asked through the pipeline while the conditions are filled")
-    death = body_of(asc, "FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds(")
-    assert "FervourThresholdLastHeldAtSeconds.Reset()" in death, "a death leaves Long Shadow's record"
-
-    resource = body_of(read("AbilitySystem/CataclysmClassResourceAttributeSet.cpp"),
-                       "void UCataclysmClassResourceAttributeSet::PreAttributeChange(")
-    fall = resource.index("if (NewValue < GetClassResource())")
-    assert "NoteFervourThresholdsHeld(GetClassResource())" in resource[fall:fall + 400], (
-        "the record is not kept just before a fall of Fervour")
+    # ONE STAT SINCE ISSUE #2951: Generous Count's. Long Shadow's seconds, and the record they read, were retired.
+    assert "StatForSkill(" not in reached and reached.count("StatWithNoReading(") == 1, (
+        "Generous Count's stat is asked through the pipeline while the conditions are filled")
     assert "->FervourThresholdStep(UCataclysmRegeneration::StepSeconds)" in read("Character/CataclysmCharacterBase.cpp"), (
         "the regeneration step does not run the thresholds' step")

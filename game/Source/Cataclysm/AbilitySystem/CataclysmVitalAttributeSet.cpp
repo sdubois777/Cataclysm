@@ -2648,9 +2648,6 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			{
 				UCataclysmFervour::GainFromDamage(
 					GetOwningAbilitySystemComponent(), HealthLostToTheBlow + ShieldLostToTheBlow, AssetTags);
-				// AND SOULBOUND'S LOSS, by the HEALTH lost alone (the Death trees' slice C6c, 2026-11-25, as ruled: an
-				// energy shield or mana absorbing the blow costs nothing).
-				UCataclysmFervour::LoseFromDamage(GetOwningAbilitySystemComponent(), HealthLostToTheBlow);
 			}
 
 			// AND UNDYING'S RESTORE, NOW THAT THE BLOW HAS LEFT ONE POINT. Through `TopUp`, so every rule of a heal

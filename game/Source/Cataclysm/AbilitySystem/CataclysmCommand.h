@@ -9,6 +9,7 @@
 
 class ACataclysmCharacterBase;
 class ACataclysmMinion;
+class UAbilitySystemComponent;
 
 /**
  * Why `UCataclysmCommand::Subjugate` would refuse to take a creature, one value for each reason it can refuse, in the
@@ -522,6 +523,52 @@ public:
 	 */
 	static float ReserveFor(const AActor* Commander, float Stated,
 							const FGameplayTagContainer& Tags);
+
+	/**
+	 * What one held aura reserves of this character's MANA: `Stated` less
+	 * `ManaReserveReductionStat`, times one less the summed percent
+	 * `ManaReservePercentLessStat` reads (held to `MostReservePercentLess`), times
+	 * the "more" rows on `ManaReserveStat`, never below `SmallestManaReserve`.
+	 * Ruled 2026-11-27 by the coordinating session under the owner's choice
+	 * "Reserve, don't drain": the Fervour shape, so one rule serves both pools.
+	 *
+	 * ZERO OR LESS STAYS AS STATED, for `ReserveFor`'s reason.
+	 *
+	 * @param Tags  the aura skill's tags, so a row scoped to `Slot.Aura` reaches it
+	 */
+	static float ManaReserveFor(const UAbilitySystemComponent* Holding, float Stated,
+								const FGameplayTagContainer& Tags);
+
+	/**
+	 * The one arithmetic both reserves take: (Stated - Reduction) times one less
+	 * the summed percent, the percent held to `MostReservePercentLess`, times
+	 * `More`, never below `Floor`. Ruled 2026-11-27: "The 75% cap on summed
+	 * reductions applies to BOTH mana and Fervour: one rule in ReserveFor, with
+	 * the floor of 1." A NEGATIVE PERCENT, a row raising the reserve, is not held
+	 * by the cap. Zero or less stays as stated.
+	 */
+	static float ReservedAfterReductions(float Stated, float Reduction, float PercentLess,
+										 float More, float Floor);
+
+	/**
+	 * The most the summed percent reductions take off a reserve, Fervour or mana.
+	 * Ruled 2026-11-27 by the coordinating session; until then a summed 100% or
+	 * more took a Fervour reserve to its floor.
+	 */
+	static constexpr float MostReservePercentLess = 75.0f;
+
+	/** The least an aura reserves however much is taken off it: the Fervour floor's twin, 1. Ruled 2026-11-27. */
+	static constexpr float SmallestManaReserve = 1.0f;
+
+	/** Mana points taken off what each aura reserves: "Each aura you hold reserves 5-15 less mana". No attribute. */
+	static const TCHAR* ManaReserveReductionStat;
+
+	/** Percent LESS each aura reserves, summed across rows, a negative one MORE: "Your auras reserve 15%-30% reduced
+	 *  mana". No attribute, so a negative figure survives. Held to `MostReservePercentLess`. */
+	static const TCHAR* ManaReservePercentLessStat;
+
+	/** The "more" rows on an aura's reserve: "Your auras reserve 30%-50% less mana". No attribute. */
+	static const TCHAR* ManaReserveStat;
 
 	/**
 	 * Record `Reserve` on a follower just made or taken, and cut its commander's

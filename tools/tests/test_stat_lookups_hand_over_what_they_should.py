@@ -410,6 +410,18 @@ INVENTORY = {
         "Issue #2787, branch B. The call it replaced, the skill templates' "
         "PassiveStatFor for The Swarm's minion cap, went with the cap",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(ManaReserveReductionStat), Tags, 0.0f'):
+        'the mana points taken off what one held aura reserves, asked with '
+        "the aura's tags so a row requiring Slot.Aura reaches only auras; no "
+        'attribute, so nought is the fallback, and no blow is in hand. Ruled '
+        "2026-11-27 under the owner's choice to reserve rather than drain",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(ManaReservePercentLessStat), Tags, 0.0f'):
+        'the summed percentage less that one held aura reserves, asked with '
+        "the aura's tags as the flat reduction beside it is; no attribute, so "
+        'a negative row survives and nought is the fallback; held to 75 by '
+        'ReservedAfterReductions. Ruled 2026-11-27',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
      'FName(ReservedFervourSpentPercentStat), Tags, 0.0f'):
         "Bound Offering's share of a reserve held that counts as Fervour "
         "spent, asked with the making skill's tags when a skill made the "
@@ -439,36 +451,10 @@ INVENTORY = {
         "cooldown; no attribute, so nought is the fallback, and no blow is in "
         "hand. The Death trees' slice C3d",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, '
-     'false, Slain'):
-        "Gleaning's chance of one more Fervour, asked at the kill against the "
-        "slain creature as the payment beside it is, so a rarity row is judged; "
-        "no tags, no blow. The Death trees' slice C4a",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(HealthRestoredOnCriticalKillStat), FGameplayTagContainer(), 0.0f'):
         "Clean Kill's share of maximum health on a kill by a critical strike, "
         "asked with no tags because it is for the kill and not a skill; no "
         "attribute, so nought is the fallback. The Death trees' slice C4a",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(HoldRestartedByAnyGainStat), FGameplayTagContainer(), 0.0f'):
-        "Kindred Fires' switch, asked on each rise of the pool with no tags "
-        "because it is for the gain and not a skill; no attribute, so nought is "
-        "the fallback. The Death trees' slice C4b1",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(HoldExtendedOnGainSecondsStat), FGameplayTagContainer(), 0.0f'):
-        "Borrowed Time's seconds, asked on a rise that is not a kill's payment, "
-        "with no tags for the same reason; no attribute, so nought is the "
-        "fallback. The Death trees' slice C4b1",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(DecayGivenBackOnKillSecondsStat), FGameplayTagContainer(), 0.0f'):
-        "Reclaimed's seconds, asked at a kill with no tags because it is for the "
-        "kill and not a skill; no attribute, so nought is the fallback. The Death "
-        "trees' slice C4b2",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(ClaimedWithinSecondsStat), FGameplayTagContainer(), 0.0f'):
-        "Claimed's seconds, asked at a death this character did not make, with no "
-        "tags for the same reason; no attribute, so nought is the fallback. The "
-        "Death trees' slice C4b2",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(FollowerKillsCountAsYoursStat), FGameplayTagContainer(), 0.0f'):
         "Death's Toll's switch, asked at a follower's kill with no tags for the "
@@ -1578,11 +1564,6 @@ INVENTORY = {
         "3 merge, obligation 17), asked in OutOfCombatDecayStep with the "
         "character's own state; no tags: it is the character's.",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(HealthPercentLostPerFervourLostStat), FGameplayTagContainer(), 0.0f'):
-        "Soulbound's percent of maximum health lost per Fervour lost (the "
-        "Death trees' slice C6c), asked in LoseFromDamage; no tags: the loss "
-        "is the character's whatever struck it.",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(OverflowAttackSpeedSecondsStat), FGameplayTagContainer(), 0.0f'):
         "Overflow's window in seconds (the Death trees' slice C6c), asked in "
         "RaisePool when a gain does not fit; no tags: any gain overflows.",
@@ -1666,11 +1647,6 @@ TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
      'FName(KillDecayGraceSecondsStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, Slain'):
         "asked at a kill, for the same reason as the Fervour the kill pays",
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
-     'FName(PerKillExtraChanceStat), FGameplayTagContainer(), 0.0f, -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, '
-     'false, Slain'):
-        "asked at a kill beside the Fervour the kill pays, for the same reason "
-        "(Gleaning, the Death trees' slice C4a)",
 }
 
 

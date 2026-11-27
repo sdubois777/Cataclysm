@@ -685,7 +685,7 @@ A player carrying several damage types will have far more skills available than 
 | Heavy Attack (RMB) | Moderate cooldown. More impactful hits with slower or longer animations. Often the primary damage button. |
 | Special (Q) | Highly varied — traps, deployables, grenades, pets, terrain effects. Defines playstyle more than any other slot. |
 | Support (W) | Buffs, shields, stances, curses, banners. Shorter to medium duration utility. |
-| Aura (E) | Persistent AOE effect centered on the player. Drains mana or HP per second while active. Toggled on and off. |
+| Aura (E) | Persistent AOE effect centered on the player. Reserves maximum mana (health under Water to Blood) while active, and costs nothing per second. Toggled on and off. |
 | Ultimate (R) | High-impact, long cooldown. Reserved for critical moments or boss phases. |
 | Movement (Space) | Gap closers, escapes, repositioning tools. Some also deal damage or deploy effects on use. |
 
@@ -710,7 +710,7 @@ Every skill deals a percentage of **weapon damage**, which means the weapon's ow
 | Basic Attack | 100% | fixed | Free, and on the left mouse button. It is weapon damage. |
 | Movement | 100% | 75–150% | Some also deal damage, so an ordinary hit is the right middle. |
 | Support | 0% | 0–100% | Buffs, shields, stances, curses and banners usually deal none. |
-| Aura | 25% per second | 10–40% | Persistent and toggled, draining resource while active. An aura deals damage only when it states a figure. |
+| Aura | 25% per second | 10–40% | Persistent and toggled, reserving mana while active. An aura deals damage only when it states a figure. |
 | Special | 150% | 100–250% | Traps, deployables, grenades and pets. The most varied slot. |
 | Heavy Attack | 250% | 175–350% | The primary damage button, on a moderate cooldown. |
 | Ultimate | 400% | 300–500% | Long cooldown, reserved for critical moments. |
@@ -735,7 +735,7 @@ At difficulty tier 8 that puts an ordinary hit at 1,681, a Heavy Attack at 4,202
 
 **AN AURA DEALS DAMAGE ONLY IF ITS DESCRIPTION SAYS SO, AND THE FIGURE IS THEN ITS OWN.** Ruled by the owner on 2026-11-24 (issue #2875, "No damage unless stated"). An aura whose row states no Damage Percent deals none, on whichever key it sits: it is its burn, poison, curse, pull or ally bonus and nothing more. It never takes the Aura slot's 25%, which is what an aura that does state damage is typically worth. Seven auras on the Aura key state none: Exposing Light, Miasma, Undertow, Pall of Ending, Unreason, Gnawing Want and, since it was given its shape on 2026-11-25, Blood and Iron. **Conflagration states 10% of weapon damage a second**, below the 15–40% band this table gave until the owner's ruling on issue #2869 opened it to 10%. **Living Pyre**, an aura made for the Ultimate key, **states 66.67% a pulse**: the Ultimate's 400% spread over its six pulses, the owner's ruling of 2026-11-24 ("400% spread over 6 pulses"), still raised 8% by every hit its holder takes.
 
-**THE THREE DAMAGE-TYPE AURAS EACH HELP THEIR SIDE DIFFERENTLY**, the owner's rulings of 2026-11-25: "I think we should avoid making all of the aura's kinda samey". **Pall of Ending** (Death): you, your minions and your allies within it deal 10% more damage, a separate multiplier ("make it 10% more and I'm good with it"), while enemies within it deal 15% less damage while they stay and for 5 seconds after they leave. **Conflagration** (Demonic): when a burning enemy dies within it, its burn passes to the nearest other enemy within 4 metres, as your burn, with the seconds it had left ("Go with A"); its allies' 8% increased damage is gone. **Blood and Iron** (War): enemies within its 10 metres lose 10% of their armour and 15% of their movement speed, and you and your allies within it cannot be slowed and move 15% faster ("Go with A"); it drains mana a second as the other two do. Each enemy effect and the speed last two seconds after an enemy or ally leaves. **And an immunity to Slow now does what it says**: whoever is immune to Slow ignores every movement reduction, which makes Grave Shroud's, Fevered Blood's and Living Pyre's immunity, written in their rows since they were designed, take effect.
+**THE THREE DAMAGE-TYPE AURAS EACH HELP THEIR SIDE DIFFERENTLY**, the owner's rulings of 2026-11-25: "I think we should avoid making all of the aura's kinda samey". **Pall of Ending** (Death): you, your minions and your allies within it deal 10% more damage, a separate multiplier ("make it 10% more and I'm good with it"), while enemies within it deal 15% less damage while they stay and for 5 seconds after they leave. **Conflagration** (Demonic): when a burning enemy dies within it, its burn passes to the nearest other enemy within 4 metres, as your burn, with the seconds it had left ("Go with A"); its allies' 8% increased damage is gone. **Blood and Iron** (War): enemies within its 10 metres lose 10% of their armour and 15% of their movement speed, and you and your allies within it cannot be slowed and move 15% faster ("Go with A"); it reserves mana while on, as every aura does. Each enemy effect and the speed last two seconds after an enemy or ally leaves. **And an immunity to Slow now does what it says**: whoever is immune to Slow ignores every movement reduction, which makes Grave Shroud's, Fevered Blood's and Living Pyre's immunity, written in their rows since they were designed, take effect.
 
   
 
@@ -753,11 +753,11 @@ Two things limit how often a skill is used: a cooldown in seconds, and a mana co
 | Special | 5s | 3–10s | 40 |
 | Movement | 5s | 3–10s | 20 |
 | Ultimate | 20s | 12–40s | 150 |
-| Aura | none | — | 20 per second |
+| Aura | none | — | reserves 50 while on; nothing per use |
 
   
 
-**Only two slots have no cooldown, and each has a different reason.** The Basic Attack has no cooldown because the weapon's attack speed already sets how often it can swing. The Aura is a toggle, so there is nothing to wait for; it is paid for by draining mana instead. Every other slot waits.
+**Only two slots have no cooldown, and each has a different reason.** The Basic Attack has no cooldown because the weapon's attack speed already sets how often it can swing. The Aura is a toggle, so there is nothing to wait for; it is paid for by reserving mana instead. Every other slot waits.
 
   
 
@@ -765,7 +765,7 @@ Two things limit how often a skill is used: a cooldown in seconds, and a mana co
 
   
 
-**The numbers above are quoted at level 100, and scale down with character level.** A cost that never moved would be crippling at level 1 and beneath notice at level 100, because a Ravager's mana pool runs from 40 to 436. Costs ride the default mana progression, so a skill takes the same share of a pool at both ends. What the player reads is still a flat quantity of mana.
+**The numbers above are quoted at level 100, and scale down with character level**, all but the Aura's reservation, which is flat and is described below. A cost that never moved would be crippling at level 1 and beneath notice at level 100, because a Ravager's mana pool runs from 40 to 436. Costs ride the default mana progression, so a skill takes the same share of a pool at both ends. What the player reads is still a flat quantity of mana.
 
   
 
@@ -802,7 +802,33 @@ Using every skill the moment it returns costs 35.75 mana per second, the same fo
 
   
 
-**The Aura is a commitment rather than something left on.** It drains 20 mana per second, so standing still it empties a Ravager's pool in 48 seconds and a Masochist's in 71. The Ritualist's 26.8 per second regeneration covers the drain, so it alone can hold an aura indefinitely.
+**An aura reserves mana while it is on, and costs nothing else.** Switching one on costs nothing, and it costs nothing a second. While it is on it reserves **50 maximum mana at skill level 1**. The aura skill's own level lowers that by the cost factor every skill cost has, 0.9642 a level, to **about 25 at skill level 20**. It never grows with the character's level, which is what makes an aura hard to hold early and easy to hold late.
+
+  
+
+  - **Reserved mana cannot be spent.** Maximum mana is unchanged. Current mana is held at or below the maximum less what is reserved, and regeneration refills only to that ceiling. A condition that reads a percentage of mana reads it against the unreserved maximum.
+  - **Switching an aura on needs room against the maximum**, not against current mana: the unreserved maximum must be at least the aura's reservation.
+  - **A held aura's reservation follows the skill and the stats while it is on.** A skill level gained, or a reduction put on or taken off, moves it at once (ruled 2026-11-27). If it grows past what is unreserved, current mana is held to the new ceiling and the aura stays on; only a reservation larger than the whole maximum switches it off.
+  - **The key an aura sits on does not change its reservation.** A skill keeps the numbers of the slot it was made for on any key (ruled 2026-10-25), and the Ultimate key has no doubling of its own: the draft that said it did was corrected on 2026-11-27. Timed auras such as Living Pyre reserve nothing and pay their slot's cost once.
+  - **Under Water to Blood**, where maximum mana is 0, an aura reserves the same number of health points instead, as every cost converts one for one under that option. The row that lets a skill spend 3 health for each mana when mana is short does not apply to a reservation, which is not a payment that runs short (ruled 2026-11-27).
+  - **Three stats lower it**, in this order: `mana_reserve_reduction`, a flat amount off each aura; `mana_reserve_percent_less`, percents that are summed, a negative one raising the reservation; and `mana_reserve`, "more" rows that each multiply. The summed percent reduction stops at 75%, and no aura reserves less than 1. **The same 75% cap holds for Fervour's summed reduction.**
+
+  
+
+The project owner asked for it on 2026-11-27, choosing "Reserve, don't drain": "I think we may need to adjust the mana cost of auras across the board. I have a lvl 100 character with 500+ mana and I can't even keep my auras going. That feels a bit extreme. It should be difficult to maintain them at low levels, but get easier. Players will likely be running more than one at a time, and right now that's impossible." **The numbers -- 50, the halving by skill level 20, the 75% cap and the floor of 1 -- are the coordinating session's rulings within the owner's delegation**, not the owner's own. The shape is Path of Exile 2's Spirit, a flat reservation lowered by the skill's level. Until 2026-11-27 an aura drained 20 mana a second instead, scaled with character level like every other cost, so at level 100 only the Ritualist's regeneration could keep one on.
+
+  
+
+**How many auras fit, with no gear and no attribute points**, each at skill level 1 and reserving 50, keeping enough unreserved mana for one Ultimate and one Special at that level's costs (190 at level 100). The Default line is every class without its own mana line: the Masochist, Shadow, Soul Collector, Bulwark, Berserker and Saboteur. Mind, gear and the aura's own level all raise these counts, so they are the floor. At high level the six keys and the damage types a character carries bind before mana does.
+
+  
+
+| Class line | Level 1 | Level 20 | Level 50 | Level 100 | First level one fits |
+| :-- | :-: | :-: | :-: | :-: | :-: |
+| Default line | 0 (50 mana) | 2 (164) | 4 (344) | 9 (644) | 5 |
+| Ravager | 0 (40) | 1 (116) | 2 (236) | 4 (436) | 13 |
+| Necromancer | 1 (70) | 3 (241) | 8 (511) | 15 (961) | 1 |
+| Ritualist | 1 (90) | 5 (318) | 11 (678) | 21 (1,278) | 1 |
 
   
 
@@ -891,7 +917,7 @@ The nine generators designed so far, one per class, each granted by that class's
 | Masochist (Demonic) | 1 per 1% of maximum health lost to damage, counting damage its energy shield absorbs as health lost, and 1 per 1% spent as an ability cost | Healing removes Fervour at the same rate, so health regeneration empties it. The energy shield recharging removes none |
 | Ravager (Demonic) | 1 for each enemy an attack hits, and 1 per second for every enemy within 4 metres | Fervour decays at 5 per second after 3 seconds with no enemy within 4 metres, so losing contact empties it |
 | Ritualist (Demonic) | 1 per second for each minion held, and 5 when one of them dies | Nothing. Fervour keeps its default of not decaying, which is what lets a thrall reserve it |
-| Soul Collector (Death) | 1 for each enemy it kills, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss | Fervour decays at 5 per second once 4 seconds have passed since its last kill, or 8 seconds after it kills an Elite or stronger creature, so a pause between kills empties it |
+| Soul Collector (Death) | 1 for each enemy it kills, 3 for an Elite, 5 for a Legendary, 8 for a Herald and 15 for a Boss. Enemies its minions, gadgets and traps kill count as its kills, for its Fervour and for every node of its tree that asks about a kill | Fervour decays at 5 per second once 4 seconds have passed since its last kill, or 8 seconds after it kills an Elite or stronger creature, so a pause between kills empties it |
 | Necromancer (Death) | 1 each time an enemy dies within 10 metres of it or to one of its minions | Nothing. Fervour keeps its default of not decaying, which is what lets its minions reserve it |
 | Shadow (Death) | 10 for each enemy it kills, 25 for an Elite or stronger, and 2 for each critical strike | Fervour drains at 10 per second once 4 seconds have passed since its last kill, so a full bar means a run of quick kills |
 
@@ -2426,7 +2452,7 @@ The following is a sample of War damage type skills across weapon types to illus
 | Shield / Ultimate | Fortress | Become immovable for 5 seconds. 60% damage reduction. Reflect 500% of blocked damage. Allies within 6m take 30% less damage. |
 | Whip / Ultimate | Whirlwind of Steel | Spin the whip for 4 seconds in a 7m zone. Every enemy in range struck repeatedly. Each hit applies bleed. |
 | Greataxe / Ultimate | Annihilator | Channel spin for 3 seconds dealing rapid hits to all in melee range, applying bleed and reducing armor each revolution. |
-| All / Aura | Blood and Iron | Martial dominance aura in 10m. Enemies: -10% armor, -15% move speed. You and allies: cannot be slowed, +15% move speed. Drains mana. |
+| All / Aura | Blood and Iron | Martial dominance aura in 10m. Enemies: -10% armor, -15% move speed. You and allies: cannot be slowed, +15% move speed. Reserves mana while on. |
 
   
 
@@ -2450,7 +2476,7 @@ Every skill below applies burn, which is Demonic's damage over time effect in th
 | Staff / Special | Summon Imp | Summon a lesser imp for 20s that sets what it hits alight. Each reserves 10 Fervour while it is out, and as many stand as the pool holds. |
 | Staff / Support | Quarry | Mark an enemy for 12s. Everything you command attacks it, +30% attack speed. The mark jumps to the nearest enemy on its death. |
 | Staff / Ultimate | Subjugate | 300% weapon damage; if the blow leaves the target below half health it is taken permanently. The blow never kills a target Subjugate could take -- one that is not a boss, not unable to be hurt, not already the player's, with room in the Fervour pool for it: a blow that would kill it leaves it at 1 health, below half, so it is taken (the owner's ruling of 2026-11-22, issue #2856: "ok, well it should still take them even if it would kill"). Anything else the blow can kill as before. A pool with no room for the thrall releases the oldest minions and thralls the player holds until it has some (the owner's ruling of 2026-11-24, "Replace the oldest"), and such a target is held at 1 health too. A thrall is built from its own kind and rarity at the player's level, not the floor's (issue #2868; see "A creature taken by Subjugate is raised by its commander's level too" under the eight shapes). Costs 30 Fervour to cast, where every other Ultimate costs 50 (the owner's ruling of 2026-11-21, issue #2801). A Common thrall reserves 30 Fervour, an Elite 45, a Legendary 60 and a Herald 90 (the owner's ruling of 2026-11-24, "Reserve grows with rarity"). Bosses cannot be taken. A thrall sets alight what it strikes: every blow it lands on a creature, not evaded, lays the burn a summoned imp's swing lays, grown by Subjugate's level at the take and credited to Subjugate (issue #2784). |
-| All / Aura | Conflagration | Hellfire aura in 4m. Enemies take 10% weapon damage a second, burn continuously and lose 15% Demonic resistance. A burning enemy dying in it passes its burn to the nearest other enemy within 4m. Drains mana. |
+| All / Aura | Conflagration | Hellfire aura in 4m. Enemies take 10% weapon damage a second, burn continuously and lose 15% Demonic resistance. A burning enemy dying in it passes its burn to the nearest other enemy within 4m. Reserves mana while on. |
 
   
 
@@ -5439,7 +5465,7 @@ both tables and the pack figures below, so a change to the model fails there rat
 
   
 
-**The archetype decides everything about how a creature behaves.** The Imp is fast at every rarity. The Corrupted Sentinel never moves at any rarity. The Brute is heavily armored even as a Common enemy, which is why armor is not forced to zero at Common; an archetype with no armor simply has none.
+**The archetype decides everything about how a creature behaves.** The Imp is fast at every rarity. The Corrupted Sentinel walks slowly toward the player at every rarity and plants to fire. The Brute is heavily armored even as a Common enemy, which is why armor is not forced to zero at Common; an archetype with no armor simply has none.
 
   
 
@@ -6144,7 +6170,7 @@ The vertical slice will feature five to seven base enemy types from the Demonic 
 | The Succubus | Ranged caster. Debuffs player and buffs nearby allies. A quick bolt every second. |
 | The Hellhound | Aggressive charger that leaves fire trails. Trail can damage other enemies. |
 | The Brute | Heavily armored slow melee. Stomp stun attack. Can be outmaneuvered. |
-| The Corrupted Sentinel | Stationary ranged. Forces the player to stay mobile. |
+| The Corrupted Sentinel | Slow ranged. Walks toward the player and plants to fire. |
 | The Abyssal Warden (Mini-Boss) | Massive stone and lava demon. High damage resistance. |
 | The Gatekeeper (Boss) | Multi-phase towering demon. Each phase introduces new mechanics. |
 
@@ -6734,7 +6760,7 @@ That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy a
 
   
 
-**The Corrupted Sentinel never moves, and everything about it follows from that.** It cannot close a gap, cannot retreat from one, and cannot re-position to see round an obstacle. It has two abilities: a bolt it fires constantly, half a second after deciding to and with no marker, and a shell it lobs over cover on a cooldown. **One the player has taken with Subjugate is the exception**: it follows its commander at a minion's pace, and jogs as it walks (issue #2793).
+**The Corrupted Sentinel walks toward the player, plants and fires.** The owner, 2026-11-27, after a Horde quest dungeon: "same thing with corrupted sentinels. I thought we decided they should be able to move", and asked to choose, "Walk everywhere". That replaced this section's "never moves" and the role "Stationary ranged. Forces the player to stay mobile". **It walks at 2.5 metres per second**, slower than every class (3.5, 4.0 and 4.6), a judgement stated to the owner, so a player can always walk away from one. Once it has noticed the player it walks toward them, **stops where it has a clear shot within its bolt's 14 metres**, and fires; it walks again when the player breaks its line of sight or leaves its range. **It never retreats, and it never fires while it walks**: it stops before any cast begins. Walking it plays its jog; planted, its rooted pose. It has two abilities, unchanged: a bolt it fires constantly, half a second after deciding to and with no marker, and a shell it lobs over cover on a cooldown. **One the player has taken with Subjugate** follows its commander at a minion's pace, and jogs as it walks (issue #2793).
 
   
 
@@ -6753,7 +6779,7 @@ That ceiling is why the stomp is a ring. A slow-turning enemy whose only heavy a
 
   
 
-It gets all of it because it has nothing else. Its movement speed is **0.0 at every rarity**, so a reach shorter than the player's longest would mean any ranged build could stand one metre outside it and kill the creature for nothing. That is the same rule the Brute's rock throw already states from the other side: there is no distance at which an enemy is aware of the player and can do nothing.
+It got all of it when it could not move, and keeps it now that it walks slowly. At 2.5 metres per second it cannot catch a player who walks away, so a reach shorter than the player's longest would still mean any ranged build could stand one metre outside it and back off as it came. That is the same rule the Brute's rock throw already states from the other side: there is no distance at which an enemy is aware of the player and can do nothing.
 
   
 
@@ -6795,7 +6821,7 @@ It gets all of it because it has nothing else. Its movement speed is **0.0 at ev
 
   
 
-**Geometry blocks the bolt and the Sentinel does not fire without line of sight.** Path of Exile's projectiles travel until they hit an enemy or an obstacle, and Diablo IV treats an enemy shooting through a wall as a bug rather than a feature. Breaking line of sight is therefore real counterplay against this creature, and it is the counterplay a stationary enemy should have.
+**Geometry blocks the bolt and the Sentinel does not fire without line of sight.** Path of Exile's projectiles travel until they hit an enemy or an obstacle, and Diablo IV treats an enemy shooting through a wall as a bug rather than a feature. Breaking line of sight is therefore real counterplay against this creature: **without a clear shot it does not fire, and walks toward the player instead** until it has one (since 2026-11-27; until then the game did not check, and only the bolt's flight was blocked).
 
   
 
@@ -6811,15 +6837,15 @@ It gets all of it because it has nothing else. Its movement speed is **0.0 at ev
 
   
 
-**The rest of that answer is in the stat block rather than in an ability.** 2.20 armour share, an energy shield worth 35% of its health, 20% resistance and a 1.30 health share. A creature that cannot retreat has to be able to take hits, and this one survives being stood on rather than preventing it.
+**The rest of that answer is in the stat block rather than in an ability.** 2.20 armour share, an energy shield worth 35% of its health, 20% resistance and a 1.30 health share. A creature that does not retreat has to be able to take hits, and this one survives being stood on rather than preventing it.
 
   
 
-#### **The mortar is the only answer a creature that cannot walk has to cover**
+#### **The mortar answers cover before it has walked round it**
 
   
 
-A Sentinel that only shoots in straight lines is answered by one pillar, and it cannot step around it. The mortar is what stops that being the end of the fight.
+A Sentinel that only shoots in straight lines is answered by one pillar until it has walked round it, which at 2.5 metres per second takes a while. The mortar is what keeps the pressure on in the meantime: it is lobbed, and so is not one of the shots a wall refuses it.
 
   
 

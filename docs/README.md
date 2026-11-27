@@ -64,7 +64,7 @@ heading row describe their layout instead. Issue #1884.
 | Dungeon Modifiers | 123 | Cataclysm Type, Modifier Name, Weight, Description |
 | Gems | 28 | Column 1, Everyday Gemstone, Quality Gemstone, Superb Gemstone, Masterful Gemstone, Legendary Gemstone, Mythical Gemstone, Ascendant Gemstone, Cataclysmic Gemstone, Type, Stat, Value Kind |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3, Tier 1 Gold, Tier 2 Gold, Tier 3 Gold, Gold Note |
-| Enchantments | 380 | Positives, Type, Weight, Column 4, Rolls Down, Negatives, Type, Weight, Tags, Rolls Down, Positive Set, Negative Set |
+| Enchantments | 383 | Positives, Type, Weight, Column 4, Rolls Down, Negatives, Type, Weight, Tags, Rolls Down, Positive Set, Negative Set |
 | **Tags** | **149** | **Tag Name, Description** |
 | Enemy Modifiers | 11 | Demonic Modifiers, Death Modifiers, War Modifiers, Pestilence Modifiers, Famine Modifiers, Celestial Modifiers, Chaos Modifiers, Void Modifiers, Generic Modifiers |
 | Weapon Skills | 408 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost, Fervour Cost |
@@ -78,7 +78,7 @@ heading row describe their layout instead. Issue #1884.
 | Minion Types | 16 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags, Explosion Percent Of Own Damage |
 | Minion Scaling | 2 | Attribute, Requires Tag, Stat, Percent Per Point |
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
-| Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown, Cooldown Lowest, Cooldown Highest, Mana Cost, Mana On Hit, Note, Fervour Cost |
+| Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown, Cooldown Lowest, Cooldown Highest, Mana Cost, Mana On Hit, Note, Fervour Cost, Mana Reserved |
 | Element Visuals | 8 | Element Tag, Primary, Secondary, Emissive Multiplier, Spawn Rate Scale, Velocity Scale |
 | Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Colour, Note |
 | Item Sockets | 12 | Slot, Hands, Max Sockets, Note |
@@ -86,9 +86,9 @@ heading row describe their layout instead. Issue #1884.
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Gold Drops, Gem Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
 | Gold | 8 | Difficulty Tier, Gold Per Pile, More Per Floor, Note |
-| Passive Effects | 998 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points, Scale Max Steps, Per Point From, Condition 2, Condition Value 2, Action Event, Stack Seconds, Action, Max Points, Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment, Damage Share, Chance Percent |
+| Passive Effects | 1007 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points, Scale Max Steps, Per Point From, Condition 2, Condition Value 2, Action Event, Stack Seconds, Action, Max Points, Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment, Damage Share, Chance Percent |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale, Grip X, Grip Y, Grip Z, Grip Pitch, Grip Yaw, Grip Roll |
-| Enchantment Effects | 709 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High, Stack Seconds High, Condition 2, Condition Value 2, Condition Value High, Trigger Cooldown, Event Value, Ailment, Damage Share |
+| Enchantment Effects | 712 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High, Stack Seconds High, Condition 2, Condition Value 2, Condition Value High, Trigger Cooldown, Event Value, Ailment, Damage Share |
 
 **A row is one entity on eleven of these sheets and not on the other six.** Do not
 read a row count as a count of the things the sheet describes without checking

@@ -331,9 +331,9 @@ bool FCataclysmPopulationEntranceTest::RunTest(const FString& Parameters)
 	// asks the separate question, against the creatures rather than against
 	// itself.
 	//
-	// 1,400 CM IS THE CORRUPTED SENTINEL'S, which is the furthest any creature
-	// placed on a floor notices a target from. The constant is set to twice it;
-	// this fails if it ever drops below once.
+	// THE CORRUPTED SENTINEL'S NOTICE RADIUS, 1,600 CM SINCE IT BEGAN TO WALK
+	// (2026-11-27), is the furthest any creature placed on a floor notices a
+	// target from. The constant is twice it; this fails if it ever drops below once.
 	const float KeepOutCm = FCataclysmFloorPopulator::LeastCellsFromEntrance
 		* FCataclysmFloorGenerator::CellSizeCm;
 

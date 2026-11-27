@@ -693,7 +693,181 @@ float UCataclysmAbilitySystemComponent::HealthReserved() const
 	// AT LEAST ONE POINT STAYS UNRESERVED, so "99% reserved" on a small maximum,
 	// or four minions at 500 each, never leaves a character that cannot hold any
 	// health at all. A judgement under the owner's delegation, 2026-09-30.
-	return FMath::Clamp(Points + Whole * Share / 100.0f, 0.0f, FMath::Max(0.0f, Whole - 1.0f));
+	// AND WHAT AURAS HOLD UNDER WATER TO BLOOD, ruled 2026-11-27: with no mana pool an aura reserves health, the same
+	// number, as every cost converts (`UCataclysmGameplayAbility::CostPool`).
+	return FMath::Clamp(Points + Whole * Share / 100.0f + HealthReservedByAuras(), 0.0f,
+						FMath::Max(0.0f, Whole - 1.0f));
+}
+
+void UCataclysmAbilitySystemComponent::HoldAuraReservation(const UObject* Holder, FGameplayAbilitySpecHandle Handle,
+														   float Amount, bool bFromHealth)
+{
+	if (!Holder)
+	{
+		return;
+	}
+	ReleaseAuraReservation(Holder);
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+	FAuraReservation& Held = AuraReservations.AddDefaulted_GetRef();
+	Held.Holder = Holder;
+	Held.Handle = Handle;
+	Held.Amount = Amount;
+	Held.bFromHealth = bFromHealth;
+
+	// THE EXCESS IS LOST AT ONCE, as a Fervour reserve's is.
+	if (bFromHealth)
+	{
+		HoldHealthToUnreserved();
+	}
+	else
+	{
+		HoldManaToUnreserved();
+	}
+}
+
+void UCataclysmAbilitySystemComponent::ReleaseAuraReservation(const UObject* Holder)
+{
+	// AND ANY HOLD WHOSE HOLDER IS GONE, which can no longer release its own.
+	AuraReservations.RemoveAll([Holder](const FAuraReservation& Held)
+	{
+		return !Held.Holder.IsValid() || Held.Holder.Get() == Holder;
+	});
+}
+
+int32 UCataclysmAbilitySystemComponent::RepriceAuraReservations()
+{
+	if (AuraReservations.IsEmpty())
+	{
+		return 0;
+	}
+	// EACH HOLD ASKED AGAIN, by the ability that holds it, the way it was asked at switch-on: its designed slot's
+	// figure, its skill's level now, the reduction rows now. AND THE POOL AGAIN, so Water to Blood taken or given up
+	// moves the hold to the pool every cost of the character now comes from.
+	const bool bHealthPool = UCataclysmSkillTemplate::ManaPoolBecomesHealth(this);
+	for (FAuraReservation& Held : AuraReservations)
+	{
+		if (const UCataclysmGameplayAbility* Ability = Cast<const UCataclysmGameplayAbility>(Held.Holder.Get()))
+		{
+			Held.Amount = Ability->ManaReservationFor(this);
+			Held.bFromHealth = bHealthPool;
+		}
+	}
+	const int32 LetGo = ReleaseAurasThatNoLongerFit();
+	HoldManaToUnreserved();
+	HoldHealthToUnreserved();
+	return LetGo;
+}
+
+float UCataclysmAbilitySystemComponent::AuraReservationOf(const UObject* Holder) const
+{
+	const FAuraReservation* Held = AuraReservations.FindByPredicate([Holder](const FAuraReservation& Each)
+	{
+		return Holder && Each.Holder.Get() == Holder;
+	});
+	return Held ? Held->Amount : 0.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsAuraReservation(const UObject* Holder) const
+{
+	return Holder && AuraReservations.ContainsByPredicate([Holder](const FAuraReservation& Held)
+	{
+		return Held.Holder.Get() == Holder;
+	});
+}
+
+float UCataclysmAbilitySystemComponent::SumOfAuraReservations(bool bFromHealth) const
+{
+	float Sum = 0.0f;
+	for (const FAuraReservation& Held : AuraReservations)
+	{
+		if (Held.Holder.IsValid() && Held.bFromHealth == bFromHealth)
+		{
+			Sum += Held.Amount;
+		}
+	}
+	return Sum;
+}
+
+float UCataclysmAbilitySystemComponent::HealthReservedByAuras() const
+{
+	return SumOfAuraReservations(/*bFromHealth=*/true);
+}
+
+float UCataclysmAbilitySystemComponent::ManaReserved() const
+{
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(SumOfAuraReservations(/*bFromHealth=*/false), 0.0f,
+						FMath::Max(0.0f, GetNumericAttribute(Maximum)));
+}
+
+float UCataclysmAbilitySystemComponent::UnreservedMaximumMana() const
+{
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, GetNumericAttribute(Maximum) - ManaReserved());
+}
+
+void UCataclysmAbilitySystemComponent::HoldManaToUnreserved()
+{
+	const FGameplayAttribute Mana = UCataclysmVitalAttributeSet::GetManaAttribute();
+	if (!HasAttributeSetForAttribute(Mana))
+	{
+		return;
+	}
+	const float Ceiling = UnreservedMaximumMana();
+	if (GetNumericAttribute(Mana) > Ceiling)
+	{
+		SetNumericAttributeBase(Mana, Ceiling);
+	}
+}
+
+int32 UCataclysmAbilitySystemComponent::ReleaseAurasThatNoLongerFit()
+{
+	int32 Cancelled = 0;
+	for (const bool bFromHealth : {false, true})
+	{
+		const FGameplayAttribute Maximum = bFromHealth ? UCataclysmVitalAttributeSet::GetMaxHealthAttribute()
+													   : UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+		if (!HasAttributeSetForAttribute(Maximum))
+		{
+			continue;
+		}
+		// HEALTH KEEPS ONE POINT UNRESERVED, as `HealthReserved` holds it; mana may be reserved whole.
+		const float Room = GetNumericAttribute(Maximum) - (bFromHealth ? 1.0f : 0.0f);
+		while (SumOfAuraReservations(bFromHealth) > Room + KINDA_SMALL_NUMBER)
+		{
+			const int32 Newest = AuraReservations.FindLastByPredicate([bFromHealth](const FAuraReservation& Held)
+			{
+				return Held.Holder.IsValid() && Held.bFromHealth == bFromHealth;
+			});
+			if (Newest == INDEX_NONE)
+			{
+				break;
+			}
+			const FAuraReservation Held = AuraReservations[Newest];
+			// THE HOLD GOES FIRST, so an aura whose end does not reach its own release cannot hold this loop.
+			AuraReservations.RemoveAt(Newest);
+			// SAID, at `Log`, because nothing else on screen says why an aura went out. Ruled 2026-11-27.
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("AURA LET GO: %s's %s no longer fits: its auras reserve %.1f %s with this one, of a maximum of "
+						"%.1f."),
+				   *GetNameSafe(GetOwner()), *GetNameSafe(Held.Holder.Get()), SumOfAuraReservations(bFromHealth) + Held.Amount,
+				   bFromHealth ? TEXT("health") : TEXT("mana"), GetNumericAttribute(Maximum));
+			CancelAbilityHandle(Held.Handle);
+			++Cancelled;
+		}
+	}
+	return Cancelled;
 }
 
 float UCataclysmAbilitySystemComponent::UnreservedMaximumHealth() const
@@ -1141,10 +1315,6 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND THE SECONDS UNBROKEN CHAIN ADDS TO A CHAIN OF KILLS (the Death trees' slice C6c, 2026-11-25).
 	State.KillChainSeconds = KillChainSecondsHeld();
 
-	// AND WHETHER A GAIN BEING SIZED NOW IS NOT A KILL'S PAYMENT, for Any Fuel's `fervour_gain_not_from_a_kill`. The
-	// Death trees' slice C4b1 (2026-11-25).
-	State.bFervourGainNotFromAKill = !IsPayingForAKill();
-
 	// AND WHETHER THE KILL WHOSE ROWS ARE ACTING WAS MADE BY A HIT, for Passed On's `killing_blow_was_a_hit`. The Death
 	// trees' slice C4c1 (2026-11-25).
 	State.bKillingBlowWasAHit = bActingOnAKillByAHit;
@@ -1349,7 +1519,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// Read by `mana_below`. A maximum of zero leaves it unknown rather than
 		// at zero percent: a character with no mana pool has nothing to run low
 		// on, and every cost it pays already comes from health.
-		const float MaxMana = ForMana->GetMaxMana();
+		//
+		// AGAINST THE UNRESERVED MAXIMUM SINCE 2026-11-27, ruled by the coordinating session: "Conditions that read a
+		// mana percentage read the unreserved maximum." Mana an aura holds can never be filled, so a character holding
+		// auras and full of what it may hold reads full, as in Path of Exile 1. The maximum itself, above, is unchanged.
+		const float MaxMana = UnreservedMaximumMana();
 		State.ManaPercent = MaxMana > 0.0f
 			? FMath::Clamp(ForMana->GetMana() / MaxMana * 100.0f, 0.0f, 100.0f)
 			: -1.0f;
@@ -1730,6 +1904,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// spent, all filled above. The Death trees' slices C3d and C3e (2026-11-25).
 	State.FervourThresholdsReached =
 		FervourThresholdsReachedFor(UCataclysmStatPipeline::FervourHeldCounted(State), State.ClassPointsSpent);
+
+	// AND WHETHER THE FERVOUR HELD ADDS DAMAGE: not while the Soul Collector holds Death Made Flesh, issue #2951. With no
+	// reading, as the thresholds' stats are, because the conditions are being filled and the stat names no condition.
+	State.bFervourHeldAddsDamage = StatWithNoReading(FName(UCataclysmFervour::FervourHeldAddsNoDamageStat)) <= 0.0f;
 
 	return State;
 }
@@ -3648,8 +3826,6 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// C3c, 2026-11-25). A share spent before a death does not arrive after the revival.
 	FervourToReturn.Reset();
 	FervourLethalSaveNextAllowedSeconds = -1.0f;
-	// AND LONG SHADOW'S RECORD, so a threshold held before a death does not linger after the revival (slice C3d).
-	FervourThresholdLastHeldAtSeconds.Reset();
 	// AND WHO HAS STRUCK IT, so a revived character is "not yet struck" by
 	// everyone again. Issue #1815.
 	StruckBy.Reset();
@@ -4591,7 +4767,7 @@ void UCataclysmAbilitySystemComponent::NoteOwnKill(float GraceSeconds)
 	// THE HOLD NEVER SHORTENS: see the header. A grace of nothing still holds until now, which is "decays from now".
 	KillDecayHeldUntilSeconds = FMath::Max(KillDecayHeldUntilSeconds, Now + FMath::Max(0.0f, GraceSeconds));
 
-	// AND THE LENGTH OF THE HOLD THIS KILL BEGAN, the full length Kindred Fires restarts and Borrowed Time is capped at.
+	// AND THE LENGTH OF THE HOLD THIS KILL BEGAN, the full length the Shadow's Keep the Count is capped at.
 	// The Death trees' slice C4b1 (2026-11-25).
 	LastKillDecayGraceSeconds = FMath::Max(0.0f, GraceSeconds);
 }
@@ -4618,17 +4794,6 @@ bool UCataclysmAbilitySystemComponent::KillDecayIsHeld() const
 	}
 
 	return KillDecayHeldUntilSeconds >= 0.0f && World->GetTimeSeconds() < KillDecayHeldUntilSeconds;
-}
-
-void UCataclysmAbilitySystemComponent::RestartKillDecayHold(float Seconds)
-{
-	const UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-	KillDecayHeldUntilSeconds =
-		FMath::Max(KillDecayHeldUntilSeconds, World->GetTimeSeconds() + FMath::Max(0.0f, Seconds));
 }
 
 void UCataclysmAbilitySystemComponent::ExtendKillDecayHold(float Seconds, float FullLengthSeconds)
@@ -4828,19 +4993,6 @@ int32 UCataclysmAbilitySystemComponent::FervourOverflowStacksHeld() const
 		: 0;
 }
 
-int32 UCataclysmAbilitySystemComponent::AccumulateHealthLostForFervour(float PercentLost, float PercentPerFervour)
-{
-	if (PercentLost <= 0.0f || PercentPerFervour <= 0.0f)
-	{
-		return 0;
-	}
-	HealthPercentLostTowardsFervour += PercentLost;
-	// A TEN-THOUSANDTH ABOVE, so 1.9999998 of 2 pays, as `TimesSizedByEventAmount` allows.
-	const int32 Whole = FMath::FloorToInt(HealthPercentLostTowardsFervour / PercentPerFervour + 1.0e-4f);
-	HealthPercentLostTowardsFervour = FMath::Max(0.0f, HealthPercentLostTowardsFervour - Whole * PercentPerFervour);
-	return Whole;
-}
-
 void UCataclysmAbilitySystemComponent::NotePoisonBeganBy(const AActor* Applier)
 {
 	const UWorld* World = GetWorld();
@@ -4916,32 +5068,16 @@ void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
 	{
 		return;
 	}
-	const float Now = World->GetTimeSeconds();
-	FervourDecayed.RemoveAll([Now](const TPair<float, float>& Entry)
+	// ONE EVENT FOR EACH 5 TAKEN, counted across the steps that took them: Unquiet Souls and Grave Patience, issue
+	// #2951. The small allowance keeps four steps of 1.25 from summing to just under 5.
+	FervourDecayedTowardAnEvent += Amount;
+	while (FervourDecayedTowardAnEvent >= FervourDecayedPerEvent - KINDA_SMALL_NUMBER)
 	{
-		return Entry.Key < Now - FervourDecayedKeptSeconds;
-	});
-	FervourDecayed.Emplace(Now, Amount);
-}
-
-float UCataclysmAbilitySystemComponent::TakeFervourDecayedWithin(float Seconds)
-{
-	const UWorld* World = GetWorld();
-	if (!World || Seconds <= 0.0f)
-	{
-		return 0.0f;
+		FervourDecayedTowardAnEvent = FMath::Max(0.0f, FervourDecayedTowardAnEvent - FervourDecayedPerEvent);
+		// THE NAME WRITTEN OUT, as every raise spells its event: `tools/tests/test_pool_action_names_match_the_engine.py`
+		// reads the calls as text. `FervourDecayedEvent` holds the same name for the tests.
+		ActOnEvent(FName(TEXT("fervour_decayed")), nullptr, FervourDecayedPerEvent);
 	}
-	const float Since = World->GetTimeSeconds() - Seconds;
-	float Taken = 0.0f;
-	for (const TPair<float, float>& Entry : FervourDecayed)
-	{
-		if (Entry.Key >= Since)
-		{
-			Taken += Entry.Value;
-		}
-	}
-	FervourDecayed.Reset();
-	return Taken;
 }
 
 float UCataclysmAbilitySystemComponent::StatAsIfAgainstRarity(FName Stat, int32 RarityStep, float Fallback) const
@@ -4988,8 +5124,6 @@ void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGam
 
 const TCHAR* UCataclysmAbilitySystemComponent::FervourSpentReturnedPercentStat = TEXT("fervour_spent_returned_percent");
 const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdReductionStat = TEXT("fervour_threshold_reduction");
-const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdLingerSecondsStat =
-	TEXT("fervour_threshold_linger_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownsRecoverFasterPercentStat =
 	TEXT("cooldowns_recover_faster_percent");
 const TCHAR* UCataclysmAbilitySystemComponent::ReservedFervourCountsAsHeldPercentStat =
@@ -5018,8 +5152,6 @@ int32 UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor(float Held, 
 		return -1;
 	}
 	const float Reduction = FMath::Max(0.0f, StatWithNoReading(FName(FervourThresholdReductionStat)));
-	const float Linger = StatWithNoReading(FName(FervourThresholdLingerSecondsStat));
-	const float Now = World->GetTimeSeconds();
 	int32 Reached = 0;
 	for (int32 Index = 0; Index < CataclysmFervourThresholds::Count(); ++Index)
 	{
@@ -5027,12 +5159,7 @@ int32 UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor(float Held, 
 		{
 			continue;
 		}
-		const bool bHeld = Held >= CataclysmFervourThresholds::Figure(Index) - Reduction;
-		const float LastHeld = FervourThresholdLastHeldAtSeconds.IsValidIndex(Index)
-			? FervourThresholdLastHeldAtSeconds[Index]
-			: -1.0f;
-		const bool bLingering = Linger > 0.0f && LastHeld >= 0.0f && Now - LastHeld < Linger;
-		if (bHeld || bLingering)
+		if (Held >= CataclysmFervourThresholds::Figure(Index) - Reduction)
 		{
 			Reached |= 1 << Index;
 		}
@@ -5040,30 +5167,43 @@ int32 UCataclysmAbilitySystemComponent::FervourThresholdsReachedFor(float Held, 
 	return Reached;
 }
 
-void UCataclysmAbilitySystemComponent::NoteFervourThresholdsHeld(float Held)
+int32 UCataclysmAbilitySystemComponent::RaiseFervourThresholdsReached()
 {
 	const UWorld* World = GetWorld();
-	if (!World || Held < 0.0f)
+	if (!World)
 	{
-		return;
+		return 0;
 	}
-	const float Reduction = FMath::Max(0.0f, StatWithNoReading(FName(FervourThresholdReductionStat)));
-	if (FervourThresholdLastHeldAtSeconds.Num() < CataclysmFervourThresholds::Count())
+	// WHAT IS REACHED NOW, EXACTLY AS EVERY ROW READS IT: the conditions' own answer, opened by points spent and reached
+	// by the Fervour counted as held. A lookup with no answer counts as none reached.
+	const int32 Reached = FMath::Max(0, CurrentConditions().FervourThresholdsReached);
+	const int32 Before = FervourThresholdsReachedAtLastStep;
+	FervourThresholdsReachedAtLastStep = Reached;
+	if (Before < 0)
 	{
-		FervourThresholdLastHeldAtSeconds.Init(-1.0f, CataclysmFervourThresholds::Count());
+		return 0;
 	}
-	// AND CHAINED SOULS' SHARE, so the record counts what the thresholds count (the Death trees' slice C3e). Nought, and
-	// no search for followers, for a character without the node.
-	const float Counted = Held + (StatWithNoReading(FName(ReservedFervourCountsAsHeldPercentStat)) > 0.0f
-		? ReservedFervourCountedAsHeld(UCataclysmCommand::ReservedFervourOf(GetAvatarActor()))
-		: 0.0f);
+	if (FervourThresholdRaisedAtSeconds.Num() < CataclysmFervourThresholds::Count())
+	{
+		FervourThresholdRaisedAtSeconds.Init(-1.0f, CataclysmFervourThresholds::Count());
+	}
+	const float Now = World->GetTimeSeconds();
+	int32 Raised = 0;
 	for (int32 Index = 0; Index < CataclysmFervourThresholds::Count(); ++Index)
 	{
-		if (Counted >= CataclysmFervourThresholds::Figure(Index) - Reduction)
+		const int32 Bit = 1 << Index;
+		const bool bRoseToIt = (Reached & Bit) && !(Before & Bit);
+		const float Last = FervourThresholdRaisedAtSeconds[Index];
+		if (!bRoseToIt || (Last >= 0.0f && Now - Last < FervourThresholdReachedEverySeconds))
 		{
-			FervourThresholdLastHeldAtSeconds[Index] = World->GetTimeSeconds();
+			continue;
 		}
+		FervourThresholdRaisedAtSeconds[Index] = Now;
+		++Raised;
+		// THE NAME WRITTEN OUT, as every raise spells its event. `FervourThresholdReachedEvent` holds the same name.
+		ActOnEvent(FName(TEXT("fervour_threshold_reached")));
 	}
+	return Raised;
 }
 
 float UCataclysmAbilitySystemComponent::FervourThresholdStep(float StepSeconds)
@@ -5071,7 +5211,7 @@ float UCataclysmAbilitySystemComponent::FervourThresholdStep(float StepSeconds)
 	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
 	if (HasAttributeSetForAttribute(Pool))
 	{
-		NoteFervourThresholdsHeld(GetNumericAttribute(Pool));
+		RaiseFervourThresholdsReached();
 	}
 
 	// THE FOURTH VOW'S RATE: each step, that share of the step's seconds off every running cooldown once more, through
@@ -5122,8 +5262,8 @@ float UCataclysmAbilitySystemComponent::ReturnFervourDue()
 	{
 		return 0.0f;
 	}
-	// A GAIN, THROUGH THE ONE HELPER EVERY GAIN TO THE POOL TAKES, so Kindred Fires and Borrowed Time see it (the Death
-	// trees' slice C4b1, as ruled: Cinders Kept's return is a gain).
+	// A GAIN, THROUGH THE ONE HELPER EVERY GAIN TO THE POOL TAKES (the Death trees' slice C4b1, as ruled: Cinders Kept's
+	// return is a gain).
 	UCataclysmFervour::RaisePool(this, Due);
 	return GetNumericAttribute(Pool) - Before;
 }
@@ -6486,6 +6626,13 @@ bool UCataclysmAbilitySystemComponent::EventThresholdCrossed(
 	if (Action.Event == FName(TEXT("fervour_spent")))
 	{
 		return Action.EventValue <= 0.0f || EventAmount >= Action.EventValue;
+	}
+	// "AN ENEMY THAT DIES WITHIN 6 METRES OF YOU": a row on `nearby_death` reaches its Event Value in metres, and 3 with
+	// none, which is where every such row stood before rows could say. The event carries the death's distance. Gathered
+	// Souls, the Soul Collector keystone rework (issue #2951, 2026-11-27).
+	if (Action.Event == FName(TEXT("nearby_death")))
+	{
+		return EventAmount <= (Action.EventValue > 0.0f ? Action.EventValue : NearbyDeathDefaultMetres);
 	}
 	if (Action.Event != HealthFallsBelowEvent)
 	{
@@ -9159,7 +9306,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
 			AActor* Struck = (bLanded && Self && Action.Percent > 0.0f && !UCataclysmSkillEffects::IsDead(Self))
 				? MarkedOrStrongestNear(StrongestNearReachCm) : nullptr;
-			if (Struck && Struck != EventTarget && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			// AND ON A ROLL OF ITS CHANCE, WHEN THE ROW STATES ONE: the Soul Collector's Gleaning, "Each kill has a 5% chance
+			// per point to strike the strongest enemy within 10 metres" (issue #2951). A row stating none strikes every time.
+			if (Struck && Struck != EventTarget && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action)
+				&& ChancePercentComesUp(Action.ChancePercent))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				NoteTriggerFired(Action);
@@ -10153,6 +10303,8 @@ void UCataclysmAbilitySystemComponent::NoteExecuteMade(FName TriggerKey, float T
 const TCHAR* UCataclysmAbilitySystemComponent::CullPercentPerSoulStrikeStackStat =
 	TEXT("cull_percent_per_soul_strike_stack");
 const TCHAR* UCataclysmAbilitySystemComponent::SoulPickedUpEvent = TEXT("soul_picked_up");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourDecayedEvent = TEXT("fervour_decayed");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdReachedEvent = TEXT("fervour_threshold_reached");
 
 int32 UCataclysmAbilitySystemComponent::SoulStrikeStacksHeld() const
 {
@@ -11227,8 +11379,7 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 
 	// A GAIN OF CLASS RESOURCE REACHES `UCataclysmFervour::RaisePool` THROUGH `TopUp` BELOW, as every other gain to that
 	// pool does: `TopUp` hands the whole gain of that pool to `RaisePool` (since commit 61a254cbe, Overflow hears every
-	// gain), which holds it to the full bar after reserves (`MaximumClassResourceAsked`) and lets Kindred Fires and
-	// Borrowed Time see it. As ruled by the coordinating session in the Death trees' slice C6b3 (2026-11-25), for a
+	// gain), which holds it to the full bar after reserves (`MaximumClassResourceAsked`). As ruled by the coordinating session in the Death trees' slice C6b3 (2026-11-25), for a
 	// `points` row and the three enchantment rows that grant class resource; scaled by `class_resource_generation` above.
 	// THIS FUNCTION HAD A BRANCH OF ITS OWN THAT CALLED `RaisePool` until issue #2936: it did what `TopUp` does, so a
 	// guard break on it changed nothing any test could see. The one difference its removal makes is `TopUp`'s own first

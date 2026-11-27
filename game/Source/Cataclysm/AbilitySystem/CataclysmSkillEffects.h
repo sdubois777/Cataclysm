@@ -3149,7 +3149,7 @@ public:
 	 *
 	 * ONE RULE'S DRAIN AND NOTHING ELSE. The sentence says "all mana-draining
 	 * effects"; by ruling the flag stops the mana loss of Suffering Aura only.
-	 * A skill's cost, an aura's upkeep and every other loss of mana are paid as
+	 * A skill's cost and every other loss of mana are paid as
 	 * before, and none of them reads this. The health that rule takes is not
 	 * stopped either: the sentence says mana.
 	 *

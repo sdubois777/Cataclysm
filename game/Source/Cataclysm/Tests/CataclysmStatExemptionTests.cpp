@@ -6173,8 +6173,11 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and 2% of ten thousand with it, so LifeOnce really reads it"), Held, 200.0f, 0.01f);
 	}
 
-	/** `siphon_fervour_per_second`, read by `FCataclysmSiphon::FervourOnce`. */
-	void ProbeSiphonFervour(FAutomationTestBase& Test)
+	/**
+	 * `siphon_drain_weapon_percent` scaled by the Fervour held: Hungering Siphon's shape, 0.5% of weapon damage a second
+	 * for every 5 Fervour (issue #2951). THE CONTROL IS THE SAME HOLDER AT NO FERVOUR, which deals nothing.
+	 */
+	void ProbeScaledSiphonDrain(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Test.TestNotNull(TEXT("a world"), World))
@@ -6184,16 +6187,23 @@ namespace CataclysmStatExemptionTest
 		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
 		UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
-		if (!System)
+		if (!System || !RavagerReworkCreatureNear(Test, World))
 		{
 			return;
 		}
-		SiphonLines(Holder, {SiphonSixMetres()});
-		const float Plain = FCataclysmSiphon::FervourOnce(System);
-		SiphonLines(Holder, {SiphonSixMetres(), SiphonStat(FCataclysmSiphon::FervourStat, 3.0f)});
-		const float Held = FCataclysmSiphon::FervourOnce(System);
-		Test.TestEqual(TEXT("siphon_fervour_per_second: control, no Fervour without it"), Plain, 0.0f, 0.001f);
-		Test.TestEqual(TEXT("and 3 with it, so FervourOnce really reads it"), Held, 3.0f, 0.01f);
+		Holder->SetAttackDamage(100.0f);
+		SiphonLines(Holder, {SiphonSixMetres(),
+							 TPair<FName, FCataclysmStatModifier>(
+								 FName(FCataclysmSiphon::DrainStat),
+								 SiphonRow(0.5f, ECataclysmStatScale::PerPointOfClassResourceHeld, 5.0f))});
+		SiphonStep(World, Holder);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+		const float Empty = FCataclysmSiphon::DrainOnce(Holder);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 100.0f);
+		const float Holding = FCataclysmSiphon::DrainOnce(Holder);
+		Test.TestEqual(TEXT("siphon_drain_weapon_percent by the Fervour held: control, nothing at none"), Empty, 0.0f,
+					   0.001f);
+		Test.TestTrue(TEXT("and damage at 100, so it is asked with the holder's state"), Holding > 0.0f);
 	}
 
 	/** `siphon_radius_metres` scaled by the Fervour held: Pall of Souls' shape, 100% more radius at 50 Fervour. */
@@ -6251,33 +6261,6 @@ namespace CataclysmStatExemptionTest
 					   Alone, 0.0f, 0.001f);
 		Test.TestEqual(TEXT("and 1% of ten thousand with one in it, so it is asked with the count"), WithOne, 100.0f,
 					   0.01f);
-	}
-
-	/** `siphon_fervour_per_second` scaled by the enemies in the Siphon: Living Harvest's shape. */
-	void ProbeScaledSiphonFervour(FAutomationTestBase& Test)
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (!Test.TestNotNull(TEXT("a world"), World))
-		{
-			return;
-		}
-		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
-		UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
-		if (!System || !RavagerReworkCreatureNear(Test, World))
-		{
-			return;
-		}
-		SiphonLines(Holder, {SiphonSixMetres(),
-							 TPair<FName, FCataclysmStatModifier>(
-								 FName(FCataclysmSiphon::FervourStat),
-								 SiphonRow(2.0f, ECataclysmStatScale::PerEnemyInSiphon, 1.0f))});
-		const float Alone = FCataclysmSiphon::FervourOnce(System);
-		SiphonStep(World, Holder);
-		const float WithOne = FCataclysmSiphon::FervourOnce(System);
-		Test.TestEqual(TEXT("siphon_fervour_per_second by the enemies in the Siphon: control, nothing before the step"),
-					   Alone, 0.0f, 0.001f);
-		Test.TestEqual(TEXT("and 2 with one in it, so it is asked with the count"), WithOne, 2.0f, 0.01f);
 	}
 
 	// DECLARED HERE, AHEAD OF THE TABLE, because they are defined further down. Found by the Death trees' slice C6b4
@@ -6589,7 +6572,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("ultimate_fervour_cost_reduction"), &ProbeScaledUltimateFervourCostReduction},
 			{TEXT("siphon_radius_metres"),       &ProbeScaledSiphonRadius},
 			{TEXT("siphon_life_percent"),        &ProbeScaledSiphonLife},
-			{TEXT("siphon_fervour_per_second"),  &ProbeScaledSiphonFervour},
+			// THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951, 2026-11-27): Hungering Siphon's drain by the Fervour held.
+			{TEXT("siphon_drain_weapon_percent"), &ProbeScaledSiphonDrain},
 			// THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Flurry of the Dead's extra strikes by the Fervour held.
 			{TEXT("hits_strike_again"), [](FAutomationTestBase& Test) { ProbeHitsStrikeAgain(Test, true); }},
 		};
@@ -8049,8 +8033,8 @@ namespace CataclysmStatExemptionTest
 
 	/**
 	 * `class_resource_generation`, read by `UCataclysmAbilitySystemComponent::ClassResourceGainScaled` with the
-	 * character's state: the Soul Collector's Any Fuel under `fervour_gain_not_from_a_kill` (the Death trees' slice
-	 * C4b1, 2026-11-25). Conditioned here below half health, on the rate's base of 100: a gain of 10 is 10 at full health
+	 * character's state, so a conditioned row on it holds (the Death trees' slice C4b1, 2026-11-25, for Any Fuel, which
+	 * the keystone rework retired, issue #2951). Conditioned here below half health, on the rate's base of 100: a gain of 10 is 10 at full health
 	 * and 15 below half.
 	 */
 	void ProbeConditionedClassResourceGeneration(FAutomationTestBase& Test)
@@ -12955,6 +12939,39 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * The three stats an aura's mana reserve is lowered by, each read by `UCataclysmCommand::ManaReserveFor`: ruled
+	 * 2026-11-27 under the owner's choice "Reserve, don't drain". ONE FIGHTER. THE CONTROL IS THE SAME FIGHTER BEFORE
+	 * THE STAT IS GRANTED: a stated 50 is reserved whole. Granted, `mana_reserve_reduction` flat 10 makes it 40,
+	 * `mana_reserve_percent_less` flat 50 makes it 25, and `mana_reserve` More -50 makes it 25.
+	 *
+	 * WHAT THIS DOES NOT REACH. An aura switched on under them, the 75% cap and the floor: `Cataclysm.AuraReservation.`.
+	 */
+	void ProbeManaReserve(FAutomationTestBase& Test, const TCHAR* Stat, ECataclysmStatBucket Bucket, float Value,
+						  float Expected)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Fighter.Actor));
+		if (!Test.TestNotNull(TEXT("set-up: the fighter's ability system"), System))
+		{
+			return;
+		}
+		Test.TestEqual(*FString::Printf(TEXT("control: with no %s a stated 50 is reserved whole"), Stat),
+					   UCataclysmCommand::ManaReserveFor(System, 50.0f, FGameplayTagContainer()), 50.0f, 0.0001f);
+		GrantOne(System, Stat, Bucket, Value);
+		Test.TestEqual(*FString::Printf(TEXT("with %s at %.0f it is %.0f, so ManaReserveFor really reads it"), Stat,
+										Value, Expected),
+					   UCataclysmCommand::ManaReserveFor(System, 50.0f, FGameplayTagContainer()), Expected, 0.0001f);
+	}
+
+	/**
 	 * `reserved_fervour_spent_percent`, read by `UCataclysmCommand::HoldReserve`, which every minion, thrall, gadget and
 	 * trap holds its reserve through: Bound Offering, the Death trees' slice C3b (2026-11-25). ONE FIGHTER. THE CONTROL IS
 	 * THE SAME FIGHTER BEFORE THE STAT IS GRANTED: holding back 20 raises no spend. Granted at a flat 90, the same hold
@@ -13104,31 +13121,6 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * `fervour_threshold_linger_seconds`, read with no reading by `FervourThresholdsReachedFor`: Long Shadow, the Death
-	 * trees' slice C3d. ONE FIGHTER, which held 45 a moment ago. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS
-	 * GRANTED: holding 30 it reaches only the first threshold. Granted at a flat 5, the second still.
-	 *
-	 * WHAT THIS DOES NOT REACH. The record kept before a fall and the seconds running out: `Cataclysm.FervourThreshold.`.
-	 */
-	void ProbeFervourThresholdLinger(FAutomationTestBase& Test)
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (!Test.TestNotNull(TEXT("a world"), World))
-		{
-			return;
-		}
-		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-
-		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
-		Fighter.AbilitySystem->NoteFervourThresholdsHeld(45.0f);
-		Test.TestEqual(TEXT("control: with no fervour_threshold_linger_seconds 30 held reaches only the first"),
-					   Fighter.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60), 1);
-		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::FervourThresholdLingerSecondsStat, 5.0f);
-		Test.TestEqual(TEXT("with it at 5 the second still, so FervourThresholdsReachedFor really reads it"),
-					   Fighter.AbilitySystem->FervourThresholdsReachedFor(30.0f, 60), 3);
-	}
-
-	/**
 	 * `cooldowns_recover_faster_percent`, read by `UCataclysmAbilitySystemComponent::FervourThresholdStep` on the
 	 * regeneration step: the fourth Soul Collector vow's clause, the Death trees' slice C3d. ONE FIGHTER with a cooldown
 	 * running. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a step of a second takes nothing off. Granted at
@@ -13178,41 +13170,6 @@ namespace CataclysmStatExemptionTest
 		GrantFlat(Fighter.Actor, UCataclysmAbilitySystemComponent::ReservedFervourCountsAsHeldPercentStat, 48.0f);
 		Test.TestEqual(TEXT("with it at 48, as 9.6, so ReservedFervourCountedAsHeld really reads it"),
 					   Fighter.AbilitySystem->ReservedFervourCountedAsHeld(20.0f), 9.6f, 0.001f);
-	}
-
-	/**
-	 * `fervour_per_kill_extra_chance`, read by `UCataclysmFervour::GainOnOwnKill` and rolled on each kill: the Soul
-	 * Collector's Gleaning, the Death trees' slice C4a (2026-11-25). ONE FIGHTER with a Fervour pool and 1 Fervour a
-	 * kill, the roll pinned at 0. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a kill pays 1. Granted at a
-	 * flat 50, it pays 2.
-	 */
-	void ProbeFervourPerKillExtraChance(FAutomationTestBase& Test)
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (!Test.TestNotNull(TEXT("a world"), World))
-		{
-			return;
-		}
-		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-		IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.KillFervourExtraRoll"));
-		if (!Test.TestNotNull(TEXT("the extra Fervour roll can be pinned"), Roll))
-		{
-			return;
-		}
-		Roll->Set(0.0f, ECVF_SetByConsole);
-		ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByConsole); };
-
-		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
-		Fighter.AbilitySystem->AddAttributeSetSubobject(NewObject<UCataclysmClassResourceAttributeSet>(Fighter.Actor));
-		Fighter.AbilitySystem->SetNumericAttributeBase(
-			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
-		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f}});
-		Test.TestEqual(TEXT("control: with no fervour_per_kill_extra_chance a kill pays 1"),
-					   UCataclysmFervour::GainOnOwnKill(Fighter.AbilitySystem, nullptr), 1.0f, 0.001f);
-		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f},
-								   {FName(UCataclysmFervour::PerKillExtraChanceStat), 50.0f}});
-		Test.TestEqual(TEXT("with it at 50 and the roll at 0, 2, so GainOnOwnKill really reads it"),
-					   UCataclysmFervour::GainOnOwnKill(Fighter.AbilitySystem, nullptr), 2.0f, 0.001f);
 	}
 
 	/**
@@ -13374,64 +13331,6 @@ namespace CataclysmStatExemptionTest
 			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(), 100.0f);
 		Fighter.AbilitySystem->SetNumericAttributeBase(
 			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
-	}
-
-	/**
-	 * `fervour_hold_restarted_by_any_gain`, read by `UCataclysmFervour::AfterPoolRose` on a rise of the pool: the Soul
-	 * Collector's Kindred Fires, the Death trees' slice C4b1 (2026-11-25). ONE FIGHTER that has never killed, with a
-	 * grace of 4 seconds. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a gain leaves decay unheld.
-	 * Granted, the same gain holds it.
-	 */
-	void ProbeHoldRestartedByAnyGain(FAutomationTestBase& Test)
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (!Test.TestNotNull(TEXT("a world"), World))
-		{
-			return;
-		}
-		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
-		GiveFervourPool(Fighter);
-		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::KillDecayGraceSecondsStat), 4.0f}});
-		UCataclysmFervour::RaisePool(Fighter.AbilitySystem, 5.0f);
-		Test.TestFalse(TEXT("control: with no fervour_hold_restarted_by_any_gain a gain holds nothing"),
-					   Fighter.AbilitySystem->KillDecayIsHeld());
-		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::KillDecayGraceSecondsStat), 4.0f},
-								   {FName(UCataclysmFervour::HoldRestartedByAnyGainStat), 1.0f}});
-		UCataclysmFervour::RaisePool(Fighter.AbilitySystem, 5.0f);
-		Test.TestTrue(TEXT("with it, the same gain holds decay off, so AfterPoolRose really reads it"),
-					  Fighter.AbilitySystem->KillDecayIsHeld());
-	}
-
-	/**
-	 * `fervour_hold_extended_on_gain_seconds`, read by `UCataclysmFervour::AfterPoolRose` on a rise that is not a kill's
-	 * payment: the Soul Collector's Borrowed Time, the Death trees' slice C4b1 (2026-11-25). ONE FIGHTER whose kill 3
-	 * seconds ago held decay off for 4, given a gain, then 1.5 seconds more. THE CONTROL IS THE SAME FIGHTER BEFORE THE
-	 * STAT IS GRANTED: the hold has run out. Granted at 2, it is still held.
-	 */
-	void ProbeHoldExtendedOnGainSeconds(FAutomationTestBase& Test)
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (!Test.TestNotNull(TEXT("a world"), World))
-		{
-			return;
-		}
-		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
-		GiveFervourPool(Fighter);
-		const auto HeldAfterAGain = [&Fighter, World]()
-		{
-			Fighter.AbilitySystem->NoteOwnKill(/*GraceSeconds=*/4.0f);
-			CataclysmTestWorld::RunClock(World, 3.0f);
-			UCataclysmFervour::RaisePool(Fighter.AbilitySystem, 5.0f);
-			CataclysmTestWorld::RunClock(World, 1.5f);
-			return Fighter.AbilitySystem->KillDecayIsHeld();
-		};
-		Test.TestFalse(TEXT("control: with no fervour_hold_extended_on_gain_seconds the hold has run out"),
-					   HeldAfterAGain());
-		GrantFlat(Fighter.Actor, UCataclysmFervour::HoldExtendedOnGainSecondsStat, 2.0f);
-		Test.TestTrue(TEXT("with it at 2, the hold is still running, so AfterPoolRose really reads it"),
-					  HeldAfterAGain());
 	}
 
 	/** One flat row on each named stat, and nothing else: for a probe needing two stats at once. */
@@ -13625,33 +13524,6 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * `health_percent_lost_per_fervour_lost`, read by `UCataclysmFervour::LoseFromDamage`: the Soul Collector's Soulbound,
-	 * the Death trees' slice C6c (2026-11-25). A fighter with 1,000 maximum health holding 50 Fervour loses 100 health,
-	 * 10%. THE CONTROL: with no stat it keeps 50. At 2, it loses 5.
-	 */
-	void ProbeHealthPercentLostPerFervourLost(FAutomationTestBase& Test)
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (!Test.TestNotNull(TEXT("a world"), World))
-		{
-			return;
-		}
-		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
-		GiveFervourPool(Fighter);
-		Fighter.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
-		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
-		Fighter.AbilitySystem->SetNumericAttributeBase(Pool, 50.0f);
-		UCataclysmFervour::LoseFromDamage(Fighter.AbilitySystem, 100.0f);
-		Test.TestEqual(TEXT("control: with no stat, 10% lost costs nothing"),
-					   Fighter.AbilitySystem->GetNumericAttribute(Pool), 50.0f, 0.001f);
-		GrantFlat(Fighter.Actor, UCataclysmFervour::HealthPercentLostPerFervourLostStat, 2.0f);
-		UCataclysmFervour::LoseFromDamage(Fighter.AbilitySystem, 100.0f);
-		Test.TestEqual(TEXT("at 2, 10% lost costs 5, so LoseFromDamage really reads it"),
-					   Fighter.AbilitySystem->GetNumericAttribute(Pool), 45.0f, 0.001f);
-	}
-
-	/**
 	 * `fervour_overflow_attack_speed_seconds`, read by `UCataclysmFervour::RaisePool` when a gain does not fit: the Soul
 	 * Collector's Overflow, the Death trees' slice C6c (2026-11-25). A fighter at a full bar of 100 gains 3. THE CONTROL:
 	 * with no stat no overflow stack is held. At 5, three are.
@@ -13723,12 +13595,11 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * `decay_given_back_on_kill_seconds`, read by `UCataclysmFervour::GiveBackDecayOnKill`: the Soul Collector's
-	 * Reclaimed, the Death trees' slice C4b2 (2026-11-25). ONE FIGHTER holding 50 Fervour that has never killed, with a
-	 * decay of 5 a second; a step of one second takes 5. THE CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: a
-	 * kill gives nothing back. Granted at 3, the 5 comes back.
+	 * `fervour_held_adds_no_damage`, read by `UCataclysmAbilitySystemComponent::CurrentConditions` into the condition
+	 * `fervour_held_adds_damage`: the Soul Collector's Death Made Flesh, issue #2951. ONE FIGHTER; THE CONTROL IS THE SAME
+	 * FIGHTER BEFORE THE STAT IS GRANTED, whose conditions say the Fervour held adds damage. Granted, they say it does not.
 	 */
-	void ProbeDecayGivenBackOnKillSeconds(FAutomationTestBase& Test)
+	void ProbeFervourHeldAddsNoDamage(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 		if (!Test.TestNotNull(TEXT("a world"), World))
@@ -13737,43 +13608,11 @@ namespace CataclysmStatExemptionTest
 		}
 		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
-		GiveFervourPool(Fighter);
-		Fighter.AbilitySystem->SetNumericAttributeBase(
-			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
-		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::KillDecayPerSecondStat), 5.0f}});
-		UCataclysmFervour::KillDecayStep(Fighter.AbilitySystem, 1.0f);
-		Test.TestEqual(TEXT("control: with no decay_given_back_on_kill_seconds a kill gives nothing back"),
-					   UCataclysmFervour::GiveBackDecayOnKill(Fighter.AbilitySystem), 0.0f, 0.001f);
-		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::KillDecayPerSecondStat), 5.0f},
-								   {FName(UCataclysmFervour::DecayGivenBackOnKillSecondsStat), 3.0f}});
-		Test.TestEqual(TEXT("with it at 3, the 5 decay took comes back, so GiveBackDecayOnKill really reads it"),
-					   UCataclysmFervour::GiveBackDecayOnKill(Fighter.AbilitySystem), 5.0f, 0.001f);
-	}
-
-	/**
-	 * `fervour_claimed_within_seconds`, read by `UCataclysmFervour::ClaimOnDeath`: the Soul Collector's Claimed, the
-	 * Death trees' slice C4b2 (2026-11-25). ONE FIGHTER paying 1 Fervour a kill, and another it has just struck. THE
-	 * CONTROL IS THE SAME FIGHTER BEFORE THE STAT IS GRANTED: the struck one's death pays nothing. Granted at 2, it pays 1.
-	 */
-	void ProbeFervourClaimedWithinSeconds(FAutomationTestBase& Test)
-	{
-		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-		if (!Test.TestNotNull(TEXT("a world"), World))
-		{
-			return;
-		}
-		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-		FScopedFighter Claimer(World, /*AttackDamage=*/0.0f);
-		GiveFervourPool(Claimer);
-		FScopedFighter Struck(World, /*AttackDamage=*/0.0f);
-		Struck.AbilitySystem->NoteStruckBy(Claimer.AbilitySystem, /*bCritical=*/false);
-		GrantFlats(Claimer.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f}});
-		Test.TestEqual(TEXT("control: with no fervour_claimed_within_seconds the struck one's death pays nothing"),
-					   UCataclysmFervour::ClaimOnDeath(Claimer.AbilitySystem, Struck.Actor), 0.0f, 0.001f);
-		GrantFlats(Claimer.Actor, {{FName(UCataclysmFervour::PerKillStat), 1.0f},
-								   {FName(UCataclysmFervour::ClaimedWithinSecondsStat), 2.0f}});
-		Test.TestEqual(TEXT("with it at 2, the death pays 1, so ClaimOnDeath really reads it"),
-					   UCataclysmFervour::ClaimOnDeath(Claimer.AbilitySystem, Struck.Actor), 1.0f, 0.001f);
+		Test.TestTrue(TEXT("control: with no fervour_held_adds_no_damage the Fervour held adds damage"),
+					  Fighter.AbilitySystem->CurrentConditions().bFervourHeldAddsDamage);
+		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::FervourHeldAddsNoDamageStat), 1.0f}});
+		Test.TestFalse(TEXT("with it, it does not, so CurrentConditions really reads it"),
+					   Fighter.AbilitySystem->CurrentConditions().bFervourHeldAddsDamage);
 	}
 
 	/**
@@ -16201,6 +16040,12 @@ namespace CataclysmStatExemptionTest
 			{TEXT("trap_arming_speed"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/true); }},
 			{TEXT("trap_trigger_radius"), [](FAutomationTestBase& Test) { ProbeTrapIncrease(Test, /*bArming=*/false); }},
 			{TEXT("minion_reserve_percent_less"), &ProbeReservePercentLess},
+			{TEXT("mana_reserve_reduction"), [](FAutomationTestBase& Test)
+			 { ProbeManaReserve(Test, UCataclysmCommand::ManaReserveReductionStat, ECataclysmStatBucket::Flat, 10.0f, 40.0f); }},
+			{TEXT("mana_reserve_percent_less"), [](FAutomationTestBase& Test)
+			 { ProbeManaReserve(Test, UCataclysmCommand::ManaReservePercentLessStat, ECataclysmStatBucket::Flat, 50.0f, 25.0f); }},
+			{TEXT("mana_reserve"), [](FAutomationTestBase& Test)
+			 { ProbeManaReserve(Test, UCataclysmCommand::ManaReserveStat, ECataclysmStatBucket::More, -50.0f, 25.0f); }},
 			{TEXT("traps_do_not_expire"), &ProbeTrapExpiry},
 			{TEXT("trap_rearm_chance"),
 			 [](FAutomationTestBase& Test) { ProbeTrapBlowHook(Test, ACataclysmMinion::TrapRearmChanceStat); }},
@@ -16232,26 +16077,20 @@ namespace CataclysmStatExemptionTest
 			{TEXT("siphon_drain_weapon_percent"), &ProbeSiphonDrain},
 			{TEXT("siphon_necrosis_chance"), &ProbeSiphonNecrosisChance},
 			{TEXT("siphon_life_percent"), &ProbeSiphonLife},
-			{TEXT("siphon_fervour_per_second"), &ProbeSiphonFervour},
 			{TEXT("reserved_fervour_spent_percent"), &ProbeReservedFervourSpent},
 			{TEXT("fervour_spent_returned_percent"), &ProbeFervourSpentReturned},
 			{TEXT("fervour_lethal_save_every_seconds"), &ProbeFervourLethalSave},
 			{TEXT("movement_on_cooldown_fervour_cost"), &ProbeMovementOnCooldownFervourCost},
 			{TEXT("fervour_threshold_reduction"), &ProbeFervourThresholdReduction},
-			{TEXT("fervour_threshold_linger_seconds"), &ProbeFervourThresholdLinger},
 			{TEXT("cooldowns_recover_faster_percent"), &ProbeCooldownsRecoverFaster},
 			{TEXT("reserved_fervour_counts_as_held_percent"), &ProbeReservedFervourCountsAsHeld},
-			{TEXT("fervour_per_kill_extra_chance"), &ProbeFervourPerKillExtraChance},
 			{TEXT("health_restored_on_critical_kill"), &ProbeHealthRestoredOnCriticalKill},
 			// THE DEATH FINISH SLICE A (2026-11-26): Soul Fuel, Deeper Draw, Pyre and Spirit Volley.
 			{TEXT("skill_fervour_spend"), &ProbeSkillFervourSpend},
 			{TEXT("damage_per_skill_fervour_spent"), &ProbeDamagePerSkillFervourSpent},
 			{TEXT("area_of_effect_per_five_fervour_spent"), &ProbeAreaPerFiveFervourSpent},
 			{TEXT("spirit_volley_weapon_percent"), &ProbeSpiritVolleyWeaponPercent},
-			// THE DEATH TREES' SLICE C4b1 (2026-11-25): Kindred Fires and Borrowed Time.
-			{TEXT("fervour_hold_restarted_by_any_gain"), &ProbeHoldRestartedByAnyGain},
-			{TEXT("fervour_hold_extended_on_gain_seconds"), &ProbeHoldExtendedOnGainSeconds},
-			// THE DEATH TREES' SLICE C6c (2026-11-25): Miser's Grip, Soulbound, Overflow and Unbroken Chain.
+			// THE DEATH TREES' SLICE C6c (2026-11-25): the decay floor, Overflow and Unbroken Chain.
 			{TEXT("fervour_decay_floor_percent"), &ProbeDecayFloorPercent},
 			// AND THE DEATH TREES' SLICE C6d2's SHARED LEECH (2026-11-25).
 			{TEXT("minion_damage_leeched_to_you_percent"), &ProbeMinionDamageLeechedToYou},
@@ -16259,13 +16098,11 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_health_percent_of_yours_per_other_minion"), &ProbeMinionHealthPercentOfYoursPerOtherMinion},
 			// AND THE DEATH TREES' SLICE C6e's DEATHMARK (2026-11-25).
 			{TEXT("death_marks_held"), &ProbeDeathMarksHeld},
-			{TEXT("health_percent_lost_per_fervour_lost"), &ProbeHealthPercentLostPerFervourLost},
 			{TEXT("fervour_overflow_attack_speed_seconds"), &ProbeOverflowAttackSpeedSeconds},
 			{TEXT("kill_chain_seconds"), &ProbeKillChainSeconds},
-			// THE DEATH TREES' SLICE C4b2 (2026-11-25): Reclaimed, Claimed and Death's Toll.
-			{TEXT("decay_given_back_on_kill_seconds"), &ProbeDecayGivenBackOnKillSeconds},
-			{TEXT("fervour_claimed_within_seconds"), &ProbeFervourClaimedWithinSeconds},
+			// THE DEATH TREES' SLICE C4b2 (2026-11-25): Death's Toll, the starting node's since issue #2951.
 			{TEXT("follower_kills_count_as_yours"), &ProbeFollowerKillsCountAsYours},
+			{TEXT("fervour_held_adds_no_damage"), &ProbeFervourHeldAddsNoDamage},
 			// THE DEATH TREES' SLICE C4c1 (2026-11-25): Passed On's radius.
 			{TEXT("overkill_explosion_radius_metres"), &ProbeOverkillExplosionRadiusMetres},
 			// THE DEATH TREES' SEVEN STATS WITH NO ATTRIBUTE, probed since window death3-w3 found them unprobed.

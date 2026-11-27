@@ -158,7 +158,6 @@ namespace
 		{ TEXT("fervour_threshold_reached"),    ECataclysmStatCondition::FervourThresholdReached },
 		{ TEXT("class_resource_points_below"),  ECataclysmStatCondition::ClassResourcePointsBelow },
 		{ TEXT("target_carries_your_poison_or_bleed"), ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed },
-		{ TEXT("fervour_gain_not_from_a_kill"), ECataclysmStatCondition::FervourGainNotFromAKill },
 		{ TEXT("killing_blow_was_a_hit"), ECataclysmStatCondition::KillingBlowWasAHit },
 		{ TEXT("target_near_your_kill_within_seconds"), ECataclysmStatCondition::TargetNearYourKillWithinSeconds },
 		{ TEXT("kill_was_an_execute"), ECataclysmStatCondition::KillWasAnExecute },
@@ -182,6 +181,7 @@ namespace
 		{ TEXT("hit_took_at_least_percent_of_max_health"), ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth },
 		{ TEXT("minion_within_metres_of_you"), ECataclysmStatCondition::MinionWithinMetresOfYou },
 		{ TEXT("minion_has_your_most_maximum_health"), ECataclysmStatCondition::MinionHasYourMostMaximumHealth },
+		{ TEXT("fervour_held_adds_damage"),     ECataclysmStatCondition::FervourHeldAddsDamage },
 		{ TEXT("target_marked_by_you"), ECataclysmStatCondition::TargetMarkedByYou },
 		{ TEXT("target_is_your_last_attacker"), ECataclysmStatCondition::TargetIsYourLastAttacker },
 		{ TEXT("dual_wielding"),                ECataclysmStatCondition::DualWielding },
@@ -427,7 +427,6 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetIsMoving:
 	case ECataclysmStatCondition::TargetCarriesYourCurse:
 	case ECataclysmStatCondition::TargetCarriesYourPoisonOrBleed:
-	case ECataclysmStatCondition::FervourGainNotFromAKill:
 	case ECataclysmStatCondition::KillingBlowWasAHit:
 	case ECataclysmStatCondition::KillWasAnExecute:
 	case ECataclysmStatCondition::NextHitIsCritical:
@@ -439,6 +438,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetMarkedByYou:
 	case ECataclysmStatCondition::TargetIsYourLastAttacker:
 	case ECataclysmStatCondition::MinionHasYourMostMaximumHealth:
+	case ECataclysmStatCondition::FervourHeldAddsDamage:
 	case ECataclysmStatCondition::DualWielding:
 	case ECataclysmStatCondition::InWrath:
 	case ECataclysmStatCondition::InFrenzy:
@@ -555,6 +555,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WieldingTwoHandedWeapon:
 	// AND HOW MANY ITEMS THE WEAPON SLOTS HOLD, for the same reason: a weapon swap. The Berserker's states, 2026-11-25.
 	case C::DualWielding:
+	// AND WHETHER THE FERVOUR HELD ADDS DAMAGE, which a passive point taken or refunded changes, and a point rewrites the
+	// character's attributes. Death Made Flesh, issue #2951.
+	case C::FervourHeldAddsDamage:
 		return EOn::OtherAttributes;
 
 	// THE BERSERKER'S STATES BEGIN AT A FULL POOL AND END AT AN EMPTY ONE, so they move when the class resource moves.
@@ -622,9 +625,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// AND A NEXT-HIT CRITICAL CHARGE, the Death trees' slice C6a (2026-11-25): it runs out after its seconds with nothing
 	// announcing it, as the two above do.
 	case C::NextHitIsCritical:
-	// AND A FERVOUR THRESHOLD, the Death trees' slice C3d (2026-11-25): it moves with the Fervour held, and Long Shadow's
-	// seconds after a fall run out with nothing announcing it, which is what puts it here rather than with the class
-	// resource's conditions.
+	// AND A FERVOUR THRESHOLD, the Death trees' slice C3d (2026-11-25): it moves with the Fervour held. It was put here
+	// for Long Shadow's seconds after a fall, which ran out with nothing announcing them; Long Shadow was retired by
+	// issue #2951, and time is the broader of the two answers, so it stays.
 	case C::FervourThresholdReached:
 		return EOn::Time;
 
@@ -720,12 +723,6 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::MinionHasYourMostMaximumHealth:
 	case C::TargetMarkedByYou:
 	case C::TargetIsYourLastAttacker:
-		return EOn::TheBlowOrSkill;
-
-	// WHETHER THE GAIN BEING SIZED IS NOT A KILL'S PAYMENT, the Death trees' slice C4b1 (2026-11-25): a fact of the gain
-	// in hand, as a skill's kind is of the skill. It changes only while a kill is being paid for, and nothing outside
-	// a gain asks it.
-	case C::FervourGainNotFromAKill:
 		return EOn::TheBlowOrSkill;
 
 	// WHETHER THE KILL BEING ACTED ON WAS MADE BY A HIT, the Death trees' slice C4c1 (2026-11-25): a fact of the kill in
@@ -1526,11 +1523,6 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// trees' slice C4a (2026-11-25).
 		return State.bTargetCarriesYourPoisonOrBleed;
 
-	case ECataclysmStatCondition::FervourGainNotFromAKill:
-		// FILLED BY `CurrentConditions` FROM THE KILL-PAYMENT MARKER, the Death trees' slice C4b1 (2026-11-25): true
-		// unless a kill's Fervour is being paid. A state with no asker in hand stays false and refuses.
-		return State.bFervourGainNotFromAKill;
-
 	case ECataclysmStatCondition::KillingBlowWasAHit:
 		// FILLED BY `CurrentConditions` FROM THE MARK THE KILL HANDLER SETS while it acts on a kill made by a hit, the
 		// Death trees' slice C4c1 (2026-11-25). False outside such a kill, which refuses.
@@ -1659,6 +1651,10 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	// FIRST AMONG THE DEAD, the Death line's finishing slice B (2026-11-26): filled only when the caller names the minion.
 	case ECataclysmStatCondition::MinionHasYourMostMaximumHealth:
 		return State.bAskingMinionHasTheMostMaximumHealth;
+
+	// DEATH MADE FLESH TAKES THE STARTING NODE'S DAMAGE AWAY, issue #2951: false while the keystone is held.
+	case ECataclysmStatCondition::FervourHeldAddsDamage:
+		return State.bFervourHeldAddsDamage;
 
 	// THE HIT BEING ANNOUNCED TOOK AT LEAST THIS SHARE OF MAXIMUM HEALTH. -1, outside the announcement, refuses.
 	case ECataclysmStatCondition::HitTookAtLeastPercentOfMaxHealth:
@@ -1919,8 +1915,11 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		// design's own node uses a step of 1, where rounding cannot show, so the
 		// rule is read off the other scale rather than off this node's words.
 		// THE FERVOUR COUNTED AS HELD, Chained Souls' share included (the Death trees' slice C3e).
-		const float Steps =
-			FMath::FloorToFloat(UCataclysmStatPipeline::FervourHeldCounted(State) / Modifier.ScaleStep);
+		// LESS THE ROW'S OFFSET, WHICH IS NOT COUNTED: Heavy Urn's "for each Fervour you hold above 50", the Soul
+		// Collector keystone rework (issue #2951, 2026-11-27). Below the offset the reading is nothing.
+		const float Steps = FMath::FloorToFloat(
+			FMath::Max(0.0f, UCataclysmStatPipeline::FervourHeldCounted(State) - FMath::Max(0.0f, Modifier.ScaleOffset))
+			/ Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 
@@ -2695,10 +2694,11 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		return TEXT("enemies_in_reach_while_own_stack with no stack key or no reach. It would count nothing.");
 	}
 
-	// AN OFFSET IS HOW MUCH OF THE READING IS NOT COUNTED, AND TWO SCALES READ
+	// AN OFFSET IS HOW MUCH OF THE READING IS NOT COUNTED, AND THREE SCALES READ
 	// IT. Issue #1686 for the class points; 2026-10-07 for the traps, whose
-	// "each other trap" is an offset of 1. An offset anywhere else would be
-	// dropped with no error.
+	// "each other trap" is an offset of 1; the Soul Collector keystone rework
+	// (issue #2951) for the Fervour held, Heavy Urn's "above 50". An offset
+	// anywhere else would be dropped with no error.
 	if (Modifier.ScaleOffset < 0.0f)
 	{
 		return FString::Printf(
@@ -2708,11 +2708,12 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	}
 	if (Modifier.ScaleOffset > 0.0f
 		&& Modifier.Scale != ECataclysmStatScale::PerClassPointSpent
-		&& Modifier.Scale != ECataclysmStatScale::PerTrapActive)
+		&& Modifier.Scale != ECataclysmStatScale::PerTrapActive
+		&& Modifier.Scale != ECataclysmStatScale::PerPointOfClassResourceHeld)
 	{
 		return FString::Printf(
 			TEXT("an offset of %.1f on a scale that does not read one. Only "
-				 "class_points_spent and traps_active count from a threshold."),
+				 "class_points_spent, traps_active and class_resource_held count from a threshold."),
 			Modifier.ScaleOffset);
 	}
 

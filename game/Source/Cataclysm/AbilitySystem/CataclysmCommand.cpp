@@ -57,6 +57,11 @@ const TCHAR* UCataclysmCommand::MinionReservePercentLessStat = TEXT("minion_rese
 // AND THE SHARE OF A RESERVE HELD THAT COUNTS AS SPENT: Bound Offering, the Death trees' slice C3b.
 const TCHAR* UCataclysmCommand::ReservedFervourSpentPercentStat = TEXT("reserved_fervour_spent_percent");
 
+// AND AN AURA'S MANA RESERVE, THE FERVOUR SHAPE'S TWIN. Ruled 2026-11-27 under the owner's "Reserve, don't drain".
+const TCHAR* UCataclysmCommand::ManaReserveReductionStat = TEXT("mana_reserve_reduction");
+const TCHAR* UCataclysmCommand::ManaReservePercentLessStat = TEXT("mana_reserve_percent_less");
+const TCHAR* UCataclysmCommand::ManaReserveStat = TEXT("mana_reserve");
+
 namespace
 {
 	/** Whether this creature follows that commander, either way it can. */
@@ -1110,13 +1115,43 @@ float UCataclysmCommand::ReserveFor(const AActor* Commander, float Stated,
 		PercentLess = Theirs->StatForSkill(FName(MinionReservePercentLessStat), Tags, 0.0f);
 	}
 	// CROWNED FIRST, THEN THE PERCENTAGE, and the floor last, a judgement of issue #2787: Crowned's sentence is a
-	// number of points off the figure, the percentage a share of what is reserved. A net 100 percent or more less
-	// would be nothing reserved, which the floor turns into one point.
-	const float Multiplier = FMath::Max(0.0f, 1.0f - PercentLess / 100.0f);
+	// number of points off the figure, the percentage a share of what is reserved. SINCE 2026-11-27 THE SUMMED PERCENT
+	// STOPS AT 75 (`MostReservePercentLess`), ruled with the auras' mana reserve so one rule serves both pools; until
+	// then a net 100 percent or more less was nothing reserved, which the floor turned into one point.
 	// AND ITS "MORE" ROWS LAST, a separate multiplier as every "more" is: Lone Revenant's "reserve 300% more Fervour",
 	// required to be a permanent minion's (the Death line's finishing slice B, 2026-11-26). One with no such row.
-	return FMath::Max(SmallestMinionReserve, (Stated - Reduction) * Multiplier
-		* UCataclysmNecromancerArmy::ReserveMultiplier(Commander, Tags));
+	return ReservedAfterReductions(Stated, Reduction, PercentLess,
+		UCataclysmNecromancerArmy::ReserveMultiplier(Commander, Tags), SmallestMinionReserve);
+}
+
+float UCataclysmCommand::ReservedAfterReductions(float Stated, float Reduction, float PercentLess, float More,
+												 float Floor)
+{
+	if (Stated <= 0.0f)
+	{
+		return Stated;
+	}
+	// THE CAP HOLDS ONLY A REDUCTION. A negative summed percent is a row raising the reserve, and nothing caps that.
+	const float Held = FMath::Min(PercentLess, MostReservePercentLess);
+	const float Multiplier = FMath::Max(0.0f, 1.0f - Held / 100.0f);
+	return FMath::Max(Floor, (Stated - Reduction) * Multiplier * FMath::Max(0.0f, More));
+}
+
+float UCataclysmCommand::ManaReserveFor(const UAbilitySystemComponent* Holding, float Stated,
+										 const FGameplayTagContainer& Tags)
+{
+	if (Stated <= 0.0f)
+	{
+		return Stated;
+	}
+	// THREE STATS WITH NO ATTRIBUTE, each asked with the aura's tags and nought (or, for the "more" rows, one) as the
+	// answer for a character holding none, so a character with no such row reserves exactly what is stated. ASKED OF
+	// THE ABILITY SYSTEM, which is what an aura and the skill bar both hold.
+	const UCataclysmAbilitySystemComponent* Theirs = Cast<const UCataclysmAbilitySystemComponent>(Holding);
+	const float Reduction = Theirs ? Theirs->StatForSkill(FName(ManaReserveReductionStat), Tags, 0.0f) : 0.0f;
+	const float PercentLess = Theirs ? Theirs->StatForSkill(FName(ManaReservePercentLessStat), Tags, 0.0f) : 0.0f;
+	const float More = Theirs ? Theirs->MultiplierForStatAgainst(FName(ManaReserveStat), Tags, nullptr) : 1.0f;
+	return ReservedAfterReductions(Stated, Reduction, PercentLess, More, SmallestManaReserve);
 }
 
 void UCataclysmCommand::HoldReserve(const AActor* Commander, ACataclysmCharacterBase* Follower,

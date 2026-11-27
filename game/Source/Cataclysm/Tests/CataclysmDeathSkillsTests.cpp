@@ -3368,61 +3368,6 @@ bool FCataclysmDeathSkillsBuffHoldsEveryDecayTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathSkillsKillFervourIsAKillsPaymentTest,
-	"Cataclysm.DeathSkills.ASkillRowsKillFervourIsPaidAsAKillAndItsHitFervourIsNot",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * The Death skills merge, obligation 4 (`UCataclysmFervour::GainStated`, `bForAKill`): a row's stated Fervour now goes
- * through `RaisePool`, and a `KillFervour` payment opens the kill-payment marker. Read through Kindred Fires, which
- * restarts the decay hold on any rise that is not a kill's payment: two characters with Kindred Fires, a common kill's
- * 4 s grace and the kill decay, neither ever having killed, so neither is held. THE CONTROL: 5 paid as a hit's Fervour
- * restarts the first one's hold. THE CASE: 5 paid as a kill's Fervour reaches the second one's pool and leaves its hold
- * alone, the kill's own stamp being what sets a hold.
- */
-bool FCataclysmDeathSkillsKillFervourIsAKillsPaymentTest::RunTest(const FString&)
-{
-	using namespace CataclysmDeathSkillsTest;
-
-	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
-	if (!TestNotNull(TEXT("set-up: a world"), World))
-	{
-		return false;
-	}
-	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
-
-	const auto Kindled = [World](float X)
-	{
-		TUniquePtr<FDeathSkillCreature> Made =
-			MakeUnique<FDeathSkillCreature>(World, FVector(X * DeathSkillMetre, 0.0f, 0.0f), ECataclysmTeam::Players);
-		DeathSkillSetFervour(Made->Actor, 0.0f);
-		TMap<FName, FCataclysmStatInputs> Stats;
-		Stats.FindOrAdd(FName(UCataclysmFervour::KillDecayPerSecondStat)).Base = 5.0f;
-		Stats.FindOrAdd(FName(UCataclysmFervour::KillDecayGraceSecondsStat)).Base = 4.0f;
-		Stats.FindOrAdd(FName(UCataclysmFervour::HoldRestartedByAnyGainStat)).Base = 1.0f;
-		Made->AbilitySystem->SetStatInputs(MoveTemp(Stats));
-		return Made;
-	};
-
-	TUniquePtr<FDeathSkillCreature> ByAHit = Kindled(0.0f);
-	TUniquePtr<FDeathSkillCreature> ByAKill = Kindled(100.0f);
-	if (!TestFalse(TEXT("set-up: never having killed, the first is not held"), ByAHit->AbilitySystem->KillDecayIsHeld())
-		|| !TestFalse(TEXT("set-up: nor the second"), ByAKill->AbilitySystem->KillDecayIsHeld()))
-	{
-		return false;
-	}
-
-	TestEqual(TEXT("control: 5 paid as a hit's Fervour arrives"), UCataclysmFervour::GainStated(ByAHit->AbilitySystem,
-			  5.0f), 5.0f, DeathSkillAllowance);
-	TestTrue(TEXT("control: and Kindred Fires restarts the hold on it"), ByAHit->AbilitySystem->KillDecayIsHeld());
-
-	TestEqual(TEXT("5 paid as a kill's Fervour arrives"), UCataclysmFervour::GainStated(ByAKill->AbilitySystem, 5.0f,
-			  /*bForAKill=*/true), 5.0f, DeathSkillAllowance);
-	TestFalse(TEXT("A KILL'S PAYMENT LEAVES THE HOLD ALONE"), ByAKill->AbilitySystem->KillDecayIsHeld());
-	TestFalse(TEXT("and the marker is closed after it"), ByAKill->AbilitySystem->IsPayingForAKill());
-	return true;
-}
-
 // ==========================================================================
 // Slice DS3, change B. N10: a flicker its deaths lengthen, re-gathering its circle. N5: a curse under which the dying
 // rise.

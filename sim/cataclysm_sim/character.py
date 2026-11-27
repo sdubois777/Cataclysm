@@ -95,6 +95,7 @@ import math
 from dataclasses import dataclass, field
 
 from . import damage
+from .skill_levels import cost_factor
 
 MAX_LEVEL = 100
 
@@ -669,6 +670,12 @@ class SkillSlot:
     quoted at level 100, which is the level every other figure in this project
     is quoted at, and it scales down with character level. See MANA_COST_LEVEL
     and mana_cost_of.
+
+    MANA RESERVED IS A FLAT NUMBER TOO, AND IT DOES NOT SCALE WITH LEVEL. Only
+    the Aura reserves any: while it is on it holds this much maximum mana out of
+    reach, and it costs nothing per second and nothing to switch on. Ruled on
+    2026-11-27 under the owner's choice "Reserve, don't drain"; until then the
+    Aura drained 20 mana a second. See reserved_mana and Character.auras_that_fit.
     """
 
     name: str
@@ -681,9 +688,11 @@ class SkillSlot:
     typical_cooldown: float = 0.0
     cooldown_lowest: float = 0.0
     cooldown_highest: float = 0.0
-    #: Mana one use costs at level 100. For the Aura this is per second while
-    #: the toggle is on, matching how its damage is also per second.
+    #: Mana one use costs at level 100.
     mana_cost: float = 0.0
+    #: Maximum mana held while the skill is on, at skill level 1. Flat: it does
+    #: not move with the character's level. Only the Aura reserves any.
+    mana_reserved: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.lowest <= self.typical_damage <= self.highest:
@@ -698,6 +707,9 @@ class SkillSlot:
         if self.mana_cost < 0.0:
             raise ValueError(
                 f"{self.name}: mana cost {self.mana_cost} is negative")
+        if self.mana_reserved < 0.0:
+            raise ValueError(
+                f"{self.name}: mana reserved {self.mana_reserved} is negative")
 
 
 #: The seven slots from the design document's Skill Slots table, in the order it
@@ -785,13 +797,18 @@ SKILL_SLOTS: dict[str, SkillSlot] = {
         # NOTE SAYS AN AURA STATING NO DAMAGE DEALS NONE, the ruling on #2875 the
         # same day, so the 25% is what an aura that states damage is typically
         # worth and never a figure an aura is given for saying nothing.
+        # RESERVES RATHER THAN DRAINS since 2026-11-27, the owner's choice
+        # "Reserve, don't drain": 50 maximum mana while on, nothing a second and
+        # nothing to switch on. Until then it drained 20 mana a second.
         SkillSlot("Aura", 25.0, 10.0, 40.0,
-                  "Persistent and toggled, draining resource per second. This "
-                  "is per second rather than per use, and it is what an aura "
-                  "stating damage is typically worth: an aura whose row states "
-                  "none deals none.",
+                  "Persistent and toggled; while on it reserves this much "
+                  "maximum mana at skill level 1, lowered by the skill's "
+                  "level. Switching it on costs nothing. Its damage is per "
+                  "second rather than per use, and it is what an aura stating "
+                  "damage is typically worth: an aura whose row states none "
+                  "deals none.",
                   typical_cooldown=0.0, cooldown_lowest=0.0,
-                  cooldown_highest=0.0, mana_cost=20.0),
+                  cooldown_highest=0.0, mana_cost=0.0, mana_reserved=50.0),
         SkillSlot("Ultimate", 400.0, 300.0, 500.0,
                   "The band is the two designed Ultimates: Annihilator states "
                   "300% and Skull Splitter states 500%.",
@@ -807,7 +824,7 @@ SKILL_SLOTS: dict[str, SkillSlot] = {
 
 #: The two slots that have no cooldown, and why each has none. The Basic Attack
 #: is automatic, so its rate is the weapon's attack speed. The Aura is a toggle,
-#: so there is nothing to wait for; it is paid for by draining mana instead.
+#: so there is nothing to wait for; it is paid for by reserving mana instead.
 SLOTS_WITHOUT_A_COOLDOWN = frozenset({BASIC_ATTACK_SLOT, "Aura"})
 
 #: The six a player chooses between. The Basic Attack is not one of them: the
@@ -866,14 +883,17 @@ def _check_every_slot_a_player_chooses_costs_something() -> None:
 
     The Basic Attack is free by design -- the design document calls it
     "automatic and free". Each of the six a player chooses has to be limited by
-    a cooldown, a mana cost, or both, or there is no reason not to hold it down.
+    a cooldown, a mana cost, a mana reservation, or more than one, or there is
+    no reason not to hold it down.
     """
     unlimited = [n for n in CHOSEN_SKILL_SLOTS
                  if SKILL_SLOTS[n].typical_cooldown == 0.0
-                 and SKILL_SLOTS[n].mana_cost == 0.0]
+                 and SKILL_SLOTS[n].mana_cost == 0.0
+                 and SKILL_SLOTS[n].mana_reserved == 0.0]
     if unlimited:
         raise ValueError(
-            f"{sorted(unlimited)} cost nothing and have no cooldown, so "
+            f"{sorted(unlimited)} cost and reserve nothing and have no "
+            "cooldown, so "
             "nothing limits how often they are used")
 
 
@@ -909,6 +929,60 @@ _check_the_basic_attack_is_the_anchor()
 _check_only_the_toggle_and_the_automatic_slot_lack_a_cooldown()
 _check_every_slot_a_player_chooses_costs_something()
 _check_the_primary_damage_button_needs_no_basic_attacks()
+
+
+# --------------------------------------------------------------------------
+# An aura reserves mana rather than draining it. Ruled 2026-11-27 by the
+# coordinating session under the owner's choice "Reserve, don't drain"; the
+# owner: "It should be difficult to maintain them at low levels, but get
+# easier. Players will likely be running more than one at a time, and right now
+# that's impossible."
+#
+# The shape is Path of Exile 2's Spirit: a flat reservation that lowers with the
+# skill's own level (Skeletal Warrior, 60 down to 20) and never with the
+# character's. The reductions copy the Fervour reservation the game already has
+# (UCataclysmCommand::ReserveFor): flat off first, then the summed percents,
+# then the "more" rows, then a floor of 1. The 75% cap on the summed percents is
+# a judgement; no source read gives one.
+# --------------------------------------------------------------------------
+
+#: The summed "reduced" mana reservation stops here, in percent. The same cap
+#: holds for Fervour.
+RESERVE_REDUCTION_CAP_PERCENT = 75.0
+#: No reservation falls below this, however it is reduced.
+RESERVE_FLOOR = 1.0
+
+
+def reserved_mana(base: float, skill_level: int = 1,
+                  percent_less: float = 0.0, more: tuple[float, ...] = (),
+                  flat_reduction: float = 0.0) -> float:
+    """The maximum mana one aura holds while it is on.
+
+    `base` is the slot's figure at skill level 1 (50 for the Aura). The skill's
+    own level lowers it by the cost factor every skill cost has, 0.9642 a level,
+    so about 25 at skill level 20. The key an aura sits on does not change it:
+    no "Ultimate key doubles it" rule exists (ruled 2026-11-27, correcting the
+    design draft). Then:
+
+    * `flat_reduction` (mana_reserve_reduction) comes off;
+    * `percent_less` (mana_reserve_percent_less, the summed percents; a negative
+      sum raises the reservation) multiplies by 1 - percent / 100, the
+      reduction stopping at RESERVE_REDUCTION_CAP_PERCENT;
+    * each of `more` (mana_reserve, each a percent, -30 for 30% less)
+      multiplies by 1 + percent / 100;
+    * and nothing falls below RESERVE_FLOOR.
+
+    A base of 0 reserves nothing at all: a slot that reserves nothing is not
+    held to the floor.
+    """
+    if base <= 0.0:
+        return 0.0
+    amount = base * cost_factor(skill_level)
+    amount -= flat_reduction
+    amount *= 1.0 - min(percent_less, RESERVE_REDUCTION_CAP_PERCENT) / 100.0
+    for percent in more:
+        amount *= max(0.0, 1.0 + percent / 100.0)
+    return max(RESERVE_FLOOR, amount)
 
 
 @dataclass(frozen=True)
@@ -1192,19 +1266,40 @@ class Character:
         return (self.stat("mana_regen")
                 + self.stat("attack_speed") * self.mana_on_hit())
 
-    def seconds_of_aura(self) -> float:
-        """How long the Aura runs from a full pool while standing still.
+    def aura_reservation(self, skill_level: int = 1) -> float:
+        """Maximum mana one aura holds while on, with no reductions.
 
-        Standing still, so regeneration is the only income. Issue #36 requires
-        the aura to switch off when the resource runs out, and this is what says
-        whether that is reachable. Infinite means it is not: for a class whose
-        regeneration covers the drain the aura simply stays on, which is true of
-        the Ritualist and is intended.
+        Flat: the same at character level 1 and 100, which is what makes auras
+        hard to hold early and easy late. Only the aura skill's own level lowers
+        it. reserved_mana takes the reductions.
         """
-        net = self.mana_cost_of("Aura") - self.stat("mana_regen")
-        if net <= 0.0:
-            return math.inf
-        return self.stat("max_mana") / net
+        return reserved_mana(SKILL_SLOTS["Aura"].mana_reserved,
+                             skill_level=skill_level)
+
+    def default_aura_room(self) -> float:
+        """Unreserved mana a character wants to keep while its auras are on:
+        one Ultimate and one Special at this level's costs."""
+        return self.mana_cost_of("Ultimate") + self.mana_cost_of("Special")
+
+    def auras_that_fit(self, room: float | None = None,
+                       skill_level: int = 1) -> int:
+        """How many auras this character can hold on at once while keeping
+        `room` mana unreserved.
+
+        Room defaults to default_aura_room. Reserving does not lower maximum
+        mana; it lowers what can be spent, so the count is how many
+        reservations fit into maximum mana less the room. A switch-on needs the
+        unreserved maximum to be at least the aura's reservation, which this
+        counts the same way. The keys and the damage types carried bound the
+        count as well; this is the mana bound only.
+        """
+        if room is None:
+            room = self.default_aura_room()
+        each = self.aura_reservation(skill_level=skill_level)
+        spare = self.stat("max_mana") - room
+        if spare <= 0.0 or each <= 0.0:
+            return 0
+        return math.floor(spare / each + 1e-9)
 
     def displayed_cooldown_reduction(self) -> float:
         divisor = self._cooldown_divisor()

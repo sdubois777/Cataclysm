@@ -205,10 +205,10 @@ Negative_You_cannot_evade_or_block_melee_attacks#2,Negative_You_cannot_evade_or_
 Negative_Cannot_evade_melee_attacks#1,Negative_Cannot_evade_melee_attacks,evasion,removed,1.0,1.0,,hit_is_melee_attack,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Positive_While_below_30_HP_you_are_immune_to_crowd_contr#1,Positive_While_below_30_HP_you_are_immune_to_crowd_contr,crowd_control_resistance,flat,100.0,100.0,,health_below,30.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Positive_Your_spells_cost_10_20_less_mana#1,Positive_Your_spells_cost_10_20_less_mana,mana_cost,more,-10.0,-20.0,Type.Spell,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
-Positive_Your_aura_costs_30_50_less_mana_per_second#1,Positive_Your_aura_costs_30_50_less_mana_per_second,mana_cost,more,-30.0,-50.0,Slot.Aura,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
+Positive_Your_auras_reserve_30_50_less_mana#1,Positive_Your_auras_reserve_30_50_less_mana,mana_reserve,more,-30.0,-50.0,Slot.Aura,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Negative_Skills_cost_50_75_more_mana#1,Negative_Skills_cost_50_75_more_mana,mana_cost,more,50.0,75.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Negative_Your_spells_mana_costs_are_quadrupled#1,Negative_Your_spells_mana_costs_are_quadrupled,mana_cost,more,300.0,300.0,Type.Spell,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
-Negative_Your_auras_cost_100_200_increased_mana_per_sec#1,Negative_Your_auras_cost_100_200_increased_mana_per_sec,mana_cost,increased,100.0,200.0,Slot.Aura,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
+Negative_Your_auras_reserve_50_100_increased_mana#1,Negative_Your_auras_reserve_50_100_increased_mana,mana_reserve_percent_less,flat,-50.0,-100.0,Slot.Aura,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Positive_While_below_50_HP_your_skills_cost_no_mana#1,Positive_While_below_50_HP_your_skills_cost_no_mana,mana_cost,removed,1.0,1.0,,health_below,50.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Positive_Regenerate_2_5_of_your_maximum_mana_per_second#1,Positive_Regenerate_2_5_of_your_maximum_mana_per_second,mana_regen,flat,2.0,5.0,,,0.0,max_mana,100.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Positive_Your_traps_ignore_20_40_of_enemy_armor#1,Positive_Your_traps_ignore_20_40_of_enemy_armor,armor_penetration,flat,20.0,40.0,Type.Trap,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
@@ -708,3 +708,6 @@ Positive_When_a_trap_triggers_all_enemies_within_4_6_met#1,Positive_When_a_trap_
 Positive_This_weapon_has_2_4_damage_types#1,Positive_This_weapon_has_2_4_damage_types,damage_types_carried,flat,2.0,4.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Positive_Sockets_on_this_equipment_fit_any_gem_type#1,Positive_Sockets_on_this_equipment_fit_any_gem_type,socket_fits_any_gem,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
 Negative_Gems_in_this_equipment_are_50_less_effective#1,Negative_Gems_in_this_equipment_are_50_less_effective,socketed_gem_effect,more,-50.0,-50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
+Positive_Your_auras_reserve_15_30_reduced_mana#1,Positive_Your_auras_reserve_15_30_reduced_mana,mana_reserve_percent_less,flat,15.0,30.0,Slot.Aura,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
+Positive_Each_aura_you_hold_reserves_5_15_less_mana#1,Positive_Each_aura_you_hold_reserves_5_15_less_mana,mana_reserve_reduction,flat,5.0,15.0,Slot.Aura,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0
+Positive_Your_gadgets_reserve_15_30_reduced_Fervour#1,Positive_Your_gadgets_reserve_15_30_reduced_Fervour,minion_reserve_percent_less,flat,15.0,30.0,Type.Gadget,,0.0,,0.0,,,,0,0.0,0.0,0.0,0,0.0,0.0,,0.0,0.0,0.0,0.0,,0.0,0.0

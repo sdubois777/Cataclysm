@@ -1343,7 +1343,7 @@
       "data": {
         "kind": "basic",
         "name": "Aura of Pain",
-        "description": "+5% aura retaliation damage per point. Enemies within 3 meters take retaliation damage equal to a percentage of damage dealt to you.",
+        "description": "+5% aura retaliation damage per point. Enemies within 3 meters take retaliation damage equal to a percentage of damage dealt to you. Your auras reserve 2% reduced mana per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8

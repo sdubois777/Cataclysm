@@ -2389,12 +2389,20 @@ private:
 };
 
 /**
- * A radius around the caster, held while it is affordable.
+ * A radius around the caster, held while it fits.
  *
  * TOGGLED WHEN IT HAS NO DURATION, TIMED WHEN IT HAS ONE. Conflagration is the
- * aura slot and toggles: pressing it again turns it off, and it drains 20 mana a
- * second until it is switched off or the mana runs out, which issue #36 requires.
- * Living Pyre is an Ultimate with a Duration of 6 seconds and ends on its own.
+ * aura slot and toggles: pressing it again turns it off. Living Pyre is an
+ * Ultimate with a Duration of 6 seconds and ends on its own.
+ *
+ * A TOGGLED AURA RESERVES MANA AND DRAINS NONE, since 2026-11-27, under the
+ * owner's choice "Reserve, don't drain". Switching it on costs nothing and needs
+ * room: what its holder's auras leave unreserved must cover this one's
+ * reservation (`UCataclysmGameplayAbility::ManaReservationFor`, 50 at skill level
+ * 1). While on it holds that much of maximum mana, which cannot be spent or
+ * refilled, and switching it off gives it back. Under Water to Blood it holds the
+ * same number of health. Until 2026-11-27 it drained 20 mana a second and went
+ * out when the mana ran out (issue #36).
  */
 UCLASS()
 class CATACLYSM_API UCataclysmAuraSkill : public UCataclysmSkillTemplate
@@ -2427,6 +2435,35 @@ public:
 
 	/** An aura that is on is never cut short by a hit. Ruled 2026-10-08. */
 	virtual bool CanBeInterruptedByAHit() const override { return false; }
+
+	/**
+	 * The cost check, AND ROOM FOR A TOGGLED AURA'S RESERVATION. Ruled 2026-11-27. Room is measured against the
+	 * maximum, not the pool: what the holder's auras leave unreserved must be at least this aura's reservation (for
+	 * health under Water to Blood, more than it, so a point stays). So a refused press is refused by the same check
+	 * every unaffordable press is, and the skill bar greys it the same way.
+	 */
+	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle,
+						   const FGameplayAbilityActorInfo* ActorInfo,
+						   FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
+
+	/** Whether this aura, switched on, would hold a reservation: toggled, and its slot reserves something. */
+	bool Reserves(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/** Whether `AbilitySystem` has room for this aura's reservation now. See `CheckCost`. */
+	bool HasRoomToReserve(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/**
+	 * What this activation holds now, 0 when it holds nothing. ASKED OF THE HOLDER'S ABILITY SYSTEM, which reprices it
+	 * live, as Fervour reserves are (ruled 2026-11-27): a skill level gained or a reduction row put on or taken off
+	 * moves it while the aura is on. Read by tests.
+	 */
+	float ReservedNow() const;
+
+private:
+	/** Whether this activation took a hold, so `EndAbility` gives one back. */
+	bool bTookAReservation = false;
+
+public:
 
 	/**
 	 * The key was pressed again while the aura is running. Switch it off.
@@ -2467,7 +2504,7 @@ public:
 							   const FGameplayAbilityActorInfo* ActorInfo,
 							   const FGameplayAbilityActivationInfo ActivationInfo) override;
 
-	/** One pulse: drain the mana, then burn everything inside. Driven by tests too. */
+	/** One pulse: burn everything inside. No mana since 2026-11-27. Driven by tests too. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Skill")
 	int32 Pulse();
 
@@ -2480,9 +2517,11 @@ public:
 	bool IsHeld() const { return bHeld; }
 
 	/**
-	 * True when the last end was caused by an upkeep the aura could not pay:
-	 * from mana, or from health for a character whose mana pool became health.
-	 * Issue #1901. Read by tests.
+	 * True when the last end was its holder letting it go because it no longer
+	 * fitted: the maximum fell below what the auras reserve
+	 * (`UCataclysmAbilitySystemComponent::ReleaseAurasThatNoLongerFit`). Until
+	 * 2026-11-27 it meant an upkeep the aura could not pay (issue #1901). Read by
+	 * tests.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	bool bEndedForLackOfMana = false;
@@ -2553,7 +2592,7 @@ public:
 	 * for each: the pulse's damage and its growth for a hit taken, in `Pulse`;
 	 * the magnitude of the named debuff the pulse lays, in `Pulse`; the allies'
 	 * damage bonus, in `HelpAlliesInside`; and the health returned for a hit
-	 * taken, in `NoteBlowTaken`. The radius, the upkeep, the duration, the burn
+	 * taken, in `NoteBlowTaken`. The radius, the reservation, the duration, the burn
 	 * a pulse sets and an immunity are not multiplied.
 	 *
 	 * ASKED OF THE AURA'S HOLDER WITH THIS SKILL'S TAGS. It has no gameplay

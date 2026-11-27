@@ -225,8 +225,14 @@ ACataclysmMinion* UCataclysmBoneGiants::RaiseAbomination(AActor* Player, const F
 	}
 	FCataclysmGiantsOfAPlayer& Tally = Giants->TallyOf(Player);
 
-	// ROOM, MADE BY RELEASING THE OLDEST, but only when it can be made: what stays (the machines) and the 100 must fit.
-	if (!UCataclysmCommand::HasRoomToReserve(Player, AbominationReserve))
+	// ITS 100 AFTER THE PLAYER'S RESERVE ROWS, since 2026-11-27: ruled by the coordinating session, "Route the Bone
+	// Colossus and the Abomination through ReserveFor, so reductions reach them." Asked with the giant's type tags,
+	// which carry no `Minion.Permanent`, so Lone Revenant's "more" still does not reach it, as its sentence says.
+	const float Reserve = UCataclysmCommand::ReserveFor(Player, AbominationReserve,
+													   ACataclysmMinion::TagsOfType(GiantTypeName));
+
+	// ROOM, MADE BY RELEASING THE OLDEST, but only when it can be made: what stays (the machines) and the reserve must fit.
+	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
 		const TArray<ACataclysmCharacterBase*> Releasable = UCataclysmCommand::ReleasableOldestFirst(Player);
 		float Staying = 0.0f;
@@ -238,15 +244,15 @@ ACataclysmMinion* UCataclysmBoneGiants::RaiseAbomination(AActor* Player, const F
 				Staying += Body->ReservedFervour;
 			}
 		}
-		if (Staying + AbominationReserve > Pool->MaximumClassResource())
+		if (Staying + Reserve > Pool->MaximumClassResource())
 		{
-			UE_LOG(LogCataclysm, Log, TEXT("ABOMINATION REFUSED: %s's pool of %.0f cannot hold its 100 Fervour."),
-				   *Player->GetName(), Pool->MaximumClassResource());
+			UE_LOG(LogCataclysm, Log, TEXT("ABOMINATION REFUSED: %s's pool of %.0f cannot hold its %.0f Fervour."),
+				   *Player->GetName(), Pool->MaximumClassResource(), Reserve);
 			return nullptr;
 		}
 		for (ACataclysmCharacterBase* Oldest : Releasable)
 		{
-			if (UCataclysmCommand::HasRoomToReserve(Player, AbominationReserve))
+			if (UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 			{
 				break;
 			}
@@ -278,7 +284,7 @@ ACataclysmMinion* UCataclysmBoneGiants::RaiseAbomination(AActor* Player, const F
 	BoneGiantsWriteHealth(Abomination, Health, Health);
 	Abomination->OwnDamagePerHit = Tally.SummedDamage * AbominationDamageSharePercent / 100.0f * Revenant;
 
-	UCataclysmCommand::HoldReserve(Player, Abomination, AbominationReserve);
+	UCataclysmCommand::HoldReserve(Player, Abomination, Reserve);
 	Tally.Abomination = Abomination;
 	Tally.bAbominationRose = true;
 	UE_LOG(LogCataclysm, Log,
@@ -339,8 +345,11 @@ void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemainsMarker
 		return;
 	}
 
-	// OR RAISED ON THEM, the first remains of a floor or the first after one was killed, when its 20 fit.
-	if (!UCataclysmCommand::HasRoomToReserve(Player, ColossusReserve))
+	// OR RAISED ON THEM, the first remains of a floor or the first after one was killed, when its 20 fit -- AFTER THE
+	// PLAYER'S RESERVE ROWS since 2026-11-27, as the Abomination's 100 above.
+	const float Reserve = UCataclysmCommand::ReserveFor(Player, ColossusReserve,
+													   ACataclysmMinion::TagsOfType(GiantTypeName));
+	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
 		return;
 	}
@@ -351,7 +360,7 @@ void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemainsMarker
 		return;
 	}
 	Risen->SetLifeSpan(0.0f);
-	UCataclysmCommand::HoldReserve(Player, Risen, ColossusReserve);
+	UCataclysmCommand::HoldReserve(Player, Risen, Reserve);
 	Tally.Colossus = Risen;
 	Tally.ColossusStartHealth = BoneGiantsMaximumHealthOf(Risen);
 	Tally.ColossusStartDamage = Risen->OwnDamagePerHit;

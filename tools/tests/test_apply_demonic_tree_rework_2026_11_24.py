@@ -26,7 +26,12 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 import apply_demonic_tree_rework_2026_11_24 as rework  # noqa: E402
 import apply_passive_order_fixes_2026_11_24 as order_fixes  # noqa: E402
 
-DOCS = REPO_ROOT / "docs"
+sys.path.insert(0, str(REPO_ROOT / "tools" / "tests"))
+import without_the_aura_reservation  # noqa: E402
+
+# COMPARED WITH THE AURA RESERVATION OF 2026-11-27 TAKEN OUT: it came after this script and adds a clause to a sentence it writes.
+# `without_the_aura_reservation.py` says why.
+DOCS = without_the_aura_reservation.docs()
 TREES = ("Masochist", "Ravager", "Ritualist")
 
 

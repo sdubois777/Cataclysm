@@ -934,8 +934,13 @@ void ACataclysmHUD::DrawPlayerVitals()
 	if (UCataclysmCombatOverlay::ManaOf(Pawn, Mana, MaxMana) && MaxMana > 0.0f)
 	{
 		Top -= PlayerBarHeightPx + PlayerBarGapPx;
+		// AND WHAT HELD AURAS RESERVE, AS A DARK BAND WITH ITS FIGURE, since 2026-11-27: a mana reserve decides
+		// whether the next aura can be switched on, as a Fervour reserve decides the next summon, so the number is
+		// shown in a fight as that one is.
 		DrawPlayerPool(Top, Mana, MaxMana,
-					   UCataclysmCombatOverlay::ManaFillHex);
+					   UCataclysmCombatOverlay::ManaFillHex,
+					   UCataclysmCombatOverlay::ManaReservedOf(Pawn),
+					   UCataclysmCombatOverlay::ManaReservedHex, /*bLabelReserved=*/true);
 	}
 
 	// THE ENERGY SHIELD LAST AND ONLY WHEN THERE IS ONE. A class with no energy
