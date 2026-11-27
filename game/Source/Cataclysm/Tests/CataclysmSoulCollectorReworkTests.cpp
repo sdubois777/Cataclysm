@@ -183,7 +183,7 @@ namespace CataclysmSoulCollectorReworkTest
 			if (Variable)
 			{
 				Before = Variable->GetFloat();
-				Variable->Set(Roll, ECVF_SetByCode);
+				Variable->Set(Roll, ECVF_SetByConsole);
 			}
 		}
 
@@ -191,7 +191,7 @@ namespace CataclysmSoulCollectorReworkTest
 		{
 			if (Variable)
 			{
-				Variable->Set(Before, ECVF_SetByCode);
+				Variable->Set(Before, ECVF_SetByConsole);
 			}
 		}
 
