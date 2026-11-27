@@ -1381,6 +1381,14 @@ public:
 	float BodyGrowthCm() const;
 
 	/**
+	 * How much wider a capsule stands than it was designed: its scaled radius less its unscaled one, NEGATIVE for a body
+	 * drawn smaller. `BodyGrowthCm` is this, held at nought. ONE DEFINITION OF GROWTH, which the Bone Colossus's reach
+	 * reads too (2026-11-27), so `tools/tests/test_a_lob_minimum_follows_the_casters_body.py` still finds one reader of
+	 * an unscaled radius in the game.
+	 */
+	static float CapsuleGrowthCm(const class UCapsuleComponent* Capsule);
+
+	/**
 	 * A creature the floor made its medic starts nothing hostile.
 	 *
 	 * THE ROW SAYS SO TWICE. `War_Field_Medic` reads "It does not attack",

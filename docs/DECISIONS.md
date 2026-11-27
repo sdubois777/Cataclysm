@@ -67,8 +67,9 @@ ln 1.2 / ln 1.85, about 0.296, at every step.
 - Its blow still follows its health against the health it rose with, as before.
 - **Its reach grows with its body** (the coordinating session, 2026-11-27): a minion's reach is measured centre to
   centre, so a Colossus drawn larger beside a wide creature could touch it and be out of reach. Its reach is the reach
-  it rose with plus its capsule's unscaled radius times its size over one, so its reach from its body's edge is what it
-  was at a normal minion's size: at 1.44, 13.2 cm further from its centre. How it chooses and lands an attack is not
+  it rose with plus its capsule's growth, `ACataclysmEnemyCharacter::CapsuleGrowthCm` (split out of `BodyGrowthCm` so
+  growth keeps one definition), so its reach from its body's edge is what it was at a normal minion's size: at 1.44,
+  13.2 cm further from its centre; hurt below a normal minion's size, shorter. How it chooses and lands an attack is not
   changed; the empire-tree session's `fix/minions-that-do-not-attack` holds why minions dealt no damage.
 
 **Open, and reported rather than changed:** feeding adds 10% of the fed creature's maximum health, and on these floors

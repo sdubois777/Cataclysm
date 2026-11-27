@@ -386,9 +386,11 @@ void UCataclysmBoneGiants::StepColossusOf(const AActor* Player)
 								   UCataclysmEnemyRarity::BodyScaleForHealthMultiple(Rarities, StartMultiple * Mass));
 	Colossus->SetActorScale3D(FVector(Scale));
 	// ITS REACH FROM ITS BODY'S EDGE KEPT: a minion's reach is centre to centre, and its capsule grows with its scale.
-	if (const UCapsuleComponent* Body = Colossus->GetCapsuleComponent(); Body && Tally->ColossusStartReach > 0.0f)
+	// The growth is the enemies' one definition of it, negative when hurt below a normal minion's size.
+	if (Tally->ColossusStartReach > 0.0f)
 	{
-		Colossus->ReachCm = Tally->ColossusStartReach + (Scale - 1.0f) * Body->GetUnscaledCapsuleRadius();
+		Colossus->ReachCm =
+			Tally->ColossusStartReach + ACataclysmEnemyCharacter::CapsuleGrowthCm(Colossus->GetCapsuleComponent());
 	}
 }
 

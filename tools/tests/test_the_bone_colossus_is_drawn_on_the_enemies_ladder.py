@@ -86,9 +86,11 @@ def test_the_ladder_is_geometric_so_log_interpolation_follows_it_exactly():
 
 def test_its_reach_grows_with_its_body():
     """A minion's reach is centre to centre, so a Colossus drawn larger reaches by the reach it rose with plus its
-    capsule's radius times its size over one (the coordinating session, 2026-11-27). CONTROL: the rise records the
-    reach it rose with, which the step builds on."""
-    step = function_body(_cpp(), "void UCataclysmBoneGiants::StepColossusOf")
-    assert "Colossus->ReachCm = Tally->ColossusStartReach + (Scale - 1.0f) * Body->GetUnscaledCapsuleRadius();" in step
+    capsule's growth, the enemies' one definition of it (the coordinating session, 2026-11-27). CONTROL: the rise
+    records the reach it rose with, which the step builds on."""
+    step = re.sub(r"\s+", " ", function_body(_cpp(), "void UCataclysmBoneGiants::StepColossusOf"))
+    assert ("Colossus->ReachCm = Tally->ColossusStartReach + "
+            "ACataclysmEnemyCharacter::CapsuleGrowthCm(Colossus->GetCapsuleComponent());") in step
+    assert "GetUnscaledCapsuleRadius" not in step
     rise = function_body(_cpp(), "void UCataclysmBoneGiants::RemainsLanded")
     assert "Tally.ColossusStartReach = Risen->ReachCm;" in rise
