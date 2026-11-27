@@ -3608,6 +3608,9 @@ namespace CataclysmPassiveConditionTest
 			// AND FIRST AMONG THE DEAD'S "your permanent minion with the most maximum health", the Death line's finishing
 			// slice B (2026-11-26): a state of the minion asking.
 			|| Name == TEXT("minion_has_your_most_maximum_health")
+			// AND DEATH MADE FLESH'S "the Fervour you hold no longer adds to your damage", the Soul Collector keystone
+			// rework (issue #2951): a state of the character.
+			|| Name == TEXT("fervour_held_adds_damage")
 			// THE BERSERKER'S STATES, 2026-11-25: "DUAL WIELD ONLY", "WHILE IN WRATH" AND "WHILE IN FRENZY". Each names
 			// a state, so each compares nothing.
 			|| Name == TEXT("dual_wielding")

@@ -130,8 +130,6 @@ EXPRESSED_ANOTHER_WAY = {
         "credited against the Boss itself, as ruled (Q7 b) in the Death trees' slice C4d2",
     ("SoulCollector_basic_b_a0", "0", "seconds_after_kill"):
         "Kill Chain's 'within 2 seconds of each other' is its stacks' 2-second life (own_stacks, StackSeconds 2)",
-    ("SoulCollector_basic_spine_004", "0", "seconds_after_kill"):
-        "Grave Patience's 'after a kill' is what fervour_kill_decay_grace_seconds is",
     ("SoulCollector_basic_c_b0", "0", "target_in_your_siphon"):
         "the stat siphon_enemies_deal_less_percent acts on the Siphon's members alone",
     ("SoulCollector_basic_c_stem0", "0", "target_in_your_siphon"):
@@ -142,8 +140,6 @@ EXPRESSED_ANOTHER_WAY = {
         "curse_death_extra_imps is read on the death of an enemy carrying the curse",
     ("SoulCollector_basic_d_stem0", "0", "seconds_after_fervour_spent"):
         "stacks granted on fervour_spent of 10 or more, each lasting 4 seconds (own_stacks)",
-    ("SoulCollector_basic_b_stem0", "0", "target_rarity_is"):
-        "Gleaning's 'each enemy you kill' names every kill, not a rarity",
 }
 
 

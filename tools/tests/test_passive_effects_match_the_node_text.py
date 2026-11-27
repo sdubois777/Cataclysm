@@ -861,7 +861,9 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: (`tools/reapply_death_finish_c_workbook.py`), E's six (`tools/reapply_death_finish_e_shadow_workbook.py`), D's 32
 #: (`tools/reapply_death_remains_workbook.py`), A's ten (`tools/reapply_death_finish_soul_collector_workbook.py`) and
 #: B's 29 (`tools/reapply_death_finish_b_workbook.py`), on 899.
-AUTHORED_ROWS = 998
+#: AND TO 1003 ON 2026-11-27, the Soul Collector keystone rework (issue #2951,
+#: `tools/reapply_soul_collector_keystones_rework_workbook.py`): twenty nodes rewritten, 37 rows out and 42 in.
+AUTHORED_ROWS = 1003
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -2124,6 +2126,12 @@ CONDITION_WORDS = {
     # THE BERSERKER'S STATES, 2026-11-25. Frenzy's "Dual wield only", and the
     # two states' own "While in Wrath" and "While in Frenzy".
     "dual_wielding": ("dual wield only", None),
+    # AND THE SOUL COLLECTOR'S STARTING NODE, "You deal 1% more damage for every 2 Fervour you hold", whose damage rows
+    # are stated under `fervour_held_adds_damage` so that Death Made Flesh can take them away (issue #2951): the words
+    # are the Fervour held that the rows add damage for.
+    "fervour_held_adds_damage": ("1% more damage for every 2 fervour you hold", None),
+    # AND TITHE OF THE DEAD'S "against enemies within 6 metres of you" (issue #2951): the struck enemy's distance.
+    "target_within_metres": ("against enemies within", "{value:g} metres"),
     "in_wrath": ("while in wrath", None),
     "in_frenzy": ("while in frenzy", None),
 
@@ -2639,7 +2647,10 @@ SCALE_WORDS = {
     # AND "your minions gain" SINCE SLICE C6d2: Avenging Dead's own stack, granted
     # by `hit_taken` with a cap of one, is a window renewed by each hit that took
     # enough, and counts nothing, as Spent Breath's does.
-    "own_stacks": ([(("for each", "after you spend", "your minions gain"),), ("for", "second")], None, None),
+    # AND BORROWED TIME'S "for every 2 kills in your current chain" (the Soul Collector keystone rework, issue #2951).
+    "own_stacks": ([(("for each", "after you spend", "your minions gain"),), ("for", "second"),
+                    ("for every", "kills in your current chain"), ("while your current chain of kills has",),
+                    ("each stack gives",)], None, None),
 
     # THE ENEMIES IN THE CHARACTER'S SIPHON, the Death trees' slice C2
     # (2026-11-25): Sapping Cold, Stolen Strength, Life Siphon and Living Harvest
@@ -2671,7 +2682,10 @@ SCALE_WORDS = {
     # sentences say "each enemy" and name no step, so the step can only be 1,
     # and that is asserted instead. Looking for a "1" would find the bonus's
     # own number in "2% more damage" territory and pass for the wrong reason.
-    "enemies_in_reach": (("each", "enemy within"), None, None),
+    # AND THINNING THE HERD'S "for every 2 enemies within 8 metres" (issue #2951), a step of 2 stated in words.
+    "enemies_in_reach": ([("each", "enemy within"), ("for every", "enemies within")], "{value:g} enemies within",
+                         # A STEP OF 1 IS "each enemy within" or "every enemy within": a single enemy, unnumbered.
+                         "enemy within"),
 
     # THE SAME COUNT RESTRICTED TO CRIPPLED ENEMIES. Issue #1515. Grinding Halt
     # reads "Each Crippled enemy within 4 metres of you grants you 1 Fervour per
@@ -2811,8 +2825,20 @@ SCALES_STATED_AS_A_SHARE = {
 #: percentage", one for every 1% of leech; Glutton and Crimson Pact write the
 #: same step as "for every 1% of life leech", so giving the whole scale a
 #: step-of-one phrase would fail them.
+#: A step above one stated by one node's own words, on a scale whose other rows name no step, by (node, scale). The
+#: Soul Collector keystone rework (issue #2951): Borrowed Time's "for every 2 kills in your current chain" is a step of
+#: 2, and Reaper's Rhythm's "has 5 or more kills" a step of 5 capped at one step.
+STEP_STATED_ON_ONE_NODE = {
+    ("SoulCollector_basic_b_c1", "own_stacks"): "for every {value:g} kills",
+    ("SoulCollector_keystone_b_kC", "own_stacks"): "{value:g} or more kills",
+}
+
+
 STEP_OF_ONE_ON_ONE_NODE = {
     ("Berserker_capstone_25", "life_leech"): "your current life leech percentage",
+    # Heavy Urn's "for each Fervour you hold above 50" (the Soul Collector keystone rework, issue #2951): a step of 1
+    # counted past an offset of 50.
+    ("SoulCollector_keystone_a_kB", "class_resource_held"): "for each fervour you hold above",
 }
 
 
@@ -2843,6 +2869,18 @@ OWN_STACK_EVENT_WORDS = {
     # AND BURSTING RANKS' "for each detonation of yours in the last 2 seconds" (the finishing of the Death Cataclysm,
     # slice C, 2026-11-26), on `minion_detonated`.
     "minion_detonated": ("for each detonation of yours",),
+    # AND GATHERED SOULS' "Each enemy that dies within 6 metres of you" (the Soul Collector keystone rework, issue #2951).
+    "nearby_death": ("dies within",),
+}
+
+#: A kill stack's event in other words than "kills within", by node: the Soul Collector keystone rework (issue #2951).
+#: Trophy of the Strong is granted by one kill, and the three chain nodes by the kills of the chain Kill Chain defines,
+#: "Kills within 2 seconds of each other form a chain".
+OWN_STACK_EVENT_IN_OTHER_WORDS = {
+    "SoulCollector_keystone_b_kB": ("killing an elite",),
+    "SoulCollector_keystone_b_kC": ("chain of kills",),
+    "SoulCollector_basic_b_c0": ("chain of kills",),
+    "SoulCollector_basic_b_c1": ("kills in your current chain",),
 }
 
 #: A stack's seconds written in other words than "for N seconds", by node. Kill Chain (the Death trees' slice C1): "Kills
@@ -2852,6 +2890,12 @@ STACK_SECONDS_IN_OTHER_WORDS = {
     # Bursting Ranks (the finishing of the Death Cataclysm, slice C): "in the last 2 seconds" is the 2-second window each
     # detonation renews.
     "Necromancer_basic_ch_a2": "in the last {seconds:g} seconds",
+    # AND THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951): Gathered Souls' one shared window, "lasts 6 seconds", and the
+    # three chain nodes' 2 seconds, which is the window of the chain Kill Chain defines and their sentences name.
+    "SoulCollector_keystone_spine_001": "lasts {seconds:g} seconds",
+    "SoulCollector_keystone_b_kC": "your current chain",
+    "SoulCollector_basic_b_c0": "your current chain",
+    "SoulCollector_basic_b_c1": "your current chain",
 }
 
 
@@ -2870,9 +2914,10 @@ def test_an_own_stack_states_its_event_and_its_seconds(effects, nodes):
         assert event in OWN_STACK_EVENT_WORDS, (
             f"{row['Name']} grants its own stack on {event!r}, whose words this test does not know. "
             f"Known: {sorted(OWN_STACK_EVENT_WORDS)}.")
-        assert all(phrase in words for phrase in OWN_STACK_EVENT_WORDS[event]), (
+        said_event = OWN_STACK_EVENT_IN_OTHER_WORDS.get(row["Node"], OWN_STACK_EVENT_WORDS[event])
+        assert all(phrase in words for phrase in said_event), (
             f"{row['Name']} grants its own stack on {event!r} and its node does not say "
-            f"{OWN_STACK_EVENT_WORDS[event]}: {words_of(row, nodes)}")
+            f"{said_event}: {words_of(row, nodes)}")
         seconds = float(row["StackSeconds"] or 0)
         said = STACK_SECONDS_IN_OTHER_WORDS.get(row["Node"], "for {seconds:g} second").format(seconds=seconds)
         assert seconds > 0 and said in words, (
@@ -2929,6 +2974,14 @@ def test_a_scale_matches_the_words_of_the_node_it_is_on(effects, nodes):
             f"{row['Node']} carries the scale {scale!r} with a step of {step:g}. "
             "A step of nothing makes the bonus worth nothing at every state."
         )
+
+        # ONE NODE'S OWN STEP IN WORDS. See `STEP_STATED_ON_ONE_NODE`.
+        stated_step = STEP_STATED_ON_ONE_NODE.get((row["Node"], scale))
+        if stated_step is not None:
+            assert stated_step.format(value=step).lower() in words, (
+                f"{row['Node']} scales {scale!r} in steps of {step:g}, which its sentence states as "
+                f"{stated_step.format(value=step)!r}, and the node says: {described}")
+            continue
 
         if value_form is None:
             # THE SENTENCE NAMES NO STEP, SO THE STEP CAN ONLY BE ONE. Issue
@@ -4159,6 +4212,8 @@ ACTION_VALUE_FORMS = {
     # AND MARROW FEAST'S "you recover 1% of your maximum health" (the Death trees'
     # slice C6d2, 2026-11-25).
     "health": ("{value:g}% of maximum health", "recover {value:g}% of your maximum health",
+               # AND GRAVE PATIENCE'S AND TEAR LOOSE'S "restores 1% of your maximum health" (issue #2951).
+               "restores {value:g}% of your maximum health",
                # AND THE WAR LINE'S SHIELD OATH, since the bundle 3 merge: "restores 2% of your Maximum HP" and
                # "Regenerate 1% of your current HP per second".
                "{value:g}% of your Maximum HP", "{value:g}% of your current HP",
@@ -4186,7 +4241,8 @@ ACTION_VALUE_FORMS = {
     # Fervour" and Tear Loose's "to give you 1 Fervour".
     "class_resource": ("{value:g} Fervour",),
     # BLADE ECHO'S "for 100% weapon damage" (the Death trees' slice C6e).
-    "strike_strongest_near": ("{value:g}% weapon damage",),
+    # AND GLEANING'S AND UNQUIET SOULS' "for 50% of your weapon damage" (the Soul Collector keystone rework).
+    "strike_strongest_near": ("{value:g}% weapon damage", "{value:g}% of your weapon damage"),
 }
 
 #: THE WORDS A ROW SIZED BY ITS EVENT'S AMOUNT MUST SIT ON, by its Fraction Of.

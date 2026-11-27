@@ -1583,9 +1583,12 @@ def test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_carries_t
                      r"bDamageOverTime \|\| bOwnBlow \? nullptr : Attacker\);", engine)
     assert "State.HitTakenPercentOfMaxHealth = HitBeingAnnouncedPercentOfMaxHealth;" in engine
     item = code_without_comments(SOURCE.parents[1] / "Items" / "CataclysmItem.cpp")
-    assert re.search(r"if \(UCataclysmStatPipeline::IsJudgedAtItsEvent\(Out\.Condition\)\)\s*\{\s*Out\.Condition = "
+    # THROUGH `IsJudgedWhereItsStackIsGranted` SINCE THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951), which asks
+    # `IsJudgedAtItsEvent` first and adds a kill stack's rarity condition, so both sites still take the event condition.
+    assert re.search(r"if \(UCataclysmStatPipeline::IsJudgedAtItsEvent\(Condition\)\)\s*\{\s*return true;", item)
+    assert re.search(r"if \(IsJudgedWhereItsStackIsGranted\(Out\.Condition, Effect\)\)\s*\{\s*Out\.Condition = "
                      r"ECataclysmStatCondition::Always;\s*Out\.ConditionValue = 0\.0f;", item)
-    assert re.search(r"&& UCataclysmStatPipeline::IsJudgedAtItsEvent\(AtTheEvent\)\)\s*\{\s*Stack\.Condition = "
+    assert re.search(r"&& IsJudgedWhereItsStackIsGranted\(AtTheEvent, \*Effect\)\)\s*\{\s*Stack\.Condition = "
                      r"AtTheEvent;\s*Stack\.ConditionValue = Effect->ConditionValue;", item)
     vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
     assert "MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);" in vitals
