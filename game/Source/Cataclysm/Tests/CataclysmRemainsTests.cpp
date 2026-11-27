@@ -1577,12 +1577,12 @@ bool FCataclysmRemainsColossusSizeTest::RunTest(const FString&)
 
 	// AT ONCE, NOT A STEP LATER: the size it rises with is drawn as it rises.
 	const float Legendary = UCataclysmEnemyRarity::BodyScaleForStep(Rarities, UCataclysmBoneGiants::ColossusStartsAtStep);
-	TestEqual(TEXT("it rises drawn at a Legendary creature's size"), Colossus->GetActorScale3D().X, Legendary, 0.001f);
+	TestEqual(TEXT("it rises drawn at a Legendary creature's size"), static_cast<float>(Colossus->GetActorScale3D().X), Legendary, 0.001f);
 	ACataclysmMinion* Ordinary =
 		ACataclysmMinion::Spawn(Player.Character, FVector(-3 * M, 0, 0), 60.0f, false, UCataclysmBoneGiants::GiantTypeName);
 	if (TestNotNull(TEXT("set-up: an ordinary Barrow Guard"), Ordinary))
 	{
-		TestEqual(TEXT("CONTROL: an ordinary Barrow Guard is a normal minion's size"), Ordinary->GetActorScale3D().X, 1.0f,
+		TestEqual(TEXT("CONTROL: an ordinary Barrow Guard is a normal minion's size"), static_cast<float>(Ordinary->GetActorScale3D().X), 1.0f,
 				  0.001f);
 		TestTrue(TEXT("so the Colossus is drawn larger than it"), Colossus->GetActorScale3D().X > 1.3f);
 	}
@@ -1612,7 +1612,7 @@ bool FCataclysmRemainsColossusSizeTest::RunTest(const FString&)
 	Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Risen * 0.5f);
 	UCataclysmBoneGiants::StepColossusOf(Player.Character);
 	TestEqual(TEXT("at half its health it is drawn at the enemies' size for half a Legendary's health"),
-		Colossus->GetActorScale3D().X,
+		static_cast<float>(Colossus->GetActorScale3D().X),
 		UCataclysmEnemyRarity::BodyScaleForHealthMultiple(Rarities, StartMultiple * 0.5f), 0.001f);
 	TestTrue(TEXT("which is smaller than it rose"), Colossus->GetActorScale3D().X < Legendary - 0.1f);
 	TestEqual(TEXT("and at its smaller size its reach from its body's edge is still a normal minion's"),
@@ -1621,7 +1621,7 @@ bool FCataclysmRemainsColossusSizeTest::RunTest(const FString&)
 	// AND NEVER SMALLER THAN ITS LEAST, however hurt.
 	Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Risen * 0.001f);
 	UCataclysmBoneGiants::StepColossusOf(Player.Character);
-	TestEqual(TEXT("at a thousandth of its health it is drawn at its least"), Colossus->GetActorScale3D().X,
+	TestEqual(TEXT("at a thousandth of its health it is drawn at its least"), static_cast<float>(Colossus->GetActorScale3D().X),
 			  UCataclysmBoneGiants::ColossusSmallestScale, 0.001f);
 	return true;
 }
