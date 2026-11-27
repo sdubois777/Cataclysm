@@ -570,8 +570,8 @@ bool FCataclysmInventoryTabsScreenTest::RunTest(const FString&)
 			  FString(TEXT("Gems (3)")));
 	TestTrue(TEXT("the gear tab's name is the header line, not this"),
 			 UCataclysmInventoryScreen::TabNameFor(ECataclysmInventoryTab::Gear, 5).IsEmpty());
-	TestEqual(TEXT("**every material in the table, 27**"), Order.Num(), Table->GetRowNames().Num());
-	TestEqual(TEXT("and the table holds 27"), Table->GetRowNames().Num(), 27);
+	TestEqual(TEXT("**every material in the table**"), Order.Num(), Table->GetRowNames().Num());
+	TestTrue(TEXT("CONTROL: the table holds materials"), Table->GetRowNames().Num() > 0);
 	TestTrue(TEXT("**by tier, lowest first**"), bByTier);
 	TestTrue(TEXT("the Corrupted Mote is among them"), Order.Contains(CataclysmInventoryTabsTest::Mote));
 	TestEqual(TEXT("named as the table names it"), MoteName, FString(TEXT("Corrupted Mote")));

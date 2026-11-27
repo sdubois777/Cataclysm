@@ -4,12 +4,12 @@ WHY THIS EXISTS. Issue #1233. Nothing in the game showed a player a single stat,
 so `UCataclysmCharacterSheetLayout` was written to show them all -- and the list
 of which stats there are was already settled twice over. `STAT_GROUPS` in
 `sim/cataclysm_sim/character.py` holds the 46 that make up this project's
-character sheet, and the automation test
-`Cataclysm.Attributes.CharacterSheetIsComplete` counts the attribute sets against
-that same 46 and names every attribute deliberately kept off it.
+character sheet. (The automation test `Cataclysm.Attributes.CharacterSheetIsComplete`
+also counted the attribute sets against that 46 until issue #2928 removed the
+counts.)
 
-So the screen's list is a THIRD copy, and this is what stops it drifting from the
-other two. The failure it catches is quiet: a stat added to the model and not to
+So the screen's list is a second copy, and this is what stops it drifting from
+the model's. The failure it catches is quiet: a stat added to the model and not to
 the screen is a stat the player can never see, and a stat on the screen that the
 model does not carry is a row that reads zero for ever because nothing tunes it.
 
@@ -112,22 +112,23 @@ def test_the_screen_covers_every_group_the_model_has():
 
 
 def test_the_sheet_is_forty_six_stats():
-    """The count the C++ automation test derives independently.
+    """The screen shows as many stats as the model's groups hold.
 
-    NOT A SECOND OPINION ABOUT THE MODEL, but a check that the number quoted in
-    three places is still one number. `Cataclysm.Attributes.CharacterSheetIsComplete`
-    reaches 46 by counting the attribute sets and subtracting the attributes
-    deliberately kept off the sheet, which is an entirely different route to the
-    same figure.
+    READ FROM THE MODEL, NOT TYPED (issue #2928). This used to assert 46, a number
+    also pinned in the C++ sheet test and reached a third way by counting the
+    attribute sets; a new sheet stat meant three edits and a failing Unreal run. The
+    model's `STAT_GROUPS` is the list the balance is tuned against, so the screen
+    must show exactly as many, each once (below). Which stats they are is the test
+    above.
     """
     on_screen = [stat for variable, _ in GROUP_VARIABLES
                  for stat in read_group(variable)]
+    in_the_model = sum(len(stats) for stats in STAT_GROUPS.values())
 
-    assert len(on_screen) == 46, (
-        "The screen shows {} stats. The sheet is 46: see "
-        "Cataclysm.Attributes.CharacterSheetIsComplete in "
-        "game/Source/Cataclysm/Tests/CataclysmAttributeSetTests.cpp, which "
-        "derives that number from the attribute sets.".format(len(on_screen)))
+    assert in_the_model > 0, "CONTROL: the model's stat groups hold stats"
+    assert len(on_screen) == in_the_model, (
+        "The screen shows {} stats and the model's STAT_GROUPS hold {}.".format(
+            len(on_screen), in_the_model))
 
     assert len(set(on_screen)) == len(on_screen), (
         "A stat is listed in two groups on the screen. That keeps the count "

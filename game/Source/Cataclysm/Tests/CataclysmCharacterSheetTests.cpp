@@ -140,17 +140,11 @@ CATACLYSM_SHEET_TEST(FCataclysmSheetHoldsTheModelStatsTest,
 {
 	using namespace CataclysmCharacterSheetTest;
 
-	// FORTY-SIX IS NOT A NUMBER THIS SCREEN CHOSE. It is what
-	// `Cataclysm.Attributes.CharacterSheetIsComplete` derives by counting the
-	// attribute sets and subtracting the ones deliberately kept off, and what
-	// `STAT_GROUPS` in `sim/cataclysm_sim/character.py` holds. A sheet showing a
-	// different number of stats from the model that balances the game would be
-	// showing the player a game nobody tuned.
-	TestEqual(TEXT("the sheet holds 46 stats"),
-			  UCataclysmCharacterSheetLayout::SheetStatCount(), 46);
-
-	TestEqual(TEXT("in five groups"),
-			  UCataclysmCharacterSheetLayout::Groups().Num(), 5);
+	// WHICH STATS, AND HOW MANY, ARE THE MODEL'S: `STAT_GROUPS` in `sim/cataclysm_sim/character.py`, compared with this
+	// screen's lists by `tools/tests/test_the_character_sheet_shows_the_model_stats.py`. This test no longer pins the
+	// count (46) or the groups (5) as numbers, which only restated the lists (issue #2928). It checks what a count
+	// cannot: that no stat is listed twice, and that every one has an attribute behind it.
+	TestTrue(TEXT("CONTROL: the sheet lists stats"), UCataclysmCharacterSheetLayout::SheetStatCount() > 0);
 
 	// NO STAT IN TWO GROUPS, which would make the count right and the sheet
 	// wrong: a stat listed twice and one missing add up to 46.
