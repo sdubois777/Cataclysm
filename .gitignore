@@ -92,8 +92,8 @@ game/Content/PsykerEpic/
 game/Content/Alien5Remake/
 game/Content/AbsorbtionFX/
 # The sixteen further Fab packs the owner added on 2026-11-26, catalogued that day (environments, effects, a
-# material set, a sword, a creature and an animation set). PIrateIsland is proposed for removal and stays here until
-# it is deleted, so it cannot be committed meanwhile.
+# material set, a sword, a creature and an animation set). PIrateIsland was deleted on 2026-11-26 at the owner's word (sent to the
+# Recycle Bin with its demo levels); its lines stay so a fresh download of it is not committed.
 game/Content/ASCTeuthisan/
 game/Content/CastleTown/
 game/Content/Cave/
