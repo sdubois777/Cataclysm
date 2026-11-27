@@ -425,7 +425,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourOnEventsRealRowsTest,
 	"Cataclysm.FervourOnEvents.TheSixNodesRowsAreTheirSentences",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** The six nodes' real rows, read from the passive effects table: each stat or action, base, value and condition. */
+/**
+ * The six nodes' real rows, read from the passive effects table: each stat or action, base, value and condition. An
+ * action row's base is stated per row: Tear Loose's, since the Soul Collector keystone rework (issue #2951), restores 1%
+ * of maximum health, so its base is the maximum and not a flat amount.
+ */
 bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 {
 	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
@@ -442,6 +446,7 @@ bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 		float Value;
 		float Chance;
 		int32 Count;
+		const TCHAR* Base = TEXT("points");
 	};
 	const FExpected Expected[] = {
 		{TEXT("Shadow_basic_d_a2"), 0, TEXT("class_resource"), TEXT(""), 1.0f, 0.0f, 1},
@@ -449,7 +454,8 @@ bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 		{TEXT("SoulCollector_capstone_25"), 2, TEXT("class_resource"), TEXT("target_is_boss"), 5.0f, 0.0f, 1},
 		{TEXT("SoulCollector_capstone_25"), 2, TEXT("fervour_kill_decay_per_second"), TEXT("enemy_of_rarity_in_reach"),
 		 1.0f, 0.0f, 1},
-		{TEXT("SoulCollector_basic_b_b1"), 0, TEXT("health"), TEXT("target_rarity_at_least"), 1.0f, 0.0f, 1},
+		{TEXT("SoulCollector_basic_b_b1"), 0, TEXT("health"), TEXT("target_rarity_at_least"), 1.0f, 0.0f, 1,
+		 TEXT("maximum")},
 		{TEXT("Shadow_basic_d_a0"), 0, TEXT("evasion"), TEXT("opponent_rarity_at_least"), 1.0f, 0.0f, 1},
 		{TEXT("Shadow_keystone_spine_002"), 0, TEXT("fervour_kill_decay_per_second"), TEXT("no_enemy_in_reach"), 1.0f,
 		 0.0f, 1},
@@ -472,7 +478,7 @@ bool FCataclysmFervourOnEventsRealRowsTest::RunTest(const FString&)
 					  Want.Chance, 0.001f);
 			if (!Row->Action.IsEmpty())
 			{
-				TestEqual(*FString::Printf(TEXT("%s: a flat amount"), Want.Node), Row->FractionOf, FString(TEXT("points")));
+				TestEqual(*FString::Printf(TEXT("%s: the base"), Want.Node), Row->FractionOf, FString(Want.Base));
 			}
 		}
 		TestEqual(*FString::Printf(TEXT("%s %s %s: rows"), Want.Node, Want.StatOrAction, Want.Condition), Found,
