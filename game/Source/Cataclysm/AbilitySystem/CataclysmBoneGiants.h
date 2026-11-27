@@ -68,8 +68,13 @@ struct FCataclysmGiantsOfAPlayer
  *   - FED: every remains of the player's that lands within `ColossusFeedReachCm` of it is consumed, adding 10% of that
  *     creature's maximum health to its maximum and current health. A fed remains is not a raise (Q4), and not one of
  *     Picked Clean's "raising a minion on them or detonating them", so it raises no event.
- *   - SHRINKS WHEN HURT: its blow and its drawn size follow its health against the health it rose with, stepped every
+ *   - SHRINKS WHEN HURT: its blow follows its health against the health it rose with, stepped every
  *     `ColossusStepSeconds`. Being fed grows it back.
+ *   - ITS SIZE IS AN ENEMY'S FOR THE SAME HEALTH (the owner, 2026-11-27: "it should start larger, and grow with the
+ *     same scale as enemies"). It rises with the health multiple of a `ColossusStartsAtStep` creature (Legendary,
+ *     1.44 times a normal minion), and that multiple follows its health against the health it rose with;
+ *     `UCataclysmEnemyRarity::BodyScaleForHealthMultiple` turns it into a size on the rarity steps' own ladder. Never
+ *     smaller than `ColossusSmallestScale`, never bigger than a Cataclysm Boss.
  *   - ONE AT A TIME. Killed, the next remains raises a new one at the start. Gone when the floor changes.
  */
 UCLASS()
@@ -97,8 +102,16 @@ public:
 	static constexpr float ColossusFeedReachCm = 600.0f;
 	static constexpr float ColossusFedHealthSharePercent = 10.0f;
 	static constexpr float ColossusStepSeconds = 0.25f;
+
+	/**
+ * The rarity step whose health multiple the Colossus rises with, for its drawn size. A JUDGEMENT of 2026-11-27 on
+ * the owner's "it should start larger": Legendary, drawn 1.44 times a normal minion, because an Elite's 1.2 is hard
+ * to pick out among the cones every minion is drawn as.
+ */
+	static constexpr int32 ColossusStartsAtStep = 2;
+
+	/** The least it is drawn at however hurt, so it never shrinks out of sight. Its largest is a Cataclysm Boss's. */
 	static constexpr float ColossusSmallestScale = 0.6f;
-	static constexpr float ColossusLargestScale = 3.0f;
 
 	/** The body both giants are drawn with. */
 	static const TCHAR* GiantTypeName;

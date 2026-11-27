@@ -14,6 +14,7 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "Engine/World.h"
 
 const TCHAR* UCataclysmBoneGiants::AbominationRisesStat = TEXT("abomination_rises");
@@ -349,9 +350,14 @@ void UCataclysmBoneGiants::RemainsLanded(AActor* Player, ACataclysmRemainsMarker
 	Tally.Colossus = Risen;
 	Tally.ColossusStartHealth = BoneGiantsMaximumHealthOf(Risen);
 	Tally.ColossusStartDamage = Risen->OwnDamagePerHit;
-	UE_LOG(LogCataclysm, Log, TEXT("BONE COLOSSUS: %s's Colossus rose on the remains of %s, %.0f health."),
-		   *Player->GetName(), *Remains->Kind.ToString(), Tally.ColossusStartHealth);
 	Remains->Destroy();
+	// DRAWN AT ITS STARTING SIZE AT ONCE, not a quarter of a second later at a normal minion's.
+	StepColossusOf(Player);
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("BONE COLOSSUS: %s's Colossus rose on the remains of %s, %.0f health, drawn %.2f times a minion at X=%.0f "
+				"Y=%.0f."),
+		   *Player->GetName(), *Remains->Kind.ToString(), Tally.ColossusStartHealth, Risen->GetActorScale3D().X,
+		   Risen->GetActorLocation().X, Risen->GetActorLocation().Y);
 	Giants->StartColossusStep();
 }
 
@@ -367,8 +373,15 @@ void UCataclysmBoneGiants::StepColossusOf(const AActor* Player)
 	// ITS MASS IS ITS HEALTH: its blow follows it, and its size follows the cube root of it, as a body's volume.
 	const float Mass = FMath::Max(0.0f, BoneGiantsHealthOf(Colossus) / Tally->ColossusStartHealth);
 	Colossus->OwnDamagePerHit = Tally->ColossusStartDamage * Mass;
-	Colossus->SetActorScale3D(FVector(FMath::Clamp(FMath::Pow(Mass, 1.0f / 3.0f), ColossusSmallestScale,
-													ColossusLargestScale)));
+	// AN ENEMY'S SIZE FOR ITS HEALTH: the multiple a `ColossusStartsAtStep` creature has over a Common, carried by its
+	// health against the health it rose with. The owner, 2026-11-27.
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	float StartMultiple = 1.0f;
+	float UnusedDamage = 1.0f;
+	float UnusedArmour = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(Rarities, ColossusStartsAtStep, StartMultiple, UnusedDamage, UnusedArmour);
+	Colossus->SetActorScale3D(FVector(FMath::Max(
+		ColossusSmallestScale, UCataclysmEnemyRarity::BodyScaleForHealthMultiple(Rarities, StartMultiple * Mass))));
 }
 
 void UCataclysmBoneGiants::StartColossusStep()

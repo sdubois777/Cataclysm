@@ -22,6 +22,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Components/StaticMeshComponent.h"
@@ -1185,6 +1186,7 @@ bool FCataclysmRemainsColossusTest::RunTest(const FString&)
 
 	const float Risen = RemainsMaximumHealthOf(Colossus);
 	const float StartBlow = Colossus->OwnDamagePerHit;
+	const float RoseScale = Colossus->GetActorScale3D().X;
 	const float FedHealth = RemainsMaximumHealthOf(Fed);
 	Player.Kill(Fed);
 	const float AfterFed = RemainsMaximumHealthOf(Colossus);
@@ -1199,7 +1201,9 @@ bool FCataclysmRemainsColossusTest::RunTest(const FString&)
 	Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Risen * 0.5f);
 	UCataclysmBoneGiants::StepColossusOf(Player.Character);
 	TestEqual(TEXT("at half the health it rose with its blow is half"), Colossus->OwnDamagePerHit, StartBlow * 0.5f, 0.01f);
-	TestTrue(TEXT("and it is drawn smaller"), Colossus->GetActorScale3D().X < 0.99f);
+	// SMALLER THAN IT ROSE, which since 2026-11-27 is larger than a normal minion: the size test is
+	// `TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder`.
+	TestTrue(TEXT("and it is drawn smaller than it rose"), Colossus->GetActorScale3D().X < RoseScale - 0.01f);
 
 	// AND LEAVING THE FLOOR ENDS IT, as a floor change clears the floor (followers carried), with the remains left.
 	UCataclysmFloorContents::ClearTheFloor(*World, /*bCarryFollowers=*/true);
@@ -1389,6 +1393,81 @@ bool FCataclysmRemainsGiantsAreNotDetonatedTest::RunTest(const FString&)
 		TestTrue(*FString::Printf(TEXT("%s STANDS"), Name),
 				 IsValid(Giant) && !UCataclysmSkillEffects::IsDead(Giant));
 	}
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsColossusSizeTest,
+	"Cataclysm.Remains.TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The owner, 2026-11-27: "it should start larger, and grow with the same scale as enemies". The Colossus rises drawn at
+ * a `ColossusStartsAtStep` creature's size (Legendary, 1.44), and at half the health it rose with it is drawn at the
+ * size an enemy with half a Legendary's health multiple would be. CONTROL: an ordinary Barrow Guard, the body the
+ * Colossus is drawn with, stands at a normal minion's size.
+ */
+bool FCataclysmRemainsColossusSizeTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainsTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRemainsNecromancer Player;
+	if (!Player.Make(*this, World))
+	{
+		return false;
+	}
+	const UDataTable* Rarities = UCataclysmEnemyRarity::LoadEnemyRarityTable();
+	if (!TestNotNull(TEXT("the enemy rarity table loads"), Rarities))
+	{
+		return false;
+	}
+	Player.Hold({}, FirstRite, 2);
+	ACataclysmEnemyCharacter* First = RemainsCreatureAt(World, FVector(3 * M, 0, 0));
+	if (!TestNotNull(TEXT("set-up"), First))
+	{
+		return false;
+	}
+	Player.Kill(First);
+	ACataclysmMinion* Colossus = UCataclysmBoneGiants::ColossusOf(Player.Character);
+	if (!TestNotNull(TEXT("the first remains raise the Colossus"), Colossus))
+	{
+		return false;
+	}
+
+	// AT ONCE, NOT A STEP LATER: the size it rises with is drawn as it rises.
+	const float Legendary = UCataclysmEnemyRarity::BodyScaleForStep(Rarities, UCataclysmBoneGiants::ColossusStartsAtStep);
+	TestEqual(TEXT("it rises drawn at a Legendary creature's size"), Colossus->GetActorScale3D().X, Legendary, 0.001f);
+	ACataclysmMinion* Ordinary =
+		ACataclysmMinion::Spawn(Player.Character, FVector(-3 * M, 0, 0), 60.0f, false, UCataclysmBoneGiants::GiantTypeName);
+	if (TestNotNull(TEXT("set-up: an ordinary Barrow Guard"), Ordinary))
+	{
+		TestEqual(TEXT("CONTROL: an ordinary Barrow Guard is a normal minion's size"), Ordinary->GetActorScale3D().X, 1.0f,
+				  0.001f);
+		TestTrue(TEXT("so the Colossus is drawn larger than it"), Colossus->GetActorScale3D().X > 1.3f);
+	}
+
+	// HURT TO HALF, it is drawn at the size an enemy with half a Legendary's health multiple is.
+	float StartMultiple = 1.0f;
+	float UnusedDamage = 1.0f;
+	float UnusedArmour = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(Rarities, UCataclysmBoneGiants::ColossusStartsAtStep, StartMultiple,
+											 UnusedDamage, UnusedArmour);
+	UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Colossus);
+	const float Risen = RemainsMaximumHealthOf(Colossus);
+	Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Risen * 0.5f);
+	UCataclysmBoneGiants::StepColossusOf(Player.Character);
+	TestEqual(TEXT("at half its health it is drawn at the enemies' size for half a Legendary's health"),
+		Colossus->GetActorScale3D().X,
+		UCataclysmEnemyRarity::BodyScaleForHealthMultiple(Rarities, StartMultiple * 0.5f), 0.001f);
+	TestTrue(TEXT("which is smaller than it rose"), Colossus->GetActorScale3D().X < Legendary - 0.1f);
+
+	// AND NEVER SMALLER THAN ITS LEAST, however hurt.
+	Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Risen * 0.001f);
+	UCataclysmBoneGiants::StepColossusOf(Player.Character);
+	TestEqual(TEXT("at a thousandth of its health it is drawn at its least"), Colossus->GetActorScale3D().X,
+			  UCataclysmBoneGiants::ColossusSmallestScale, 0.001f);
 	return true;
 }
 
