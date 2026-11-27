@@ -673,21 +673,30 @@ void UCataclysmEmpireTreeWidget::PanBy(FVector2D Pixels)
 	PlaceGraph();
 }
 
+FVector2D UCataclysmEmpireTreeWidget::NodeCentreOnPanel(const FCataclysmEmpireTreeNodeRow& Row) const
+{
+	// AT THE TREE FILE'S OWN POSITION, through the one focus and zoom every node shares: no branch is rescaled.
+	return UCataclysmPassiveTreeLayout::ScreenPositionFor(FVector2D(Row.PositionX, Row.PositionY), Focus, Zoom,
+														  CanvasSize());
+}
+
+FVector2D UCataclysmEmpireTreeWidget::MarkSizeOnPanel(const FCataclysmEmpireTreeNodeRow& Row) const
+{
+	return UCataclysmEmpireTreeLayout::MarkSizeFor(Row) * BuiltMarkScale * Zoom;
+}
+
 FVector2D UCataclysmEmpireTreeWidget::NodeScreenPositionForTests(FName Node) const
 {
 	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable(), Node);
-	return Row ? UCataclysmPassiveTreeLayout::ScreenPositionFor(FVector2D(Row->PositionX, Row->PositionY), Focus, Zoom,
-															   CanvasSize())
-			   : FVector2D::ZeroVector;
+	return Row ? NodeCentreOnPanel(*Row) : FVector2D::ZeroVector;
 }
 
 FVector2D UCataclysmEmpireTreeWidget::NodeMarkSizeForTests(FName Node) const
 {
-	// THE SCALE WORKED OUT HERE, since a headless test has no canvas and `BuildGraph` never reaches the line that keeps
-	// it; the same function, so the same number.
+	// `BuiltMarkScale` IS SET BEFORE `BuildGraph` LOOKS FOR A CANVAS, so a headless test, which has none, reads the
+	// scale the screen draws with.
 	const FCataclysmEmpireTreeNodeRow* Row = UCataclysmEmpireTree::FindNode(NodeTable(), Node);
-	return Row ? UCataclysmEmpireTreeLayout::MarkSizeFor(*Row) * UCataclysmEmpireTreeLayout::MarkScaleFor(NodeTable()) * Zoom
-			   : FVector2D::ZeroVector;
+	return Row ? MarkSizeOnPanel(*Row) : FVector2D::ZeroVector;
 }
 
 void UCataclysmEmpireTreeWidget::BuildGraph()
@@ -875,10 +884,8 @@ void UCataclysmEmpireTreeWidget::PlaceNodeName()
 	}
 	if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(NodeNameLabel->Slot))
 	{
-		const FVector2D Centre = UCataclysmPassiveTreeLayout::ScreenPositionFor(FVector2D(Row->PositionX, Row->PositionY),
-																			   Focus, Zoom, CanvasSize());
-		Placement->SetPosition(UCataclysmPassiveTreeLayout::NameCaptionPosition(
-			Centre, UCataclysmEmpireTreeLayout::MarkSizeFor(*Row) * BuiltMarkScale * Zoom));
+		Placement->SetPosition(UCataclysmPassiveTreeLayout::NameCaptionPosition(NodeCentreOnPanel(*Row),
+																				  MarkSizeOnPanel(*Row)));
 	}
 }
 
@@ -948,15 +955,13 @@ void UCataclysmEmpireTreeWidget::PlaceGraph()
 		{
 			continue;
 		}
-		// AT THE TREE FILE'S OWN POSITION, through the one focus and zoom every node shares: no branch is rescaled.
-		const FVector2D At = UCataclysmPassiveTreeLayout::ScreenPositionFor(FVector2D(Row->PositionX, Row->PositionY),
-																			 Focus, Zoom, Size);
+		const FVector2D At = NodeCentreOnPanel(*Row);
 		Placed.Add(Node, At);
 		const FVector2D Mark = UCataclysmEmpireTreeLayout::MarkSizeFor(*Row);
 		if (UCanvasPanelSlot* Placement = Cast<UCanvasPanelSlot>(Button->Slot))
 		{
 			Placement->SetPosition(At);
-			Placement->SetSize(Mark * BuiltMarkScale * Zoom);
+			Placement->SetSize(MarkSizeOnPanel(*Row));
 		}
 		// THE COUNT ON THE MARK SHRINKS WITH IT, in the proportion the class tree screen uses.
 		Button->SetLabelScale(static_cast<float>(Mark.Y / UCataclysmPassiveTreeLayout::NodeHeightPx) * BuiltMarkScale * Zoom);

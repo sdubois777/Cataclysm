@@ -394,8 +394,8 @@ bool FCataclysmEmpireTreeScreenWholeTreeTest::RunTest(const FString&)
  * The positions are the tree file's, with no branch rescaled: two nodes in different quadrants -- Structural Integrity
  * in the Architect branch and Merchant Guild in the Treasury branch -- are as far apart on the panel, divided by the
  * zoom, as in the file, in every view. THE CONTROL: the views' zooms differ, so a view that rescaled its own branch
- * would change that distance; the whole tree's view is fitted further out than the Architect branch's. And the whole
- * tree's view holds its outermost ring inside the panel. Prints "POSITIONS".
+ * would change that distance; the whole tree's view is fitted further out than the Architect branch's. And a mark is
+ * the same size, at the zoom, whichever view it is seen in. Prints "POSITIONS".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenPositionsTest,
 	"Cataclysm.EmpireTreeScreen.NodesKeepTheTreeFilesPositionsInEveryView",
@@ -443,24 +443,55 @@ bool FCataclysmEmpireTreeScreenPositionsTest::RunTest(const FString&)
 	TestTrue(TEXT("CONTROL: the views' zooms differ, the whole tree fitted further out than one branch"),
 			 WholeZoom > 0.0f && WholeZoom < ArchitectZoom - 0.01f);
 
-	// THE WHOLE TREE'S VIEW HOLDS ITS OUTERMOST RING: the four points where the 740 ring meets the axes are on the panel.
 	Screen->ShowBranch(UCataclysmEmpireTreeLayout::WholeTreeView);
-	const FCataclysmTreeExtent Extent = UCataclysmEmpireTreeLayout::WithDecorations(
-		UCataclysmEmpireTreeLayout::ExtentOf(Nodes, UCataclysmEmpireTreeLayout::WholeTreeView), Decorations);
-	TestTrue(TEXT("the whole tree's extent reaches the outermost ring, 740 from the middle"),
-			 Extent.Least.X <= -740.0 + 0.01 && Extent.Most.X >= 740.0 - 0.01 && Extent.Least.Y <= -740.0 + 0.01
-				 && Extent.Most.Y >= 740.0 - 0.01);
-	for (const FVector2D& Edge : {FVector2D(740.0, 0.0), FVector2D(-740.0, 0.0), FVector2D(0.0, 740.0), FVector2D(0.0, -740.0)})
-	{
-		const FVector2D At = UCataclysmPassiveTreeLayout::ScreenPositionFor(Edge, Screen->GetFocus(), Screen->GetZoom(), Panel);
-		TestTrue(FString::Printf(TEXT("the ring's point (%.0f, %.0f) is on the panel"), Edge.X, Edge.Y),
-				 At.X >= 0.0 && At.X <= Panel.X && At.Y >= 0.0 && At.Y <= Panel.Y);
-	}
 	// AND A MARK IS THE SAME SIZE IN EVERY VIEW AT THE SAME ZOOM: one scale for the whole tree.
 	const FVector2D WholeMark = Screen->NodeMarkSizeForTests(StructuralIntegrity) / Screen->GetZoom();
 	Screen->ShowBranch(TEXT("Architect"));
 	TestTrue(TEXT("Structural Integrity's mark is the same size, at the zoom, in its branch's view"),
 			 (Screen->NodeMarkSizeForTests(StructuralIntegrity) / Screen->GetZoom()).Equals(WholeMark, 0.001));
+	return true;
+}
+
+/**
+ * The whole tree's view holds the builder's outermost ring, which is wider than the nodes: the four points where the
+ * 740 ring meets the axes are inside the panel, no nearer its edge than the fit margin less a pixel. THE CONTROL: the
+ * nodes alone reach 630 below the middle and the ring 740, so a view fitted to the nodes alone puts the ring's lowest
+ * point about 57 pixels past the margin. Prints "RING".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenRingTest,
+	"Cataclysm.EmpireTreeScreen.TheWholeTreesViewHoldsItsOutermostRing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeScreenRingTest::RunTest(const FString&)
+{
+	const UDataTable* Nodes = UCataclysmEmpireTree::LoadNodeTable();
+	UCataclysmEmpireTreeWidget* Screen = NewObject<UCataclysmEmpireTreeWidget>();
+	if (!TestNotNull(TEXT("set-up: the node table"), Nodes) || !TestNotNull(TEXT("set-up: the screen"), Screen))
+	{
+		return false;
+	}
+	const FVector2D Panel(1600.0, 900.0);
+	Screen->SetPanelSizeForTests(Panel);
+	Screen->ShowBranch(UCataclysmEmpireTreeLayout::WholeTreeView);
+
+	const double Margin = UCataclysmPassiveTreeLayout::FitMarginPx - 1.0;
+	TArray<FString> Parts;
+	for (const FVector2D& Point : {FVector2D(740.0, 0.0), FVector2D(-740.0, 0.0), FVector2D(0.0, 740.0), FVector2D(0.0, -740.0)})
+	{
+		const FVector2D At = UCataclysmPassiveTreeLayout::ScreenPositionFor(Point, Screen->GetFocus(), Screen->GetZoom(), Panel);
+		Parts.Add(FString::Printf(TEXT("(%.0f, %.0f) at (%.1f, %.1f)"), Point.X, Point.Y, At.X, At.Y));
+		TestTrue(FString::Printf(TEXT("the ring's point (%.0f, %.0f) is inside the panel's margin"), Point.X, Point.Y),
+				 At.X >= Margin && At.X <= Panel.X - Margin && At.Y >= Margin && At.Y <= Panel.Y - Margin);
+	}
+	AddInfo(FString::Printf(TEXT("RING: zoom %.3f; %s"), Screen->GetZoom(), *FString::Join(Parts, TEXT("; "))));
+
+	// THE CONTROL, worked out rather than drawn: fitted to the nodes alone, the ring's lowest point is past the margin.
+	const FCataclysmTreeExtent NodesOnly = UCataclysmEmpireTreeLayout::ExtentOf(Nodes, UCataclysmEmpireTreeLayout::WholeTreeView);
+	const FVector2D Lowest = UCataclysmPassiveTreeLayout::ScreenPositionFor(
+		FVector2D(0.0, 740.0), NodesOnly.Centre(), UCataclysmPassiveTreeLayout::ZoomToFit(NodesOnly, Panel), Panel);
+	TestTrue(FString::Printf(TEXT("CONTROL: fitted to the nodes alone, the ring's lowest point would be at %.1f, past %.1f"),
+							 Lowest.Y, Panel.Y - Margin),
+			 Lowest.Y > Panel.Y - Margin);
 	return true;
 }
 

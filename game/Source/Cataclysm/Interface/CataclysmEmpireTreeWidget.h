@@ -14,6 +14,7 @@ class UDataTable;
 class UImage;
 class UPanelWidget;
 class UTextBlock;
+struct FCataclysmEmpireTreeNodeRow;
 struct FCataclysmHeldEmpireTree;
 
 /**
@@ -179,11 +180,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|EmpireTree")
 	void FitToBranch();
 
-	/** Where a node's mark sits on the panel, its centre, at the current zoom and focus. For tests: the same function
-	 *  that places the button. */
+	/** Where a node's mark sits on the panel, its centre, at the current zoom and focus: `NodeCentreOnPanel`, the
+	 *  function that places the button. For tests. */
 	FVector2D NodeScreenPositionForTests(FName Node) const;
 
-	/** How big a node's mark is drawn on the panel now. For tests. */
+	/** How big a node's mark is drawn on the panel now: `MarkSizeOnPanel`, the function that sizes the button. For
+	 *  tests. */
 	FVector2D NodeMarkSizeForTests(FName Node) const;
 
 	/** What is drawn beside the mark of the node hovered or selected: its name and count, or nothing. */
@@ -313,6 +315,13 @@ private:
 
 	/** Put the name of the node hovered or selected beside its mark. */
 	void PlaceNodeName();
+
+	/** Where a node's mark is centred on the panel: its file position through the one focus and zoom every node shares.
+	 *  The only place a node is placed, so a test reads what the screen does. */
+	FVector2D NodeCentreOnPanel(const FCataclysmEmpireTreeNodeRow& Row) const;
+
+	/** How big a node's mark is on the panel: its kind's mark, the whole tree's mark scale, and the zoom. */
+	FVector2D MarkSizeOnPanel(const FCataclysmEmpireTreeNodeRow& Row) const;
 
 	/** One node's label, whether it is drawn dimmed, and the reason on its tool tip. */
 	void DescribeNodeButton(UCataclysmChoiceButton& Button, FName Node);

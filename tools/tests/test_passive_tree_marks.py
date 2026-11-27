@@ -65,7 +65,10 @@ def test_the_marks_are_the_stated_sizes_and_the_empire_tree_draws_them_too() -> 
         "the old box's width or edge is back")
     # THE EMPIRE TREE DRAWS MARKS SINCE 2026-11-27: each node sized by its kind's mark at the whole tree's scale.
     empire = flat(code(EMPIRE_WIDGET_CPP))
-    assert "Placement->SetSize(Mark * BuiltMarkScale * Zoom);" in empire, "an empire node is not sized by its mark"
+    assert "Placement->SetSize(MarkSizeOnPanel(*Row));" in empire, "an empire node is not sized by its mark"
+    size = flat(body(code(EMPIRE_WIDGET_CPP), "FVector2D UCataclysmEmpireTreeWidget::MarkSizeOnPanel("))
+    assert "UCataclysmEmpireTreeLayout::MarkSizeFor(Row) * BuiltMarkScale * Zoom" in size, (
+        "an empire mark is not its kind's mark at the whole tree's scale")
     assert "UCataclysmPassiveTreeLayout::MarkCaption(Points, Row->MaxPoints)" in empire, (
         "an empire node's mark says more than its spent count")
 
