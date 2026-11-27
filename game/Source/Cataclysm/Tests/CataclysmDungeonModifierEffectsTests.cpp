@@ -29981,11 +29981,11 @@ bool FCataclysmWingsLineTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// OVER FIFTY SEEDS, EVERY FLYOVER PASSES THROUGH THE MIDDLE OF A FLOOR CELL WITHIN TWELVE METRES OF THE
+// OVER FIVE SEEDS, EVERY FLYOVER PASSES THROUGH THE MIDDLE OF A FLOOR CELL WITHIN TWELVE METRES OF THE
 // PLAYER AND MARKS AT LEAST ONE FEATHER AT THIRTY SECONDS EXACTLY. Each seed builds its own floor, puts
 // the player on a floor cell drawn from it, and seeds the draw of the line.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWingsEverySeedTest,
-	"Cataclysm.DungeonModifierEffects.EveryWingsOfTheHostFlyoverOverFiftySeedsMarksAFeatherAtThirtySeconds",
+	"Cataclysm.DungeonModifierEffects.EveryWingsOfTheHostFlyoverOverFiveSeedsMarksAFeatherAtThirtySeconds",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmWingsEverySeedTest::RunTest(const FString& Parameters)
@@ -30007,7 +30007,9 @@ bool FCataclysmWingsEverySeedTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	constexpr int32 Seeds = 50;
+	// FIVE SEEDS, AND FIFTY UNTIL issue #2928, slice 4, the owner's choice of 2026-11-26: the same five assertions on
+	// each, every seed its own floor and its own standing place.
+	constexpr int32 Seeds = 5;
 	TArray<int32> Unmarked;
 	TArray<int32> MarkedEarly;
 	TArray<int32> NoMarkOnACellMiddleInReach;
@@ -52066,7 +52068,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 }
 
-// NO CELL THE SHARED PICKER CHOOSES IS A CLOSED BARRIER'S, on the twenty dungeon seeds of the sections search.
+// NO CELL THE SHARED PICKER CHOOSES IS A CLOSED BARRIER'S, on six floors: floors 1 and 10 of three dungeon seeds.
+// Twenty floors until issue #2928, slice 4, the owner's choice of 2026-11-26; six still give hundreds of chosen
+// cells and barrier cells far enough.
 //
 // THE PICKER NEEDS A BUILT FLOOR, so this is a world test and not a pure one: `EternalChorusCells` and
 // `InfestedVeinsCells` take an `ACataclysmDungeonFloor`. Each is asked twenty times a floor, because it shuffles on the
@@ -52102,7 +52106,7 @@ bool FCataclysmWallsSectionsPickerTest::RunTest(const FString& Parameters)
 	int32 ChosenOnABarrier = 0;
 	int32 BarrierCellsFarEnough = 0;
 	const int32 FloorNumbers[2] = {1, 10};
-	for (int32 Seed = 1; Seed <= 10; ++Seed)
+	for (int32 Seed = 1; Seed <= 3; ++Seed)
 	{
 		for (const int32 FloorNumber : FloorNumbers)
 		{
@@ -52135,7 +52139,7 @@ bool FCataclysmWallsSectionsPickerTest::RunTest(const FString& Parameters)
 			}
 		}
 	}
-	if (!TestTrue(TEXT("set-up: some of the twenty floors have a closed barrier"), Sealed > 0)
+	if (!TestTrue(TEXT("set-up: some of the six floors have a closed barrier"), Sealed > 0)
 		|| !TestTrue(TEXT("set-up: the picker chose cells"), Chosen > 0)
 		|| !TestTrue(TEXT("set-up: barrier cells far enough from the entrance to be chosen exist"),
 					 BarrierCellsFarEnough > 0))
@@ -55606,15 +55610,17 @@ bool FCataclysmThoseInTheDarkObstacleTest::RunTest(const FString& Parameters)
 	return false;
 }
 
-// T11. THE MEASUREMENT: TWENTY HALLS FLOORS, WHAT EACH PLACEMENT RULE COST ON EACH, LOGGED. ONLY THE RULED RULES ARE
-// ASSERTED, ON EVERY ONE OF THE TWENTY; NO SHARE PLACED IS ASSERTED.
+// T11. THE MEASUREMENT: SIX HALLS FLOORS, WHAT EACH PLACEMENT RULE COST ON EACH, LOGGED. ONLY THE RULED RULES ARE
+// ASSERTED, ON EVERY ONE OF THE SIX; NO SHARE PLACED IS ASSERTED.
 //
-// The twenty are dungeon seeds 1 to 10, floors 1 and 10, the seeds and floors the floor-sections measurements of
+// The six are dungeon seeds 1 to 3, floors 1 and 10 (twenty floors, seeds 1 to 10, until
+// issue #2928, slice 4, the owner's choice of 2026-11-26),
+// the seeds and floors the floor-sections measurements of
 // 2026-10-08 used, reached through the game mode as the Angelic Wardens tests reach a floor, carrying this row alone.
 //
 // WHERE EACH STANDS: the player wherever `GoToFloor` left them; nothing is placed by the test and no beat is stepped.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmThoseInTheDarkMeasurementTest,
-	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkOnTwentyHallsFloorsEveryPlacementRuleHoldsAndTheCountsAreLogged",
+	"Cataclysm.DungeonModifierEffects.ThoseInTheDarkOnSixHallsFloorsEveryPlacementRuleHoldsAndTheCountsAreLogged",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmThoseInTheDarkMeasurementTest::RunTest(const FString& Parameters)
@@ -55644,7 +55650,7 @@ bool FCataclysmThoseInTheDarkMeasurementTest::RunTest(const FString& Parameters)
 	int32 SkippedForCrossing = 0;
 	int32 FloorsWithASkipForCrossing = 0;
 	const int32 FloorNumbers[2] = {1, 10};
-	for (int32 Seed = 1; Seed <= 10; ++Seed)
+	for (int32 Seed = 1; Seed <= 3; ++Seed)
 	{
 		for (const int32 Floor : FloorNumbers)
 		{
@@ -55691,8 +55697,8 @@ bool FCataclysmThoseInTheDarkMeasurementTest::RunTest(const FString& Parameters)
 		Floors, Asked, Placed, UnderHalf, SkippedForCrossing, FloorsWithASkipForCrossing);
 	UE_LOG(LogTemp, Display, TEXT("%s"), *Summary);
 	AddInfo(Summary);
-	TestEqual(TEXT("set-up: twenty floors were measured"), Floors, 20);
-	TestTrue(TEXT("set-up: the twenty floors asked for chasms"), Asked > 0);
+	TestEqual(TEXT("set-up: six floors were measured"), Floors, 6);
+	TestTrue(TEXT("set-up: the six floors asked for chasms"), Asked > 0);
 	return true;
 }
 
@@ -55827,7 +55833,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	constexpr int32 DarkFloorLeadsTo = DarkFloorFallsFrom + UCataclysmDungeonModifierEffects::ThoseInTheDarkFloorsDeeper;
 
 	/** How many dungeon seeds the test of the dark floor being its own floor compares. */
-	constexpr int32 DarkFloorSeedsCompared = 8;
+	// FOUR, AND EIGHT UNTIL issue #2928, slice 4, the owner's choice of 2026-11-26. The test still requires four, and
+	// three in four to differ.
+	constexpr int32 DarkFloorSeedsCompared = 4;
 
 	/** Every kind of creature placed at this rung, so no rung is rolled and a test can say what each was drawn at. */
 	void DarkFloorPinEveryRung(ACataclysmDungeonGameMode* Mode, int32 Rung)
@@ -56158,7 +56166,7 @@ bool FCataclysmRiftAltarsThoseInTheDarkTest::RunTest(const FString& Parameters)
 // ONE DRAW IS EXCEPTED, ruled 2026-10-09, and is not what this test reads: the row now answers Built, so the pool
 // Reality Twister draws from holds one more row. No floor built here carries Reality Twister.
 //
-// On up to eight dungeon seeds whose floor 2 has a chasm, three floors of one number, 12, are compared: floor 12 built
+// On up to four dungeon seeds whose floor 2 has a chasm, three floors of one number, 12, are compared: floor 12 built
 // without a fall, the dark floor a fall from floor 2 leads to, and floor 12 reached by the dark floor's stairs.
 //
 // THE CONTROL, ON EVERY SEED: without a fall the seed handed to the floor is the dungeon's own; the plan's seed is
@@ -58987,7 +58995,8 @@ bool FCataclysmRealityChamberFiguresTest::RunTest(const FString& Parameters)
 }
 
 // THE CHAMBER STANDS OFF THE PLAN, NO WALK REACHES IT, NO CREATURE IS PLACED IN IT, AND THE FLOOR IS THE FLOOR IT IS
-// WITHOUT THE ROW. On the first three of dungeon seeds 1 to 40 whose floor 2 has a chamber: its nine cells are off the
+// WITHOUT THE ROW. On the first three of dungeon seeds 1 to 40 whose floor 2 has a chamber, stopping there once a
+// floor without one was seen as well: its nine cells are off the
 // plan's grid; every cell touching one is not walkable; it has nine ground blocks and sixteen wall blocks of its own
 // and the floor's own counts are the plan's; its rift is on a walkable, held cell that is none of the five rifts'; the
 // creatures standing are the populator's own for the plan, in order. THE CONTROL is the same dungeon seed and floor
@@ -59026,8 +59035,13 @@ bool FCataclysmRealityChamberPlanTest::RunTest(const FString& Parameters)
 	int32 Looked = 0;
 	int32 SaidBySeed = 0;
 	int32 Stood = 0;
-	for (int32 Seed = 1; Seed <= ChamberFloorSeedsTried; ++Seed)
+	int32 Tried = 0;
+	// UNTIL THREE FLOORS WITH A CHAMBER WERE LOOKED AT AND ONE WITHOUT WAS SEEN
+	// (issue #2928, slice 4, the owner's choice of 2026-11-26).
+	// Every seed tried after those asked only the first two questions again; all forty were tried until then.
+	for (int32 Seed = 1; Seed <= ChamberFloorSeedsTried && (Looked < 3 || Tried == Stood); ++Seed)
 	{
+		++Tried;
 		Mode->DungeonModifiers = {RealityRow};
 		Mode->DungeonSeed = Seed;
 		if (!TestTrue(FString::Printf(TEXT("seed %d: set-up: floor 2 was reached"), Seed), Mode->GoToFloor(2)))
@@ -59173,9 +59187,9 @@ bool FCataclysmRealityChamberPlanTest::RunTest(const FString& Parameters)
 				  UnlikeCreatures, 0);
 	}
 	AddInfo(FString::Printf(TEXT("of dungeon seeds 1 to %d, floor 2: %d have a chamber by seed and a chamber stood on %d"),
-							ChamberFloorSeedsTried, SaidBySeed, Stood));
+							Tried, SaidBySeed, Stood));
 	TestEqual(FString::Printf(TEXT("set-up: three of dungeon seeds 1 to %d gave floor 2 a chamber to look at"),
-							  ChamberFloorSeedsTried),
+							  Tried),
 			  Looked, 3);
 	return true;
 }
@@ -62460,7 +62474,11 @@ namespace CataclysmDungeonModifierEffectsTest
 	constexpr int32 SeededFloorSharedBeforeTheFirstBuild = 11;
 	constexpr int32 SeededFloorSharedBeforeTheSecondBuild = 977;
 
-	/** The dungeon seed built twice, and the last of the seeds the control builds after it (2 to this). */
+	/**
+	 * The dungeon seed built twice, and the last of the seeds the control builds after it (2 to this). A control stops
+	 * at the first seed that answers differently, which is all its assertion asks
+	 * (issue #2928, slice 4, the owner's choice of 2026-11-26).
+	 */
 	constexpr int32 SeededFloorSeed = 1;
 	constexpr int32 SeededFloorLastControlSeed = 8;
 
@@ -62615,7 +62633,7 @@ bool FCataclysmSeededRiverHeadingsTest::RunTest(const FString& Parameters)
 
 	// THE CONTROL, ON THE HEADING ALONE: a heading drawn the same on every floor would answer the same here.
 	TArray<int32> Differing;
-	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed && Differing.IsEmpty(); ++Seed)
 	{
 		TArray<FVector> Other;
 		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
@@ -62687,7 +62705,7 @@ bool FCataclysmSeededQuarantineKindTest::RunTest(const FString& Parameters)
 	// THE CONTROL. The kind is drawn from the floor's own creatures, which differ by seed too, so this says the
 	// answer is not one kind everywhere; it cannot say the draw itself moved. Read, not measured.
 	TArray<int32> Differing;
-	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed && Differing.IsEmpty(); ++Seed)
 	{
 		FString Other;
 		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
@@ -62761,7 +62779,7 @@ bool FCataclysmSeededHoardGuardsTest::RunTest(const FString& Parameters)
 	// THE CONTROL. The cells beside a hoard and the floor's kinds differ by seed too, so this says the answer is not
 	// one answer everywhere; it cannot say the draw itself moved. Read, not measured.
 	TArray<int32> Differing;
-	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed && Differing.IsEmpty(); ++Seed)
 	{
 		FString Other;
 		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
@@ -62831,7 +62849,7 @@ bool FCataclysmSeededRelicKindsTest::RunTest(const FString& Parameters)
 
 	// THE CONTROL. Nothing but the draw names a relic's kind, so a draw answering the same everywhere would fail it.
 	TArray<int32> Differing;
-	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed && Differing.IsEmpty(); ++Seed)
 	{
 		FString Other;
 		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
@@ -62909,7 +62927,7 @@ bool FCataclysmSeededPactOfferTest::RunTest(const FString& Parameters)
 
 	// THE CONTROL. Nothing but the shuffle chooses the three, so a shuffle answering the same everywhere would fail it.
 	TArray<int32> Differing;
-	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed && Differing.IsEmpty(); ++Seed)
 	{
 		FString Other;
 		if (!Build(Seed, SeededFloorSharedBeforeTheFirstBuild, Other))
@@ -63013,7 +63031,8 @@ bool FCataclysmSeededHarbingersTest::RunTest(const FString& Parameters)
 	// would choose the same places on every floor and on every wave.
 	TArray<int32> FloorDiffers;
 	TArray<int32> WavesDiffer;
-	for (int32 Seed = SeededFloorSeed; Seed <= SeededFloorLastControlSeed; ++Seed)
+	for (int32 Seed = SeededFloorSeed; Seed <= SeededFloorLastControlSeed
+		 && (FloorDiffers.IsEmpty() || WavesDiffer.IsEmpty()); ++Seed)
 	{
 		TArray<FString> Other;
 		if (Seed == SeededFloorSeed)
@@ -63093,7 +63112,8 @@ bool FCataclysmSeededPlaguebearerTest::RunTest(const FString& Parameters)
 	// THE CONTROLS, for the reason the Harbingers' give.
 	TArray<int32> FloorDiffers;
 	TArray<int32> WavesDiffer;
-	for (int32 Seed = SeededFloorSeed; Seed <= SeededFloorLastControlSeed; ++Seed)
+	for (int32 Seed = SeededFloorSeed; Seed <= SeededFloorLastControlSeed
+		 && (FloorDiffers.IsEmpty() || WavesDiffer.IsEmpty()); ++Seed)
 	{
 		TArray<FString> Other;
 		if (Seed == SeededFloorSeed)
@@ -63208,7 +63228,7 @@ bool FCataclysmSeededIllusionsTest::RunTest(const FString& Parameters)
 	// THE CONTROL. The floor's creatures differ by seed too, so this says the answer is not one answer everywhere; it
 	// cannot say the draw itself moved. Read, not measured.
 	TArray<int32> Differing;
-	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed; ++Seed)
+	for (int32 Seed = SeededFloorSeed + 1; Seed <= SeededFloorLastControlSeed && Differing.IsEmpty(); ++Seed)
 	{
 		FString Other;
 		int32 OtherIllusions = 0;
