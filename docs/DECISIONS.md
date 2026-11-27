@@ -2,6 +2,44 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-26 — War is not built: a character draws Demonic and Death first, and no longer War
+
+**Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmRoster.cpp` (`UCataclysmRoster::Built`) and its header;
+`sim/cataclysm_sim/config.py` (`BUILT_CATACLYSMS`); `docs/Cataclysm_GDD_v2.md` (the draw's sentence under the first
+Cataclysm); the figures and lists quoted in `tools/tests/test_only_built_cataclysms_are_drawn_first.py`,
+`tools/tests/test_a_character_keeps_its_cataclysm_draw.py`,
+`sim/tests/test_the_cataclysms_drawn_belong_to_the_character.py`, and in the comments of
+`CataclysmRosterTests.cpp`, `CataclysmCataclysmDrawTests.cpp` and `CataclysmSaveLoadTests.cpp`.
+
+### SAID FIRST
+
+- **NOT YET RUN IN UNREAL.** The owner has the editor open and is play-testing; the window waits for clearance.
+
+### The owner, verbatim
+
+> it put me in the war cataclysm, which as far as i'm aware is not built yet
+
+The roster ruling earlier the same day ("yeah only draw the ones that are built") was built with Demonic, Death and War
+in the built list. The owner counts War as not built: it has no creatures of its own, and its eight enemy modifiers
+still work only on enemies (#2899). So the built list is Demonic and Death.
+
+### What changes, and what does not
+
+- A new character's first two Cataclysms are Demonic and Death in a random order; a tier that needs a third adds the
+  unbuilt ones, War among them, after them in a random order.
+- **Nothing in a save is rewritten.** A run already saved keeps the Cataclysms its run record stores, War included.
+  A character's order seed is unchanged too, but its order is worked out from the seed and the built list when a run
+  begins, so its next new run draws from the new list: a character whose first Cataclysm was War now begins against
+  Demonic or Death.
+- The Unreal roster and draw tests read the built list rather than a count, so their assertions hold. The quoted
+  figures moved: neighbouring seeds share a first Cataclysm 205 times in 400, not 130, and a first unbuilt one 84
+  times, not 105 (the Python copy of the generator). The roster test's limits, twice the chance figure (400 and 133),
+  still tell a mixed generator from an unmixed one.
+- `Cataclysm.EmpireRun.ASiegeTakesItsShareEveryDayAndOtherDungeonsTakeNone` searches for a seed that draws Demonic
+  first, so it is unaffected.
+
+---
+
 ## 2026-11-26 — Any blow that dealt something can carry an ailment; a bleed needs health and deals nothing while a shield stands; a Void Splinter ignores the shield; Warded and two bleed enchantments reworded
 
 **Affects:**

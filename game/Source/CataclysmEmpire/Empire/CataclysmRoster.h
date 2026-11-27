@@ -97,6 +97,11 @@ public:
 	 * to test stuff that isn't even in the game." Until it, `OrderFor` shuffled all eight alike, so a new character
 	 * usually began against a Cataclysm with nothing behind it -- the owner's Death character drew Famine.
 	 *
+	 * DEMONIC AND DEATH ARE BUILT. War was in the list as first built and was taken out the same day, the owner
+	 * play-testing: "it put me in the war cataclysm, which as far as i'm aware is not built yet". It has no creatures of
+	 * its own, and its enemy modifiers work only on enemies (#2899). A saved run keeps the Cataclysms its record stores;
+	 * a character's next new run draws from this list, since `OrderFor` reads it each time.
+	 *
 	 * ADDING ONE WHEN IT IS BUILT IS ONE LINE in `CataclysmRoster.cpp`'s list. `config.BUILT_CATACLYSMS` in
 	 * `sim/cataclysm_sim/config.py` is the model's copy, and
 	 * `tools/tests/test_only_built_cataclysms_are_drawn_first.py` holds the two equal.

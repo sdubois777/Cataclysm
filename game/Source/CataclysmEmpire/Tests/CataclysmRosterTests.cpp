@@ -365,12 +365,13 @@ bool FCataclysmRosterAdjacentSeedsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("every unbuilt Cataclysm is the first unbuilt one for some character"),
 			  FirstsUnbuilt.Num(), UnbuiltCount);
 
-	// ONE IN `BuiltCount` NEIGHBOURING PAIRS SHARE A FIRST BY CHANCE -- 133 of
-	// 400 with three built -- and one in `UnbuiltCount` a first unbuilt one, 80
-	// with five. A generator that had not been mixed would give 400 for both,
+	// ONE IN `BuiltCount` NEIGHBOURING PAIRS SHARE A FIRST BY CHANCE -- 200 of
+	// 400 with two built -- and one in `UnbuiltCount` a first unbuilt one, 66
+	// with six. A generator that had not been mixed would give 400 for both,
 	// so twice the chance figure still tells the two apart. The Python copy of
 	// the generator in `tools/tests/test_a_character_keeps_its_cataclysm_draw.py`
-	// gives 130 and 105.
+	// gives 205 and 84 (130 and 105 with the three first built, War among them,
+	// until the owner took War off the list on 2026-11-26).
 	const int32 ChanceFirst = 400 / FMath::Max(BuiltCount, 1);
 	TestTrue(FString::Printf(
 		TEXT("neighbouring seeds share a first Cataclysm %d times in 400, "

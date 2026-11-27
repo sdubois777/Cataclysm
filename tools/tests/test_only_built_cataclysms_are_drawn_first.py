@@ -89,13 +89,14 @@ def test_control_a_list_that_differs_by_one_is_told_apart():
 
 def test_control_a_name_only_a_comment_mentions_is_not_read_as_built():
     source = ROSTER_SOURCE.read_text(encoding="utf-8")
-    commented = edited_in_built(source, "\t\tECataclysmType::War,", "\t\t// ECataclysmType::War,")
+    # DEATH, SINCE WAR LEFT THE LIST (2026-11-26): the control needs a built one to comment out.
+    commented = edited_in_built(source, "\t\tECataclysmType::Death,", "\t\t// ECataclysmType::Death,")
     assert commented != source
-    assert "War" not in built_in_the_game(commented)
+    assert "Death" not in built_in_the_game(commented)
 
 
 def test_the_design_document_says_only_built_ones_are_drawn_for_now():
-    assert ("For now only the Cataclysms that are built — Demonic, Death and War — are drawn" in flattened(GDD)), (
+    assert ("For now only the Cataclysms that are built — Demonic and Death — are drawn" in flattened(GDD)), (
         "docs/Cataclysm_GDD_v2.md no longer says that only built Cataclysms are drawn. The owner ruled it on "
         "2026-11-26.")
 

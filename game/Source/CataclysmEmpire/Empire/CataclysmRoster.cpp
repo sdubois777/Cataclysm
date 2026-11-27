@@ -51,10 +51,13 @@ const TArray<ECataclysmType>& UCataclysmRoster::Built()
 	// ONE LINE A CATACLYSM: when another one is built, add it here. The project owner's ruling of 2026-11-26 and
 	// `tools/tests/test_only_built_cataclysms_are_drawn_first.py`, which holds this list equal to the model's
 	// `BUILT_CATACLYSMS`, are in the header. Function-local for `All`'s reason.
+	//
+	// DEMONIC AND DEATH, AND NOT WAR. War was listed when the ruling was built, and the owner, play-testing on
+	// 2026-11-26, counts it as not built: "it put me in the war cataclysm, which as far as i'm aware is not built yet".
+	// War has no creatures of its own, and its eight enemy modifiers work only on enemies (#2899).
 	static const TArray<ECataclysmType> BuiltOnes = {
 		ECataclysmType::Demonic,
 		ECataclysmType::Death,
-		ECataclysmType::War,
 	};
 
 	return BuiltOnes;

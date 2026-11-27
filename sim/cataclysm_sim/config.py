@@ -646,8 +646,11 @@ class TuningConfig:
     # `UCataclysmRoster::Built` (game/Source/CataclysmEmpire/Empire/
     # CataclysmRoster.cpp); `tools/tests/test_only_built_cataclysms_are_drawn_first.py`
     # holds the two equal. Set it to the whole roster to measure the draw from
-    # before the ruling.
-    BUILT_CATACLYSMS: tuple[str, ...] = ("Demonic", "Death", "War")
+    # before the ruling. DEMONIC AND DEATH: War was listed at first and taken
+    # out the same day, the owner play-testing: "it put me in the war
+    # cataclysm, which as far as i'm aware is not built yet" (no creatures of
+    # its own; its enemy modifiers work only on enemies, #2899).
+    BUILT_CATACLYSMS: tuple[str, ...] = ("Demonic", "Death")
 
     # A dungeon carries one modifier per tier. Sacrificial dungeons start with
     # double that -- the player may sacrifice materials to shed the extra ones,

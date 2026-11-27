@@ -161,14 +161,15 @@ class TestTheSeedIsTheCharacter:
 
         TWO SINCE THE OWNER'S RULING OF 2026-11-26. With every Cataclysm built
         the draw is the one this test pinned before the ruling, unchanged; with
-        the three that are built, it is that draw with War, Death and Demonic
-        moved to the front in the order it gave them."""
+        the two that are built, it is that draw with Death and Demonic moved to
+        the front in the order it gave them. (War was the third built one until
+        the owner, play-testing the same day, counted it as not built.)"""
         everything_built = replace(TuningConfig(), BUILT_CATACLYSMS=ROSTER)
         assert cataclysm_order_for(everything_built, 0) == (
             "Chaos", "Famine", "War", "Void", "Death", "Demonic", "Celestial",
             "Pestilence")
         assert cataclysm_order_for(TuningConfig(), 0) == (
-            "War", "Death", "Demonic", "Chaos", "Famine", "Void", "Celestial",
+            "Death", "Demonic", "Chaos", "Famine", "War", "Void", "Celestial",
             "Pestilence")
 
 

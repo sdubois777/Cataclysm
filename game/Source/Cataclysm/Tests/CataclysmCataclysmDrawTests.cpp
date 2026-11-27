@@ -61,11 +61,12 @@ namespace CataclysmDrawTest
  *
  * CONTROL: two runs that name no character, at the same two run seeds, face different lists, so it is the character's
  * seed and not luck that makes the two agree. By the Python copy of the generator: the character's (24681357) tier 3
- * list is Demonic, War, Death; run seed 11's own is Death, Demonic, War and 12's War, Demonic, Death. SINCE THE PROJECT
- * OWNER'S RULING OF 2026-11-26 every tier 3 list is the three built Cataclysms (`UCataclysmRoster::Built`), so the
- * control's two lists differ in their order and not in their names; the lists compared are names in order, so it still
- * tells the character's seed from luck, now about five times in six rather than 335 in 336. Until the ruling the three
- * lists were Demonic, Pestilence, War; Death, Chaos, Void; and War, Famine, Demonic.
+ * list is Demonic, Death, Pestilence; run seed 11's own is Death, Demonic, Chaos and 12's Demonic, Death, War. SINCE
+ * THE PROJECT OWNER'S RULING OF 2026-11-26 every tier 3 list is the two built Cataclysms (`UCataclysmRoster::Built`)
+ * in one of two orders and then one of six unbuilt ones, so two lists drawn by chance agree about once in twelve. With
+ * War also counted as built, as it was until the owner took it off the list the same day, the three lists were Demonic,
+ * War, Death; Death, Demonic, War; and War, Demonic, Death. Until the ruling they were Demonic, Pestilence, War; Death,
+ * Chaos, Void; and War, Famine, Demonic.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDrawSameTierTest,
 	"Cataclysm.CataclysmDraw.TwoRunsOfOneCharacterAtOneTierFaceTheSameCataclysmsInOrder",
@@ -138,10 +139,11 @@ bool FCataclysmDrawTierHigherTest::RunTest(const FString& Parameters)
  * were picked because the Python copy of the generator gives them different tier 3 lists: Celestial, Death, Void and
  * Void, Demonic, Death. Prints "TWO CHARACTERS".
  *
- * TIER 4 SINCE THE PROJECT OWNER'S RULING OF 2026-11-26, which put the three built Cataclysms first in every draw
- * (`UCataclysmRoster::Built`): at tier 3 every character faces the same three, so two characters could differ only in
- * order. Tier 4 adds the first unbuilt one, and by the Python copy the two lists are Death, Demonic, War, Celestial and
- * Demonic, Death, War, Void -- different names, not only a different order.
+ * TIER 4 SINCE THE PROJECT OWNER'S RULING OF 2026-11-26, which put the built Cataclysms first in every draw
+ * (`UCataclysmRoster::Built`). With two built (Demonic and Death, War having been taken off the list the same day), by
+ * the Python copy the two tier 4 lists are Death, Demonic, Celestial, Void and Demonic, Death, Void, Chaos -- different
+ * names, not only a different order. With three built they were Death, Demonic, War, Celestial and Demonic, Death,
+ * War, Void.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDrawTwoCharactersTest,
 	"Cataclysm.CataclysmDraw.TwoCharactersWithDifferentSeedsCanFaceDifferentCataclysms",
