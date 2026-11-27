@@ -250,7 +250,7 @@ public:
 	 * every other change to the bag: putting back what the file holds is not a change the file needs to record.
 	 *
 	 * A STACK FOUND IN A SAVED SLOT GOES TO ITS STORE, added to any stack of that kind already there, and the slot is
-	 * left empty (#2849). A record of version 16 holds none there, because `Migrate_15_to_16` moves them out; a test
+	 * left empty (#2849). A record of version 16 holds none there, because the upgrade step to version 16 (removed 2026-11-27) moved them out; a test
 	 * that builds a record by hand may, and nothing a player carried is lost either way.
 	 */
 	bool RestoreSlots(const TArray<FCataclysmCarriedSlot>& Saved);

@@ -16,7 +16,6 @@
 #include "Tests/CataclysmTestWorld.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecord.h"
 #include "Empire/CataclysmSurge.h"
 #include "Save/CataclysmSaveRecords.h"
@@ -232,8 +231,8 @@ namespace CataclysmSaveRecordTest
 			// count the tier 1 gold it spends on city upgrades (issue #2741 slice 9); it was at
 			// v13 from the same day, when its items' sockets became lists and its slots could
 			// hold a gem (issue #46), and at v12 from 2026-11-21, when its allocations came to
-			// hold Imperial Prowess's extra option (slice 8); Character_v13.json and the older
-			// files are migration inputs now.
+			// hold Imperial Prowess's extra option (slice 8). The older files were deleted with
+			// the save migrations on 2026-11-27 (issue #2928 slice 12).
 			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v18.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v22.json") },
 		};
@@ -241,16 +240,15 @@ namespace CataclysmSaveRecordTest
 }
 
 /**
- * Every record type has its own name, its own version, and a chain that reaches
- * that version.
+ * Every record type has its own name and its own version.
  *
- * THE THIRD PART IS THE ONE THAT MATTERS LATER. `StepsCoverEveryVersion` is
- * asked of every record class here, so the day somebody bumps a version and
- * forgets to write the step, this fails immediately rather than years later when
- * a player with an old file tries to load it.
+ * IT ALSO ASKED THAT EACH RECORD'S MIGRATION CHAIN REACHED ITS VERSION, until the
+ * chain was removed on 2026-11-27 (issue #2928 slice 12): a record of another
+ * version is now refused, so there is no chain to check, and the test's name lost
+ * "Complete Chain".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveRecordsAreThreeDistinctKinds,
-	"Cataclysm.SaveRecords.EachRecordTypeHasItsOwnNameVersionAndCompleteChain",
+	"Cataclysm.SaveRecords.EachRecordTypeHasItsOwnNameAndVersion",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmSaveRecordsAreThreeDistinctKinds::RunTest(const FString&)
@@ -290,15 +288,6 @@ bool FCataclysmSaveRecordsAreThreeDistinctKinds::RunTest(const FString&)
 		{
 			AddError(FString::Printf(TEXT("the %s record is at version %d, below the first real version %d"),
 				*Name.ToString(), Version, UCataclysmSaveRecord::FirstSchemaVersion));
-			return false;
-		}
-
-		FString Reason;
-		if (!FCataclysmSaveMigration::StepsCoverEveryVersion(
-				Default->MigrationSteps(), Version, Reason))
-		{
-			AddError(FString::Printf(TEXT("the %s record's migration chain is broken: %s"),
-				*Name.ToString(), *Reason));
 			return false;
 		}
 	}
@@ -855,292 +844,6 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 			FName(TEXT("War_Greatsword_Heavy")));
 	}
 
-	return true;
-}
-
-/**
- * A character file written before attribute allocation existed still loads.
- *
- * THIS IS WHAT Character_v1.json IS FOR NOW. It was the current fixture until
- * 2026-08-24 and is kept because a migration step with no file to run against is
- * a migration step nobody has ever executed. Issue #50.
- *
- * WHAT IT PROVES IS THAT NOTHING WAS LOST. The file has no attribute allocation
- * at all, so the character must arrive with none spent -- not with a garbage
- * count, and not refused for having a field missing.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveCharacterV1Migrates,
-	"Cataclysm.SaveRecords.ACharacterFileFromBeforeAttributesStillLoads",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmSaveCharacterV1Migrates::RunTest(const FString&)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v1.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
-
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Character_v1.json would not load: %s -- %s"),
-			FCataclysmSaveStorage::Describe(Result), *Message));
-		return false;
-	}
-
-	TestEqual(TEXT("it arrives at the current version"),
-		Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
-	TestEqual(TEXT("a character from before allocation has spent nothing"),
-		Read->SpentAttributePoints.Total(), 0);
-
-	// AND EVERYTHING ELSE SURVIVED THE MIGRATION. A step that dropped a field
-	// while adding one would otherwise pass the two checks above.
-	TestEqual(TEXT("the name still reads"), Read->CharacterName, FString(TEXT("Vesper")));
-	TestEqual(TEXT("the level still reads"), Read->Level, 42);
-	TestEqual(TEXT("the carried slots still read"), Read->CarriedSlots.Num(), 2);
-
-	// AND A CHARACTER FROM BEFORE THE KILL COUNTER HAS KILLED NOTHING, which is
-	// why the field needed no version bump. Issue #1833.
-	TestEqual(TEXT("a character from before the kill counter reads nought kills"),
-		Read->LifetimeKills, 0);
-
-	return true;
-}
-
-/**
- * A character file from before the difficulty tier migrates to version 4 at tier 1, and keeps every other field.
- * Issue #1472, ruled 2026-11-01.
- *
- * THIS IS WHAT Character_v3.json IS FOR NOW: the current fixture until the tier, kept as the file `Migrate_3_to_4`
- * runs against. Three things are checked, each of which the others cannot see:
- *
- * - THE STEP WRITES THE TIER INTO THE FILE. Run on the parsed file directly, so the key is looked for in the JSON the
- *   step produced. Read into the record, a step that wrote nothing would still give tier 1, the property's default.
- * - THE RECORD READS TIER 1, at version 4.
- * - NOTHING ELSE MOVED: the record, written back out, is the version 3 file with its version 4 and its tier 1 added,
- *   field for field, as `EveryFixtureHoldsEveryFieldItsRecordWrites` compares a fixture with its record.
- *
- * Prints "TIER MIGRATED".
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveCharacterV3Migrates,
-	"Cataclysm.SaveRecords.ACharacterFileFromBeforeTheTierMigratesToTierOne",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmSaveCharacterV3Migrates::RunTest(const FString&)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v3.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-
-	// THE STEP, ON THE FILE.
-	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Character_v3.json is a JSON object"), Stepped.IsValid()))
-	{
-		return false;
-	}
-	TestFalse(TEXT("set-up: the version 3 file has no tier key"), Stepped->HasField(TEXT("DifficultyTier")));
-	FString StepMessage;
-	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
-		GetDefault<UCataclysmCharacterSave>()->MigrationSteps(), UCataclysmCharacterSave::SchemaVersionNow,
-		Stepped.ToSharedRef(), StepMessage);
-	double SteppedTier = -1.0;
-	const bool bWritten = Stepped->TryGetNumberField(TEXT("DifficultyTier"), SteppedTier);
-
-	// THE RECORD.
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Character_v3.json would not load: %s -- %s"),
-			FCataclysmSaveStorage::Describe(Result), *Message));
-		return false;
-	}
-
-	// AND NOTHING ELSE MOVED.
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
-	Expected->SetNumberField(TEXT("DifficultyTier"), 1);
-	Expected->SetBoolField(TEXT("bMarkedByConsumption"), false); // Since #2688: the chain runs on to version 5.
-	Expected->SetObjectField(TEXT("ConsumptionBuild"), CataclysmSaveFixtures::EmptyPlayerBuild()); // And on to 6.
-	Expected->SetNumberField(TEXT("CataclysmOrderSeed"), CataclysmSaveFixtures::FixtureIdentifiersOrderSeed); // And 7.
-	Expected->SetNumberField(TEXT("Gold"), 0); // And 8, issue #2742: no gold of its own.
-	CataclysmSaveFixtures::AddTheCharactersVersion9Defaults(*Expected); // And 9, issue #2741 slice 1c: its own tree.
-	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected); // And 10, issue #2764: no skill experience.
-	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
-	CataclysmSaveFixtures::AddTheCharactersVersion12Defaults(*Expected); // And 12, #2741 slice 8: no extra option.
-	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
-	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
-	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
-	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
-	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
-	CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(*Expected); // And 18, #47 slice F6a: nothing spent at the forge.
-	FString Rewritten;
-	FString Error;
-	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
-	FString Where;
-	const bool bSame = bWroteBack
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	AddInfo(FString::Printf(TEXT("TIER MIGRATED: the step %d (%s), wrote the tier %s at %g; the record at version %d, tier %d; "
-								 "the rest %s"),
-							static_cast<int32>(Stepping), *StepMessage, bWritten ? TEXT("yes") : TEXT("NO"), SteppedTier,
-							Read->SchemaVersion, Read->DifficultyTier, bSame ? TEXT("kept") : *Where));
-
-	TestEqual(TEXT("the chain migrates the version 3 file"), static_cast<int32>(Stepping),
-		static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("the step writes tier 1 into the file"), bWritten && SteppedTier == 1.0);
-	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
-	TestEqual(TEXT("a character from before the tier is at tier 1"), Read->DifficultyTier, 1);
-	TestTrue(TEXT("and every other field is kept"), bSame);
-	return true;
-}
-
-namespace CataclysmOneClassMigrationTest
-{
-	/** One spent node as the file writes it. */
-	struct FNode
-	{
-		const TCHAR* Node;
-		int32 Points;
-	};
-
-	/**
-	 * Character_v2.json with its passive nodes replaced by `Nodes`, read the
-	 * way a save is read, which migrates it. Null if it would not load.
-	 */
-	UCataclysmCharacterSave* ReadV2With(FAutomationTestBase& Test,
-										const TArray<FNode>& Nodes)
-	{
-		FString Text;
-		FString Reason;
-		if (!CataclysmSaveFixtures::Read(TEXT("Character_v2.json"), Text, Reason))
-		{
-			Test.AddError(Reason);
-			return nullptr;
-		}
-
-		TSharedPtr<FJsonObject> Json;
-		if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Json)
-			|| !Json.IsValid())
-		{
-			Test.AddError(TEXT("Character_v2.json is not JSON"));
-			return nullptr;
-		}
-
-		TArray<TSharedPtr<FJsonValue>> Written;
-		for (const FNode& Node : Nodes)
-		{
-			const TSharedRef<FJsonObject> Spent = MakeShared<FJsonObject>();
-			Spent->SetStringField(TEXT("Node"), Node.Node);
-			Spent->SetNumberField(TEXT("Points"), Node.Points);
-			Spent->SetNumberField(TEXT("ChosenOption"), 0);
-			Written.Add(MakeShared<FJsonValueObject>(Spent));
-		}
-		Json->GetObjectField(TEXT("PassiveAllocation"))->SetArrayField(TEXT("Nodes"), Written);
-
-		FString Edited;
-		FJsonSerializer::Serialize(Json.ToSharedRef(), TJsonWriterFactory<>::Create(&Edited));
-
-		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-		FString Message;
-		UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(
-			FCataclysmSaveStorage::FromJson(Edited, UCataclysmCharacterSave::StaticClass(),
-											GetTransientPackage(), Result, Message));
-		if (!Read)
-		{
-			Test.AddError(FString::Printf(TEXT("the edited file would not load: %s -- %s"),
-				FCataclysmSaveStorage::Describe(Result), *Message));
-		}
-		return Read;
-	}
-
-	/** The nodes a record kept, in the order it holds them, comma separated. */
-	FString KeptNodes(const UCataclysmCharacterSave& Read)
-	{
-		TArray<FString> Out;
-		for (const FCataclysmSpentNode& Spent : Read.PassiveAllocation.Nodes)
-		{
-			Out.Add(Spent.Node.ToString());
-		}
-		return FString::Join(Out, TEXT(", "));
-	}
-}
-
-/**
- * A character written at version 2 keeps one class tree per damage type.
- *
- * ISSUE #2064. The step keeps the tree with the most points in each damage
- * type, and on a tie the tree the first point went into, and leaves alone a
- * damage type with only one tree spent in. The node names are real rows.
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveMigratesToOneClassPerDamageType,
-	"Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmSaveMigratesToOneClassPerDamageType::RunTest(const FString&)
-{
-	using namespace CataclysmOneClassMigrationTest;
-
-	// MOST POINTS WINS, in each damage type on its own. Demonic has three trees
-	// spent in, and Masochist holds the most; War has one, which stays.
-	const UCataclysmCharacterSave* Most = ReadV2With(*this, {
-		{ TEXT("Ravager_basic_spine_000"), 2 },
-		{ TEXT("Masochist_basic_spine_000"), 5 },
-		{ TEXT("Bulwark_basic_trunk_000"), 2 },
-		{ TEXT("Ravager_basic_spine_001"), 1 },
-		{ TEXT("Ritualist_basic_spine_000"), 1 },
-	});
-	if (!Most)
-	{
-		return false;
-	}
-	// THE CURRENT VERSION, NOT 3: the chain runs on past this step to the last one. Issue #1472 found it written as 3.
-	TestEqual(TEXT("it arrives at the current version"), Most->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
-	TestEqual(TEXT("the Demonic tree with the most points and the War tree are kept"),
-		KeptNodes(*Most),
-		FString(TEXT("Masochist_basic_spine_000, Bulwark_basic_trunk_000")));
-	TestEqual(TEXT("and the Ravager and Ritualist points are returned"),
-		Most->PassiveAllocation.Total(), 7);
-
-	// A TIE KEEPS THE TREE THE FIRST POINT WENT INTO. Ravager's node comes first
-	// in the file, so Ravager is kept though Masochist holds as many points.
-	const UCataclysmCharacterSave* Tie = ReadV2With(*this, {
-		{ TEXT("Ravager_basic_spine_000"), 3 },
-		{ TEXT("Masochist_basic_spine_000"), 3 },
-	});
-	if (!Tie)
-	{
-		return false;
-	}
-	TestEqual(TEXT("on a tie the tree bought into first is kept"),
-		KeptNodes(*Tie), FString(TEXT("Ravager_basic_spine_000")));
-
-	// ONE TREE PER DAMAGE TYPE ALREADY: nothing moves.
-	const UCataclysmCharacterSave* Alone = ReadV2With(*this, {
-		{ TEXT("Masochist_basic_spine_000"), 1 },
-		{ TEXT("Bulwark_basic_trunk_000"), 4 },
-	});
-	if (!Alone)
-	{
-		return false;
-	}
-	TestEqual(TEXT("a character with one tree per damage type is unchanged"),
-		KeptNodes(*Alone),
-		FString(TEXT("Masochist_basic_spine_000, Bulwark_basic_trunk_000")));
-	TestEqual(TEXT("and keeps every point"), Alone->PassiveAllocation.Total(), 5);
 	return true;
 }
 

@@ -140,27 +140,6 @@ namespace CataclysmInventoryTabsTest
 		return Read;
 	}
 
-	/** A carried slot's JSON as the record writes one: no item, and one stack or none. */
-	TSharedRef<FJsonObject> StackEntry(const TSharedRef<FJsonObject>& Like, const TCHAR* Material, const TCHAR* Gem,
-									   const TCHAR* Rarity, double Quantity)
-	{
-		const TSharedRef<FJsonObject> Out = MakeShared<FJsonObject>();
-		Out->Values = Like->Values;
-		Out->SetStringField(TEXT("Material"), Material);
-		Out->SetStringField(TEXT("Gem"), Gem);
-		Out->SetStringField(TEXT("GemRarity"), Rarity);
-		Out->SetNumberField(TEXT("Quantity"), Quantity);
-		return Out;
-	}
-
-	FString TextOf(const TSharedRef<FJsonObject>& Object)
-	{
-		FString Text;
-		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Text);
-		FJsonSerializer::Serialize(Object, Writer);
-		return Text;
-	}
-
 	/** "Gem_Of_Life Quality x1, ..." for an AddInfo line. */
 	FString Describe(const TArray<FCataclysmCarriedSlot>& Stacks)
 	{
@@ -310,89 +289,6 @@ bool FCataclysmInventoryTabsStoresTest::RunTest(const FString&)
 	TestFalse(TEXT("a material with no name is refused"), Bag->AddMaterial(NAME_None, 1));
 	TestFalse(TEXT("none of a material is refused"), Bag->AddMaterial(Mote, 0));
 	TestFalse(TEXT("a gem with no name is refused"), Bag->AddGems(NAME_None, ECataclysmRarity::Everyday, 1));
-	return true;
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-// IT3. A version 14 record's stacks move into the two tabs; its gear keeps its cell.
-// --------------------------------------------------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInventoryTabsMigrationTest,
-	"Cataclysm.InventoryTabs.AVersion14RecordsStacksMoveIntoTheTabsAndItsGearKeepsItsCell",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * `Character_v14.json` read through the loader, which runs `Migrate_14_to_15` and `Migrate_15_to_16`: its Circlet stays in slot 0, its 12
- * Whispering Ash leave slot 1 for the materials tab and slot 1 is blank but still there, and the gems tab is empty.
- * THE SAME FILE WITH THREE MORE SLOTS -- 5 more Whispering Ash, 2 Superb Of The Viper and a stack of 0 Of Rot -- moves
- * 17 Whispering Ash as one stack and 2 Viper, drops the empty stack, and keeps five slots. Prints "TABS MIGRATED".
- */
-bool FCataclysmInventoryTabsMigrationTest::RunTest(const FString&)
-{
-	using namespace CataclysmInventoryTabsTest;
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v14.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-	const UCataclysmCharacterSave* Plain = ReadCharacter(*this, Text, TEXT("Character_v14.json"));
-
-	// THE SAME FILE WITH THREE MORE SLOTS, built from its second slot so each has every field a slot writes.
-	const TSharedPtr<FJsonObject> Object = CataclysmSaveFixtures::Parse(Text);
-	const TArray<TSharedPtr<FJsonValue>>* Slots = nullptr;
-	if (!TestTrue(TEXT("set-up: the file parses"), Object.IsValid())
-		|| !TestTrue(TEXT("set-up: and lists its carried slots"),
-					 Object->TryGetArrayField(TEXT("CarriedSlots"), Slots) && Slots && Slots->Num() == 2))
-	{
-		return false;
-	}
-	const TSharedRef<FJsonObject> Second = (*Slots)[1]->AsObject().ToSharedRef();
-	TArray<TSharedPtr<FJsonValue>> More = *Slots;
-	More.Add(MakeShared<FJsonValueObject>(StackEntry(Second, TEXT("Whispering_Ash"), TEXT("None"), TEXT("Everyday"), 5.0)));
-	More.Add(MakeShared<FJsonValueObject>(StackEntry(Second, TEXT("None"), TEXT("Gem_Of_The_Viper"), TEXT("Superb"), 2.0)));
-	More.Add(MakeShared<FJsonValueObject>(StackEntry(Second, TEXT("None"), TEXT("Gem_Of_Rot"), TEXT("Quality"), 0.0)));
-	Object->SetArrayField(TEXT("CarriedSlots"), More);
-	const UCataclysmCharacterSave* Busy = ReadCharacter(*this, TextOf(Object.ToSharedRef()), TEXT("the busier file"));
-	if (!Plain || !Busy)
-	{
-		return false;
-	}
-	AddInfo(FString::Printf(TEXT("TABS MIGRATED: version %d; %d slots, slot 0 %s, slot 1 %s x%d; materials %s; gems %s | the "
-								 "busier file %d slots; materials %s; gems %s"),
-							Plain->SchemaVersion, Plain->CarriedSlots.Num(),
-							Plain->CarriedSlots.IsValidIndex(0) ? *Plain->CarriedSlots[0].Item.Base.ToString() : TEXT("-"),
-							Plain->CarriedSlots.IsValidIndex(1) ? *Plain->CarriedSlots[1].Material.ToString() : TEXT("-"),
-							Plain->CarriedSlots.IsValidIndex(1) ? Plain->CarriedSlots[1].Quantity : -1,
-							*Describe(Plain->CarriedMaterials), *Describe(Plain->CarriedGems), Busy->CarriedSlots.Num(),
-							*Describe(Busy->CarriedMaterials), *Describe(Busy->CarriedGems)));
-
-	TestEqual(TEXT("it arrives at the current version"), Plain->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
-	if (!TestEqual(TEXT("**its two slots are both still there**"), Plain->CarriedSlots.Num(), 2))
-	{
-		return false;
-	}
-	TestTrue(TEXT("**the Circlet keeps slot 0**"), Plain->CarriedSlots[0].Item.Base == FName(TEXT("Circlet")));
-	TestTrue(TEXT("**slot 1 is blank**"), UCataclysmInventoryComponent::SlotIsEmpty(Plain->CarriedSlots[1])
-				 && Plain->CarriedSlots[1].Material.IsNone() && Plain->CarriedSlots[1].Quantity == 0);
-	TestTrue(TEXT("**the 12 Whispering Ash are in the materials tab**"),
-			 Plain->CarriedMaterials.Num() == 1 && Plain->CarriedMaterials[0].Material == FName(TEXT("Whispering_Ash"))
-				 && Plain->CarriedMaterials[0].Quantity == 12);
-	TestEqual(TEXT("and the gems tab is empty"), Plain->CarriedGems.Num(), 0);
-
-	TestEqual(TEXT("the busier file keeps all five slots"), Busy->CarriedSlots.Num(), 5);
-	TestTrue(TEXT("**two stacks of one material are one: 17 Whispering Ash**"),
-			 Busy->CarriedMaterials.Num() == 1 && Busy->CarriedMaterials[0].Quantity == 17);
-	TestTrue(TEXT("**the Viper is in the gems tab at Superb, 2 of them**"),
-			 Busy->CarriedGems.Num() == 1 && Busy->CarriedGems[0].Gem == Viper
-				 && Busy->CarriedGems[0].GemRarity == ECataclysmRarity::Superb && Busy->CarriedGems[0].Quantity == 2);
-	bool bAllBlank = true;
-	for (int32 Slot = 1; Slot < Busy->CarriedSlots.Num(); ++Slot)
-	{
-		bAllBlank &= UCataclysmInventoryComponent::SlotIsEmpty(Busy->CarriedSlots[Slot])
-			&& Busy->CarriedSlots[Slot].Gem.IsNone() && Busy->CarriedSlots[Slot].Material.IsNone();
-	}
-	TestTrue(TEXT("and every slot a stack left, the empty Rot's included, is blank"), bAllBlank);
 	return true;
 }
 

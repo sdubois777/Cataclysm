@@ -11,7 +11,6 @@
 #include "Empire/CataclysmSurge.h"
 #include "Save/CataclysmSaveApply.h"
 #include "Save/CataclysmSaveGather.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
@@ -26,7 +25,7 @@
  * rolled (`UCataclysmRunSave::bCataclysmDungeonOpened` and the two beside it).
  * Its depth is worked out from the roll and `BasicDungeonsCleared`, which was
  * saved already, and the dungeon itself is in `Dungeons` with a timer like any
- * other. `Migrate_3_to_4` writes a boss not yet opened into a version 3 file.
+ * other. The upgrade step to version 4 (removed 2026-11-27) wrote a boss not yet opened into a version 3 file.
  *
  * `Cataclysm.EarnedBossSave.` IS A NEW GROUP and selects these and nothing else;
  * the empire half is `Cataclysm.EarnedBoss.`, in the `CataclysmEmpire` module.
@@ -165,120 +164,6 @@ bool FCataclysmEarnedBossSaveRoundTripTest::RunTest(const FString& Parameters)
 			  RestoredUnopened->bCataclysmDungeonOpened);
 	TestEqual(TEXT("CONTROL: and no depth"), RestoredUnopened->CataclysmDungeonFloorsNow(), 0);
 	TestNull(TEXT("CONTROL: and no boss dungeon"), RestoredUnopened->FindCataclysmDungeon());
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEarnedBossSaveMigrationTest,
-	"Cataclysm.EarnedBossSave.ARunFileFromBeforeTheBossDungeonMigratesUnopened",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * `Run_v3.json`, written before the run kept its boss dungeon, through the chain:
- * `Migrate_3_to_4` writes the three fields with their defaults, one assertion
- * each; the record arrives at the current version with no boss opened; and every
- * other field is kept. Prints "BOSS MIGRATED".
- */
-bool FCataclysmEarnedBossSaveMigrationTest::RunTest(const FString& Parameters)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Run_v3.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-	const TSharedPtr<FJsonObject> Stepped = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Run_v3.json is a JSON object"), Stepped.IsValid())
-		|| !TestFalse(TEXT("set-up: and holds no boss dungeon"), Stepped->HasField(TEXT("bCataclysmDungeonOpened"))))
-	{
-		return false;
-	}
-	FString StepMessage;
-	const ECataclysmSaveMigrationResult Stepping = FCataclysmSaveMigration::Migrate(
-		GetDefault<UCataclysmRunSave>()->MigrationSteps(), UCataclysmRunSave::SchemaVersionNow, Stepped.ToSharedRef(),
-		StepMessage);
-
-	bool bOpened = true;
-	double Day = -1.0;
-	double Floors = -1.0;
-	const bool bWroteOpened = Stepped->TryGetBoolField(TEXT("bCataclysmDungeonOpened"), bOpened) && !bOpened;
-	const bool bWroteDay = Stepped->TryGetNumberField(TEXT("CataclysmDungeonOpenedDay"), Day) && Day == 0.0;
-	const bool bWroteFloors = Stepped->TryGetNumberField(TEXT("CataclysmDungeonBaseFloors"), Floors) && Floors == 0.0;
-
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Run_v3.json would not load: %s -- %s"),
-			FCataclysmSaveStorage::Describe(Result), *Message));
-		return false;
-	}
-
-	// AND NOTHING ELSE MOVED: the version 3 file with the version and the three keys, compared with what the record
-	// writes back.
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmRunSave::SchemaVersionNow);
-	Expected->SetBoolField(TEXT("bCataclysmDungeonOpened"), false);
-	Expected->SetNumberField(TEXT("CataclysmDungeonOpenedDay"), 0);
-	Expected->SetNumberField(TEXT("CataclysmDungeonBaseFloors"), 0);
-	// AND THE "NOT WON" `Migrate_4_to_5` WRITES, because the chain runs on to version 5 since 2026-11-03 (issue #1324
-	// slice 6e).
-	Expected->SetNumberField(TEXT("LastRunWonDay"), 0);
-	Expected->SetNumberField(TEXT("LastRunWonTier"), 0);
-	Expected->SetStringField(TEXT("LastRunWonCataclysm"), TEXT("None"));
-	Expected->SetNumberField(TEXT("LastRunWonPassivePoints"), 0);
-	// AND WHAT `Migrate_5_to_6` WRITES, because the chain runs on to version 6 since 2026-11-17 (issue #2733 slice 3).
-	CataclysmSaveFixtures::AddTheRunsVersion6Defaults(*Expected);
-	// AND THE GOLD OF 0 `Migrate_6_to_7` WRITES ON EVERY GROUND ITEM, because the chain runs on to version 7 since
-	// 2026-11-18 (issue #2742).
-	CataclysmSaveFixtures::AddTheRunsVersion7Defaults(*Expected);
-	// AND THE WALK SEED MASK OF 0 `Migrate_7_to_8` WRITES, because the chain runs on to version 8 since 2026-11-18
-	// (issue #2749, B10).
-	CataclysmSaveFixtures::AddTheRunsVersion8Defaults(*Expected);
-	// AND THE TREE'S EVENT COUNTS AT NOTHING AND A BOUGHT DAY OF 0 ON EVERY UPGRADE, which `Migrate_8_to_9` writes,
-	// because the chain runs on to version 9 since 2026-11-19 (issue #2741 slice 3b).
-	CataclysmSaveFixtures::AddTheRunsVersion9Defaults(*Expected);
-	// AND A `bIsVengefulWraith` OF FALSE ON EVERY SAVED CREATURE, which `Migrate_9_to_10` writes, because
-	// the chain runs on to run record version 10 since 2026-11-19 (issue #2725).
-	CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);
-	// AND THE CLEARS SINCE THE LAST DEATH `Migrate_10_to_11` WRITES, because the chain runs on to run record
-	// version 11 since 2026-11-20 (issue #2741 slice 5b).
-	CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion13Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheRunsVersion14Defaults(*Expected); // And 14, #46 G3 and G5: socket lists, no gem on the floor.
-	CataclysmSaveFixtures::AddTheRunsVersion15Defaults(*Expected); // And issue #2741 slice 9's step.
-	CataclysmSaveFixtures::AddTheRunsVersion16Defaults(*Expected); // And issue #2838's step.
-	CataclysmSaveFixtures::AddTheRunsVersion17Defaults(*Expected); // And issue #2840's step.
-	CataclysmSaveFixtures::AddTheRunsVersion18Defaults(*Expected); // And issue #2848's step: where each item arrived.
-	CataclysmSaveFixtures::AddTheRunsVersion19Defaults(*Expected); // And issue #51's step: no Rift altar fallen.
-	CataclysmSaveFixtures::AddTheRunsVersion20Defaults(*Expected); // And issue #2864's step: each rift's health and seconds.
-	CataclysmSaveFixtures::AddTheRunsVersion21Defaults(*Expected); // And issue #51 slice B4's step: no arrival, felled by none.
-	CataclysmSaveFixtures::AddTheRunsVersion22Defaults(*Expected); // And issue #51 slice B5's step: no lair counted.
-	FString Rewritten;
-	FString Error;
-	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
-	FString Where;
-	const bool bSame = bWroteBack
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	AddInfo(FString::Printf(TEXT("BOSS MIGRATED: the step %d (%s); wrote opened %s, day %s, floors %s; the record at "
-								 "version %d, opened %s; the rest %s"),
-							static_cast<int32>(Stepping), *StepMessage, bWroteOpened ? TEXT("yes") : TEXT("NO"),
-							bWroteDay ? TEXT("yes") : TEXT("NO"), bWroteFloors ? TEXT("yes") : TEXT("NO"),
-							Read->SchemaVersion, Read->bCataclysmDungeonOpened ? TEXT("yes") : TEXT("no"),
-							bSame ? TEXT("kept") : *Where));
-
-	TestEqual(TEXT("the chain migrates the version 3 file"), static_cast<int32>(Stepping),
-		static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("the step writes the boss not opened"), bWroteOpened);
-	TestTrue(TEXT("the step writes day 0"), bWroteDay);
-	TestTrue(TEXT("the step writes no floors"), bWroteFloors);
-	TestEqual(TEXT("it arrives at the current version"), Read->SchemaVersion, UCataclysmRunSave::SchemaVersionNow);
-	TestFalse(TEXT("with no boss opened"), Read->bCataclysmDungeonOpened);
-	TestTrue(TEXT("and every other field is kept"), bSame);
 	return true;
 }
 

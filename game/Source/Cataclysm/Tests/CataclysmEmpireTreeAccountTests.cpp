@@ -22,7 +22,6 @@
 #include "Player/CataclysmEmpireTree.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Player/CataclysmPlayerState.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
@@ -282,117 +281,6 @@ bool FCataclysmEmpireTreeAccountFileTest::RunTest(const FString&)
 	TestEqual(TEXT("26 points spent in all"), Read->EmpireTree.Total(), 26);
 	TestTrue(TEXT("and the bank beside it keeps its 37.625"), Read->EmpireUpgradePoints == 37.625);
 	TestEqual(TEXT("and the gold its 1234567"), Read->Gold, static_cast<int64>(1234567));
-	return true;
-}
-
-/**
- * `Migrate_3_to_4` writes an empty tree into an account written at 3, keeps an object already there, and refuses
- * anything else under the key: run on the committed version 3 file as it is, with a tree of one node added, and with a
- * word where the tree goes. And `Account_v3.json` reads through the chain into a record at the current version with an
- * empty tree and every other field kept. Prints "ACCOUNT MIGRATED".
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeAccountMigrationTest,
-	"Cataclysm.EmpireTree.AnAccountFromBeforeTheTreeMigratesHoldingAnEmptyTree",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmEmpireTreeAccountMigrationTest::RunTest(const FString&)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Account_v3.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-
-	// THREE COPIES AT VERSION 3: with no tree, with a tree of one node, and with a word where the tree goes.
-	const TSharedPtr<FJsonObject> NoTree = CataclysmSaveFixtures::Parse(Text);
-	const TSharedPtr<FJsonObject> Held = CataclysmSaveFixtures::Parse(Text);
-	const TSharedPtr<FJsonObject> Word = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Account_v3.json is a JSON object"), NoTree.IsValid() && Held.IsValid() && Word.IsValid())
-		|| !TestFalse(TEXT("set-up: and holds no tree"), NoTree->HasField(TEXT("EmpireTree"))))
-	{
-		return false;
-	}
-	const TSharedRef<FJsonObject> OneNode = MakeShared<FJsonObject>();
-	OneNode->SetStringField(TEXT("Node"), TEXT("basic_0000000w"));
-	OneNode->SetNumberField(TEXT("Points"), 2);
-	OneNode->SetNumberField(TEXT("ChosenOption"), 0);
-	TArray<TSharedPtr<FJsonValue>> OneEntry;
-	OneEntry.Add(MakeShared<FJsonValueObject>(OneNode));
-	const TSharedRef<FJsonObject> Tree = MakeShared<FJsonObject>();
-	Tree->SetArrayField(TEXT("Nodes"), OneEntry);
-	Held->SetObjectField(TEXT("EmpireTree"), Tree);
-	Word->SetStringField(TEXT("EmpireTree"), TEXT("everything"));
-
-	const TArrayView<const FCataclysmSaveMigrationStep> Steps = GetDefault<UCataclysmAccountSave>()->MigrationSteps();
-	FString NoTreeMessage;
-	FString HeldMessage;
-	FString WordMessage;
-	const ECataclysmSaveMigrationResult NoTreeResult = FCataclysmSaveMigration::Migrate(
-		Steps, UCataclysmAccountSave::SchemaVersionNow, NoTree.ToSharedRef(), NoTreeMessage);
-	const ECataclysmSaveMigrationResult HeldResult = FCataclysmSaveMigration::Migrate(
-		Steps, UCataclysmAccountSave::SchemaVersionNow, Held.ToSharedRef(), HeldMessage);
-	const ECataclysmSaveMigrationResult WordResult = FCataclysmSaveMigration::Migrate(
-		Steps, UCataclysmAccountSave::SchemaVersionNow, Word.ToSharedRef(), WordMessage);
-
-	const TSharedPtr<FJsonObject>* Written = nullptr;
-	const TArray<TSharedPtr<FJsonValue>>* WrittenNodes = nullptr;
-	const bool bWritten = NoTree->TryGetObjectField(TEXT("EmpireTree"), Written) && Written != nullptr
-		&& Written->IsValid() && (*Written)->TryGetArrayField(TEXT("Nodes"), WrittenNodes) && WrittenNodes != nullptr;
-	const TSharedPtr<FJsonObject>* Kept = nullptr;
-	const TArray<TSharedPtr<FJsonValue>>* KeptNodes = nullptr;
-	const bool bKept = Held->TryGetObjectField(TEXT("EmpireTree"), Kept) && Kept != nullptr && Kept->IsValid()
-		&& (*Kept)->TryGetArrayField(TEXT("Nodes"), KeptNodes) && KeptNodes != nullptr;
-
-	AddInfo(FString::Printf(TEXT("ACCOUNT MIGRATED: no tree %d (%s) -> %s; one node %d (%s) -> %d node(s); a word %d (%s)"),
-							static_cast<int32>(NoTreeResult), *NoTreeMessage,
-							bWritten ? *FString::Printf(TEXT("a tree of %d node(s)"), WrittenNodes->Num())
-									 : TEXT("NO TREE"),
-							static_cast<int32>(HeldResult), *HeldMessage, bKept ? KeptNodes->Num() : -1,
-							static_cast<int32>(WordResult), *WordMessage));
-
-	TestEqual(TEXT("an account at 3 with no tree migrates"), static_cast<int32>(NoTreeResult),
-			  static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("holding an empty tree, written out"), bWritten && WrittenNodes->Num() == 0);
-	TestTrue(TEXT("one already holding a tree of one node keeps it"), bKept && KeptNodes->Num() == 1);
-	TestNotEqual(TEXT("and one holding a word is refused"), static_cast<int32>(WordResult),
-				 static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-
-	// THE FILE FROM BEFORE THE TREE, through the chain, compared with what the record writes back.
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	const UCataclysmAccountSave* Read = Cast<UCataclysmAccountSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmAccountSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Account_v3.json would not load: %s -- %s"), FCataclysmSaveStorage::Describe(Result),
-								 *Message));
-		return false;
-	}
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmAccountSave::SchemaVersionNow);
-	CataclysmSaveFixtures::AddTheAccountsVersion4Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheAccountsVersion5Defaults(*Expected); // And 5, #2741 slice 6e: no debt.
-	CataclysmSaveFixtures::AddTheAccountsVersion6Defaults(*Expected); // And 6, #2741 slice 8: no extra option.
-	CataclysmSaveFixtures::AddTheAccountsVersion7Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheAccountsVersion8Defaults(*Expected); // And #47 slice F6a's: the forge count.
-	FString Rewritten;
-	FString Error;
-	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
-	FString Where;
-	const bool bSame = bWroteBack
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-	AddInfo(FString::Printf(TEXT("ACCOUNT MIGRATED: Account_v3.json %s, at version %d, a tree of %d node(s); the rest %s"),
-							FCataclysmSaveStorage::Describe(Result), Read->SchemaVersion, Read->EmpireTree.Nodes.Num(),
-							bSame ? TEXT("kept") : *Where));
-	TestEqual(TEXT("Account_v3.json is migrated"), static_cast<int32>(Result),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestEqual(TEXT("to the current version"), Read->SchemaVersion, UCataclysmAccountSave::SchemaVersionNow);
-	TestEqual(TEXT("holding an empty tree"), Read->EmpireTree.Nodes.Num(), 0);
-	TestTrue(TEXT("keeping its 37.625 empire points"), Read->EmpireUpgradePoints == 37.625);
-	TestEqual(TEXT("and its gold"), Read->Gold, static_cast<int64>(1234567));
-	TestTrue(TEXT("and every other field"), bSame);
 	return true;
 }
 

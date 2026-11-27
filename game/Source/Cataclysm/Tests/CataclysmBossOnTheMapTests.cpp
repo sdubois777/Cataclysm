@@ -171,7 +171,7 @@ bool FCataclysmBossOnTheMapProgressTest::RunTest(const FString& Parameters)
 						   "dungeon opens when 1 is finished")));
 
 	// TIER 3, ITS TWO MET BY HAND AND NOT BY A CLEAR: the state a version 3 run record migrates into, since
-	// `Migrate_3_to_4` writes the boss unopened. The next quest clear opens it, and the line says so before it does.
+	// The upgrade step to version 4 (removed 2026-11-27) wrote the boss unopened. The next quest clear opens it, and the line says so before it does.
 	UCataclysmEmpireRun* Met = MakeTierRun(/* Seed */ 3, /* DifficultyTier */ 3);
 	if (!TestEqual(TEXT("set-up: a tier 3 run faces three"), Met->ActiveCataclysms.Num(), 3)
 		|| !TestEqual(TEXT("set-up: and needs two"), Met->CataclysmDungeonRequirement(), 2))

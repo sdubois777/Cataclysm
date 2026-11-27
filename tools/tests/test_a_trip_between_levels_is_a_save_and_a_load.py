@@ -110,24 +110,6 @@ def function_body(text: str, signature: str) -> str:
     return braced_from(text, text.find(signature), signature)
 
 
-def test_the_run_record_is_at_version_6_or_later_and_migrate_5_to_6_writes_nothing_yet() -> None:
-    """AT VERSION 6 OR LATER, and the step one of the run record's: until issue #2742 took the run record to version 7
-    (2026-11-18) this asked for version 6 and for `Migrate_5_to_6` to be the last step."""
-    run_record = code(RECORDS_H).split("class CATACLYSM_API UCataclysmRunSave")[1]
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_record)
-    assert version and int(version.group(1)) >= 6, "the run record is not at version 6 or later"
-    records = code(RECORDS_CPP)
-    assert '{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },' in records, (
-        "Migrate_5_to_6 is not one of the run record's steps")
-    # THE RUN RECORD'S STEP: the character record has a `Migrate_5_to_6` of its own, in its own namespace, and the
-    # account record one since issue #2741 slice 8, in the namespace after the run record's.
-    run_steps = records.split("namespace CataclysmRunSaveMigration")[1].split("namespace CataclysmAccountSaveMigration")[0]
-    step = function_body(run_steps, "bool Migrate_5_to_6(const TSharedRef<FJsonObject>& Record, FString& OutError)")
-    for field, written in VERSION_6.items():
-        assert written in step, f"Migrate_5_to_6 does not write {field} as {written}"
-    assert (FIXTURES / "Run_v6.json").is_file(), "there is no committed Run_v6.json for the run record's version 6"
-
-
 @pytest.mark.parametrize("field", sorted(VERSION_6))
 def test_the_gather_writes_and_the_restore_reads_each_version_6_field(field: str) -> None:
     gather = function_body(code(GATHER_CPP),

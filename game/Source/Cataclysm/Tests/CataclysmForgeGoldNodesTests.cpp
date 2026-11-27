@@ -576,61 +576,36 @@ CATACLYSM_GOLD_NODES_TEST(FCataclysmForgeGoldNodesPaidTest,
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// G8. An account or character from before the forge count starts it at nothing; the committed files read theirs.
+// G8. The committed account and character files read their forge counts.
 // --------------------------------------------------------------------------------------------------------------------
 /**
- * `Account_v7.json` migrates (`Migrate_7_to_8`) with 0 tier 1 gold spent at the forge, keeping its 75,000.5 spent on
- * city upgrades, and `Character_v17.json` (the character record's `Migrate_17_to_18`) with 0, keeping its 50,000.25.
- * CONTROL: `Account_v8.json` and `Character_v18.json`, the committed files since #47 slice F6a, are read rather than
- * migrated and state 62,500.25 and 41,250.75, figures and not the default. Prints "FORGE COUNT FILES".
+ * `Account_v8.json` and `Character_v18.json`, the committed files since #47 slice F6a, read and state 62,500.25 and
+ * 41,250.75 spent at the forge, figures and not the default. Its half on `Account_v7.json` and `Character_v17.json`, from
+ * before the count, went with the save migrations on 2026-11-27 (issue #2928 slice 12), and the test's name lost
+ * "AnOlderRecordStartsTheForgeCountAtNothingAnd". Prints "FORGE COUNT FILES".
  */
 CATACLYSM_GOLD_NODES_TEST(FCataclysmForgeGoldNodesFilesTest,
-	"Cataclysm.ForgeGoldNodes.AnOlderRecordStartsTheForgeCountAtNothingAndTheCommittedOnesReadTheirs")
+	"Cataclysm.ForgeGoldNodes.TheCommittedRecordsReadTheirForgeCounts")
 {
 	using namespace CataclysmForgeGoldNodesTest;
-	ECataclysmSaveLoadResult OldResult = ECataclysmSaveLoadResult::NotValidJson;
 	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::NotValidJson;
-	const UCataclysmAccountSave* Old = ReadFixture<UCataclysmAccountSave>(*this, TEXT("Account_v7.json"), OldResult);
-	const UCataclysmAccountSave* Committed = ReadFixture<UCataclysmAccountSave>(*this, TEXT("Account_v8.json"), NewResult);
-	if (!Old || !Committed)
-	{
-		return false;
-	}
-	AddInfo(FString::Printf(TEXT("FORGE COUNT FILES: Account_v7.json %s, forge %.2f, city upgrades %.2f; Account_v8.json "
-								 "%s, forge %.2f, city upgrades %.2f"),
-							FCataclysmSaveStorage::Describe(OldResult), Old->GoldSpentAtTheForge,
-							Old->GoldSpentOnCityUpgrades, FCataclysmSaveStorage::Describe(NewResult),
-							Committed->GoldSpentAtTheForge, Committed->GoldSpentOnCityUpgrades));
-
-	TestEqual(TEXT("Account_v7.json is migrated"), static_cast<int32>(OldResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestEqual(TEXT("**with nothing spent at the forge**"), Old->GoldSpentAtTheForge, 0.0);
-	TestEqual(TEXT("keeping its city upgrade count"), Old->GoldSpentOnCityUpgrades, 75000.5, 0.0001);
-	TestEqual(TEXT("CONTROL: Account_v8.json is read, not migrated"), static_cast<int32>(NewResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
-	TestEqual(TEXT("**and states its forge count**"), Committed->GoldSpentAtTheForge, 62500.25, 0.0001);
-
-	// THE CHARACTER RECORD'S, a Solo Self-Found character's own count.
-	ECataclysmSaveLoadResult OldCharacterResult = ECataclysmSaveLoadResult::NotValidJson;
 	ECataclysmSaveLoadResult NewCharacterResult = ECataclysmSaveLoadResult::NotValidJson;
-	const UCataclysmCharacterSave* OldCharacter =
-		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v17.json"), OldCharacterResult);
+	const UCataclysmAccountSave* Committed = ReadFixture<UCataclysmAccountSave>(*this, TEXT("Account_v8.json"), NewResult);
 	const UCataclysmCharacterSave* Character =
 		ReadFixture<UCataclysmCharacterSave>(*this, TEXT("Character_v18.json"), NewCharacterResult);
-	if (!OldCharacter || !Character)
+	if (!Committed || !Character)
 	{
 		return false;
 	}
-	AddInfo(FString::Printf(TEXT("FORGE COUNT FILES: Character_v17.json %s, forge %.2f, city upgrades %.2f; "
+	AddInfo(FString::Printf(TEXT("FORGE COUNT FILES: Account_v8.json %s, forge %.2f, city upgrades %.2f; "
 								 "Character_v18.json %s, forge %.2f, city upgrades %.2f"),
-							FCataclysmSaveStorage::Describe(OldCharacterResult), OldCharacter->GoldSpentAtTheForge,
-							OldCharacter->GoldSpentOnCityUpgrades, FCataclysmSaveStorage::Describe(NewCharacterResult),
+							FCataclysmSaveStorage::Describe(NewResult), Committed->GoldSpentAtTheForge,
+							Committed->GoldSpentOnCityUpgrades, FCataclysmSaveStorage::Describe(NewCharacterResult),
 							Character->GoldSpentAtTheForge, Character->GoldSpentOnCityUpgrades));
-	TestEqual(TEXT("Character_v17.json is migrated"), static_cast<int32>(OldCharacterResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestEqual(TEXT("**with nothing spent at the forge**"), OldCharacter->GoldSpentAtTheForge, 0.0);
-	TestEqual(TEXT("keeping its city upgrade count"), OldCharacter->GoldSpentOnCityUpgrades, 50000.25, 0.0001);
-	TestEqual(TEXT("CONTROL: Character_v18.json is read, not migrated"), static_cast<int32>(NewCharacterResult),
+	TestEqual(TEXT("Account_v8.json is read"), static_cast<int32>(NewResult),
+			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
+	TestEqual(TEXT("**and states its forge count**"), Committed->GoldSpentAtTheForge, 62500.25, 0.0001);
+	TestEqual(TEXT("Character_v18.json is read"), static_cast<int32>(NewCharacterResult),
 			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
 	TestEqual(TEXT("**and states its forge count**"), Character->GoldSpentAtTheForge, 41250.75, 0.0001);
 	return true;

@@ -25,8 +25,8 @@
  * WHAT THESE THREE CLASSES ARE, AND WHAT THEY ARE NOT YET.
  *
  * They are the SHAPE of the three records `docs/Save_System_Design.md` section 2
- * describes, so that the storage layer, the migration chain and the fixture
- * tests have something real to write, read and migrate.
+ * describes, so that the storage layer and the fixture tests have something real
+ * to write and read.
  *
  * MOST OF THE FIELDS THE DESIGN LISTS HAD NO RUNTIME SOURCE when these classes
  * were written. Nothing in the game then produced a character level, an
@@ -71,9 +71,9 @@ struct CATACLYSM_API FCataclysmSavedPatch
  * WHAT IS NOT HERE IS NOT AN OVERSIGHT. How far through a wind-up the creature
  * was, where it was in its attack cycle, what it had in flight, and how long its
  * buffs had left are all excluded on purpose. Section 6: that is the data whose
- * shape changes with every patch, and section 5 requires a migration for any
- * persisted field whose shape changes, so persisting combat choreography would
- * mean writing a migration every patch for state nobody wants preserved. It can
+ * shape changes with every patch, and a persisted field whose shape changes takes a
+ * version bump, which refuses every older save (2026-11-27), so persisting combat
+ * choreography would refuse saves every patch for state nobody wants preserved. It can
  * be tightened later, one field at a time, each as its own version bump.
  */
 USTRUCT(BlueprintType)
@@ -176,7 +176,7 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	 * the take, which its blows on creatures are multiplied by. Both read once at the take by
 	 * `UCataclysmSummonSkill::Possess`, and lost on a load until this. None and 1 for a creature no skill took.
 	 *
-	 * A RUN RECORD STEP, 16 TO 17, unlike the four above: `Migrate_16_to_17` writes Subjugate's row and 1 on a thrall in
+	 * A RUN RECORD STEP, 16 TO 17, unlike the four above: the upgrade step to version 17 (removed 2026-11-27) wrote Subjugate's row and 1 on a thrall in
 	 * an older file, not the defaults (the coordinating session's ruling of 2026-11-22, Q1).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
@@ -336,7 +336,7 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	 * hard and moved at its kind's speed.
 	 *
 	 * RUN RECORD VERSION 10, the run record's own number and not the character record's: a field added to a record
-	 * takes a version (the fixtures README, 2026-11-02), and the creature is inside the run record. `Migrate_9_to_10`
+	 * takes a version (the fixtures README, 2026-11-02), and the creature is inside the run record. The upgrade step to version 10 (removed 2026-11-27)
 	 * writes false on every saved creature of a run written at 9, because nothing in an older file tells a wraith from
 	 * another creature a rule raised; such a wraith comes back as one did before this field.
 	 */
@@ -629,7 +629,7 @@ struct CATACLYSM_API FCataclysmSavedWalk
 	 * The corrupted double's hunt, the dungeon's half: whether it has hunted an earlier floor (so it follows thirty
 	 * seconds in, at the entrance), the share of its health it carries, and its four potion slots' charges. Issue #2688.
 	 * Without them a player could quit and load to raise a wounded double again at full health, a minute in, at the far
-	 * end of the floor (ruled 2026-11-02). RUN RECORD VERSION 2: `Migrate_1_to_2` writes these defaults.
+	 * end of the floor (ruled 2026-11-02). RUN RECORD VERSION 2: the upgrade step to version 2 (removed 2026-11-27) wrote these defaults.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	bool bConsumptionDoubleHasHunted = false;
@@ -641,7 +641,7 @@ struct CATACLYSM_API FCataclysmSavedWalk
 	TArray<float> ConsumptionDoublePotionCharges;
 
 	/** The gold the walk's kills have dropped, and the gold picked up in it, which Cleanup Crew pays a tenth of the
-	 *  difference of at a clear. Issue #2741 slice 6b (B3). RUN RECORD VERSION 12: `Migrate_11_to_12` writes 0 and 0. */
+	 *  difference of at a clear. Issue #2741 slice 6b (B3). RUN RECORD VERSION 12: the upgrade step to version 12 (removed 2026-11-27) wrote 0 and 0. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	int64 GoldDroppedThisWalk = 0;
 
@@ -844,7 +844,7 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	 * and restart (D1). EMPTY MEANS NOT SAVED: the rebuilt rifts stand as placed.
 	 *
 	 * RUN RECORD VERSION 20. They replace `AbyssalRiftState`, the one rift's state (0 waiting, 1 open, 2 closed), which
-	 * `Migrate_19_to_20` reads and removes: a rift the player had met, open or closed, loaded closed and failed (U2),
+	 * The upgrade step to version 20 (removed 2026-11-27) read and removes: a rift the player had met, open or closed, loaded closed and failed (U2),
 	 * so a state other than 0 is written as every rift a floor can hold killed; 0 as nothing saved.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
@@ -1007,7 +1007,7 @@ struct CATACLYSM_API FCataclysmSavedFloorRuleState
 	 * floor repeats (`ACataclysmDungeonGameMode::PlaceTheRiftAltars`). A load destroys each again with `Destroy`, which
 	 * raises no death notice, so a fallen altar stays fallen and its seal stays open. The altars of the floors above are
 	 * not saved: a floor is rebuilt alone, and every one of them had fallen for the player to stand here. Issue #51 slice
-	 * B1. RUN RECORD VERSION 19: `Migrate_18_to_19` writes none fallen.
+	 * B1. RUN RECORD VERSION 19: the upgrade step to version 19 (removed 2026-11-27) wrote none fallen.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	TArray<int32> RiftAltarsDestroyed;
@@ -1102,34 +1102,34 @@ struct CATACLYSM_API FCataclysmSavedFloor
  * defeated dungeon's award, since issue #52's first slice.
  *
  * VERSION 8 SINCE 2026-11-24. The account counts the tier 1 gold spent at the forge across runs
- * (`GoldSpentAtTheForge`, #47 slice F6a), which Treasury Synergy reads, and `Migrate_7_to_8` writes 0 into an account
+ * (`GoldSpentAtTheForge`, #47 slice F6a), which Treasury Synergy reads, and the upgrade step to version 8 (removed 2026-11-27) wrote 0 into an account
  * written at 7: the count starts at this build, as Reinvestment's did (Q5, as V5).
  *
  * VERSION 7 FROM 2026-11-22. The account counts the tier 1 gold spent on city upgrades across runs
- * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), which Reinvestment reads, and `Migrate_6_to_7` writes 0 into an
+ * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), which Reinvestment reads, and the upgrade step to version 7 (removed 2026-11-27) wrote 0 into an
  * account written at 6: the count starts at this build (V5).
  *
  * VERSION 6 FROM 2026-11-21. The account's empire tree holds Imperial Prowess's one extra option of an earlier centre
  * milestone (`FCataclysmPassiveAllocation::ExtraOptionNode` and `ExtraOption`, issue #2741 slice 8), and
- * `Migrate_5_to_6` writes none into an account written at 5: nothing could take one before the fields existed.
+ * The upgrade step to version 6 (removed 2026-11-27) wrote none into an account written at 5: nothing could take one before the fields existed.
  *
  * VERSION 5 FROM 2026-11-20. The account holds a gold debt beside its balance (`GoldOwed`, `GoldOwedEachDay`, issue
  * #2741 slice 6e): the owner ruled that day, "no gold debt unless there's an option for it in the empire tree", and
- * Global Credit and Sovereign Loans are those options. `Migrate_4_to_5` writes nothing owed into an account written at
+ * Global Credit and Sovereign Loans are those options. The upgrade step to version 5 (removed 2026-11-27) wrote nothing owed into an account written at
  * 4: nothing could be bought on credit before the fields existed.
  *
  * VERSION 4 SINCE 2026-11-18. The account holds what its empire upgrade tree has bought (`EmpireTree`, issue #2741
- * slice 1b), and `Migrate_3_to_4` writes an empty tree into an account written at 3: nothing could be bought before the
+ * slice 1b), and the upgrade step to version 4 (removed 2026-11-27) wrote an empty tree into an account written at 3: nothing could be bought before the
  * field existed. The coordinating session gave gold version 3 and the tree version 4 the same day.
  *
- * VERSION 3 SINCE 2026-11-18. The account holds its gold (`Gold`, issue #2742), and `Migrate_2_to_3` writes a
+ * VERSION 3 SINCE 2026-11-18. The account holds its gold (`Gold`, issue #2742), and the upgrade step to version 3 (removed 2026-11-27) wrote a
  * balance of 0 into an account written at 2: nothing dropped gold before the field existed. The empire upgrade tree
  * (issue #2741) takes version 4, ruled by the coordinating session on 2026-11-18.
  *
  * VERSION 2 SINCE 2026-11-03. `EmpireUpgradePoints` was a whole number and is a
  * double, because an award is a fraction -- an ordinary dungeon is worth 1 point
  * times the share of the population living -- and the coordinating session ruled
- * that fractions are banked rather than rounded away. `Migrate_1_to_2` writes a
+ * that fractions are banked rather than rounded away. The upgrade step to version 2 (removed 2026-11-27) wrote a
  * version 1 file's whole number back as the same number. Issue #52.
  */
 UCLASS(BlueprintType)
@@ -1143,7 +1143,6 @@ public:
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
-	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	ECataclysmLethality Lethality = ECataclysmLethality::Standard;
@@ -1350,7 +1349,7 @@ struct CATACLYSM_API FCataclysmPlayerBuild
 	 * What each other key held by default, as `ACataclysmPlayerState::GetRememberedDefaults` holds them. Issue #837
 	 * slice 1, ruled by the coordinating session on 2026-11-24: a double holds the keys the player actually had, so its
 	 * fill reads these after the choices, as the player's does. In the character record from its version 17
-	 * (`Migrate_16_to_17` writes an empty list into a held build that lacks it).
+	 * (the upgrade step to version 17 (removed 2026-11-27) wrote an empty list into a held build that lacks it).
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Build")
 	TArray<FCataclysmSkillChoice> RememberedDefaults;
@@ -1397,7 +1396,7 @@ struct CATACLYSM_API FCataclysmPlayerBuild
  * WHAT IS DELIBERATELY ABSENT: a Solo Self-Found character's private empire
  * tree allocation. It needs a shape that does not exist in the game yet, and
  * section 5 says adding a field later with a sensible default is not a version
- * bump, so waiting costs nothing and guessing costs a migration.
+ * bump, so waiting costs nothing and guessing costs a version bump.
  *
  * THE 19 EQUIPPED SLOTS LEFT THAT LIST ON 2026-09-24, as `WornGear`, once
  * `UCataclysmEquipmentComponent` was a source for them. The list said 18; the
@@ -1418,74 +1417,74 @@ public:
 
 	/**
 	 * 18 SINCE 2026-11-25. #47 slice F6a: a Solo Self-Found character counts the tier 1 gold it has spent at the
-	 * forge across runs (`GoldSpentAtTheForge`), which Treasury Synergy reads, and `Migrate_17_to_18` writes 0.
+	 * forge across runs (`GoldSpentAtTheForge`), which Treasury Synergy reads, and the upgrade step to version 18 (removed 2026-11-27) wrote 0.
 	 *
 	 * 17 FROM 2026-11-24. Issue #837 slice 1: what each key held by default after the last fill,
 	 * `RememberedDefaults`, so a loaded character's keys stay as they were (the owner's Q1, "Approve all three
-	 * (Recommended)"). `Migrate_16_to_17` writes an empty list, which is what a character written before it held.
+	 * (Recommended)"). The upgrade step to version 17 (removed 2026-11-27) wrote an empty list, which is what a character written before it held.
 	 *
 	 * 16 FROM 2026-11-24. Issue #2849: the 48 carried slots hold gear only, and the carried crafting materials and gems
 	 * are two lists of their own, `CarriedMaterials` and `CarriedGems`, one stack per material and one per gem and
-	 * rarity. `Migrate_15_to_16` moves each stack out of `CarriedSlots` into its list and blanks its cell, so every
+	 * rarity. The upgrade step to version 16 (removed 2026-11-27) moved each stack out of `CarriedSlots` into its list and blanks its cell, so every
 	 * piece of gear keeps its cell. The owner's ruling of that day: "One cell per kind, no limit (Recommended)".
 	 *
 	 * 15 FROM 2026-11-24. An item records the gear level and the difficulty tier it arrived at
 	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2), so a dismantle refunds only the upgrade
-	 * levels the player paid for. `Migrate_14_to_15` writes -1 and 0, "not known", on every item: nothing recorded it
+	 * levels the player paid for. The upgrade step to version 15 (removed 2026-11-27) wrote -1 and 0, "not known", on every item: nothing recorded it
 	 * before. A VERSION AND NOT A DEFAULT, ruled by the coordinating session on 2026-11-24, by
 	 * `game/Tests/SaveFixtures/README.md`: from issue #1472 on, a field added to a record takes a version.
 	 *
 	 * 14 FROM 2026-11-22. A Solo Self-Found character counts the tier 1 gold it has spent on city upgrades across runs
-	 * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), as the account record does at its version 7. `Migrate_13_to_14`
+	 * (`GoldSpentOnCityUpgrades`, issue #2741 slice 9), as the account record does at its version 7. The upgrade step to version 14 (removed 2026-11-27)
 	 * writes 0: the count starts at this build (V5).
 	 *
 	 * 13 FROM 2026-11-22. Issue #46, slices G2 and G3: an item's `Sockets` is a list of typed sockets, each holding a
 	 * gem or none, where it was a count, and a carried or stashed slot may hold a stack of one gem at one rarity (`Gem`,
-	 * `GemRarity`). `Migrate_12_to_13` writes each saved count of N as N empty sockets that fit any type, as the
+	 * `GemRarity`). The upgrade step to version 13 (removed 2026-11-27) wrote each saved count of N as N empty sockets that fit any type, as the
 	 * coordinating session ruled on 2026-11-21, and no gem in every slot: nothing could hold a gem before.
 	 *
 	 * 12 FROM 2026-11-21. Each of the character's three allocations holds Imperial Prowess's one extra option
 	 * (`FCataclysmPassiveAllocation::ExtraOptionNode` and `ExtraOption`, issue #2741 slice 8); only a Solo Self-Found
-	 * character's own empire tree uses it. `Migrate_11_to_12` writes none: nothing could take one before.
+	 * character's own empire tree uses it. The upgrade step to version 12 (removed 2026-11-27) wrote none: nothing could take one before.
 	 *
 	 * 11 FROM 2026-11-20. A Solo Self-Found character holds its own gold debt beside its own gold (`GoldOwed`,
-	 * `GoldOwedEachDay`, issue #2741 slice 6e), as the account record does at its version 5. `Migrate_10_to_11` writes
+	 * `GoldOwedEachDay`, issue #2741 slice 6e), as the account record does at its version 5. The upgrade step to version 11 (removed 2026-11-27) wrote
 	 * nothing owed: nothing could be bought on credit before.
 	 *
 	 * 10 SINCE 2026-11-19. A skill levels as it is used (issue #2764, ruled by the project owner that day): each skill's
 	 * total experience is kept, by skill row, in `SkillExperience`, and its level is worked out from it and the
-	 * character's level on load. `Migrate_9_to_10` writes an empty list: no skill had earned any before.
+	 * character's level on load. The upgrade step to version 10 (removed 2026-11-27) wrote an empty list: no skill had earned any before.
 	 *
 	 * 9 SINCE 2026-11-18. A Solo Self-Found character banks and spends its own empire upgrade points (issue #2741 slice
 	 * 1c): the owner reversed the coordinating session's C8 that day ("Include them"). `PrivateEmpireUpgradePoints` was a
 	 * whole number and is a double, because an award is a fraction, as the account record's bank became at its version 2;
-	 * and `PrivateEmpireTree` holds what the character's own tree has bought. `Migrate_8_to_9` writes the same points
+	 * and `PrivateEmpireTree` holds what the character's own tree has bought. The upgrade step to version 9 (removed 2026-11-27) wrote the same points
 	 * back and an empty tree: nothing banked or bought into either before.
 	 *
 	 * 8 SINCE 2026-11-18. A Solo Self-Found character holds its own gold (`Gold`, issue #2742): the owner ruled that day
 	 * that such a character earns gold, and the design's Storage section puts its gold on the character, "its gold is
-	 * its own". `Migrate_7_to_8` writes a balance of 0 into a character written at 7: nothing dropped gold before.
+	 * its own". The upgrade step to version 8 (removed 2026-11-27) wrote a balance of 0 into a character written at 7: nothing dropped gold before.
 	 *
 	 * 7 SINCE 2026-11-02. The character carries its Cataclysm order seed (`CataclysmOrderSeed`, issue #1324 slice 6a), and
-	 * `Migrate_6_to_7` writes into a character written at 6 the seed its identifier gives (`CataclysmOrderSeedFor`): no
+	 * The upgrade step to version 7 (removed 2026-11-27) wrote into a character written at 6 the seed its identifier gives (`CataclysmOrderSeedFor`): no
 	 * character had one before the field existed, and that keeps an existing character to one fixed draw from then on.
 	 *
 	 * 6 SINCE 2026-11-02. The character carries the build its corrupted double is made from, captured at the crossing
-	 * (`ConsumptionBuild`, issue #2688, the owner's decision O4), and `Migrate_5_to_6` writes an empty build into a
+	 * (`ConsumptionBuild`, issue #2688, the owner's decision O4), and the upgrade step to version 6 (removed 2026-11-27) wrote an empty build into a
 	 * character written at 5: nothing captured one before the field existed.
 	 *
-	 * 5 SINCE 2026-11-02. The character carries its Consumption mark, issue #2688, and `Migrate_4_to_5` writes "not
+	 * 5 SINCE 2026-11-02. The character carries its Consumption mark, issue #2688, and the upgrade step to version 5 (removed 2026-11-27) wrote "not
 	 * marked" into a character written at 4: nothing could mark a character before the field existed.
 	 *
 	 * 4 SINCE 2026-11-01. The character carries its difficulty tier, issue #1472,
-	 * and `Migrate_3_to_4` writes tier 1 into a character written at 3, the tier
+	 * and the upgrade step to version 4 (removed 2026-11-27) wrote tier 1 into a character written at 3, the tier
 	 * the design starts every character at. A VERSION AND NOT A DEFAULT, ruled
 	 * 2026-11-01: `game/Tests/SaveFixtures/README.md` lets a fixture gain a field
 	 * without one only while nothing can load a save, and #753 made saves load.
 	 *
 	 * 3 SINCE 2026-09-24. A character may spend in only one class tree for each
 	 * damage type, issue #2064, and a character written at 2 may hold points in
-	 * two or three trees of one; `Migrate_2_to_3` keeps one of them.
+	 * two or three trees of one; the upgrade step to version 3 (removed 2026-11-27) kept one of them.
 	 *
 	 * 2 SINCE 2026-08-24, AND IT WAS 1. `SpentAttributePoints` below arrived
 	 * when attribute allocation became something the running game produces, so
@@ -1494,7 +1493,7 @@ public:
 	static constexpr int32 SchemaVersionNow = 18;
 
 	/**
-	 * The Cataclysm order seed a character's identifier gives: what `Migrate_6_to_7` writes into a character written
+	 * The Cataclysm order seed a character's identifier gives: what the upgrade step to version 7 (removed 2026-11-27) wrote into a character written
 	 * before the field, and what the save writes for a character that never drew one. Issue #1324 slice 6a, ruled
 	 * 2026-11-02.
 	 *
@@ -1503,12 +1502,11 @@ public:
 	 * game. Written out here with its two constants (offset basis 2166136261, prime 16777619) and NOT `GetTypeHash`:
 	 *
 	 *   - STABLE ACROSS BUILDS. An engine upgrade may change `GetTypeHash(FGuid)`; this changes only if this function is
-	 *     edited, and editing it would move every migrated character's draw, which is why
+	 *     edited, and editing it would move every character's draw, which is why
 	 *     `Cataclysm.CataclysmDraw.TheSeedAnIdentifierGivesIsFixed` pins three of its answers as numbers.
 	 *   - STABLE ACROSS PLATFORMS. It reads the identifier's four whole numbers by shifting, never its bytes in memory,
 	 *     so byte order cannot reach it; it is unsigned 32-bit arithmetic, which every compiler does alike.
-	 *   - A CONSTANT FROZEN INTO THE MIGRATION, which section 5 rule 4 of `docs/Save_System_Design.md` allows: it reads
-	 *     nothing but the record.
+	 *   - IT READS NOTHING BUT THE IDENTIFIER, so the writer gives a character the same seed whenever it asks.
 	 *
 	 * `tools/tests/test_a_character_keeps_its_cataclysm_draw.py` computes the same hash in Python for the committed
 	 * fixtures' identifier and checks the figure the tests compare with.
@@ -1517,7 +1515,6 @@ public:
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
-	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
 
 	/** What names this character's own slot. Generated, never the player's
 	 *  chosen name, so renaming is free and two characters may share a name. */
@@ -1542,7 +1539,7 @@ public:
 	 * The character's difficulty tier, 1 to 8. Issue #1472. `ACataclysmPlayerState::GetDifficultyTier`.
 	 *
 	 * VERSION 4 (ruled 2026-11-01, overriding the first ruling that it needed none): a record written before the field
-	 * is at version 3 and `Migrate_3_to_4` writes tier 1 into it, the tier the design starts every character at. The
+	 * is at version 3 and the upgrade step to version 4 (removed 2026-11-27) wrote tier 1 into it, the tier the design starts every character at. The
 	 * default here is the same 1, so a version 4 record somehow missing the key reads the same.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -1551,7 +1548,7 @@ public:
 	/**
 	 * Whether the character is marked by crossing its tier's Consumption Threshold. Issue #2688.
 	 * `ACataclysmPlayerState::IsMarkedByConsumption`. VERSION 5: a record written before the field is at version 4, and
-	 * `Migrate_4_to_5` writes false into it.
+	 * The upgrade step to version 5 (removed 2026-11-27) wrote false into it.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	bool bMarkedByConsumption = false;
@@ -1562,7 +1559,7 @@ public:
 	 * `ACataclysmPlayerState::ConsumptionBuild`. EMPTY (no worn items) for an unmarked character, and for a character
 	 * marked before the field existed, whose double is then built from the gear worn when it arrives.
 	 *
-	 * VERSION 6: a record written before the field is at version 5, and `Migrate_5_to_6` writes an empty build into it.
+	 * VERSION 6: a record written before the field is at version 5, and the upgrade step to version 6 (removed 2026-11-27) wrote an empty build into it.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FCataclysmPlayerBuild ConsumptionBuild;
@@ -1573,7 +1570,7 @@ public:
 	 * `ACataclysmPlayerState::GetCataclysmOrderSeed`. `docs/Cataclysm_GDD_v2.md`, Ending a Run: "The same tier means the
 	 * same Cataclysms, by name and not only by count."
 	 *
-	 * VERSION 7: a record written before the field is at version 6, and `Migrate_6_to_7` writes into it the seed its
+	 * VERSION 7: a record written before the field is at version 6, and the upgrade step to version 7 (removed 2026-11-27) wrote into it the seed its
 	 * `CharacterId` gives (`CataclysmOrderSeedFor`). The default 0 is a seed like any other and not "none": a version 7
 	 * record somehow missing the key reads as seed 0.
 	 */
@@ -1589,7 +1586,7 @@ public:
 	 * G5, so its balance is here and every other character's is `UCataclysmAccountSave::Gold`. ZERO AND UNUSED FOR EVERY
 	 * OTHER CHARACTER. `UCataclysmGameInstance::GoldHeldBy` is the one place that says which balance a character has.
 	 *
-	 * VERSION 8: a record written before the field is at version 7, and `Migrate_7_to_8` writes a balance of 0 into it.
+	 * VERSION 8: a record written before the field is at version 7, and the upgrade step to version 8 (removed 2026-11-27) wrote a balance of 0 into it.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int64 Gold = 0;
@@ -1876,7 +1873,7 @@ public:
 	 * slice 1, the owner's Q1 of 2026-11-24 ("the keys stay as they are"). Put back with the choices, as data, before the
 	 * restore's one fill, so a loaded character's keys are the keys it was saved with.
 	 *
-	 * VERSION 17 (`Migrate_16_to_17` writes an empty list): from issue #1472 on, a field added to a record takes a
+	 * VERSION 17 (the upgrade step to version 17 (removed 2026-11-27) wrote an empty list): from issue #1472 on, a field added to a record takes a
 	 * version (`game/Tests/SaveFixtures/README.md`). Empty is what a character written before it holds: its first fill
 	 * after loading remembers the default it showed before.
 	 */
@@ -1949,114 +1946,113 @@ public:
 
 	/**
 	 * 2 SINCE 2026-11-02. The run carries the corrupted double's hunt (issue #2688): three fields on `Walk` and three on
-	 * `Floor.RuleState`, and `Migrate_1_to_2` writes their defaults into a run written at 1, where no double could
+	 * `Floor.RuleState`, and the upgrade step to version 2 (removed 2026-11-27) wrote their defaults into a run written at 1, where no double could
 	 * hunt. A VERSION AND NOT A DEFAULT, by `game/Tests/SaveFixtures/README.md`: saves load since #753, so a field added
 	 * to a record takes a version (ruled 2026-11-02). Until then it was 1, and the comments below that say a field
 	 * needed no bump were written while nothing loaded a save.
 	 *
 	 * 3 SINCE 2026-11-02 AS WELL. The run keeps what the player's last death cost (issue #41): five fields beside the
-	 * last hit's, `LastDeathDay` to `LastDeathFallenCityIds`, and `Migrate_2_to_3` writes an empty death into a run
+	 * last hit's, `LastDeathDay` to `LastDeathFallenCityIds`, and the upgrade step to version 3 (removed 2026-11-27) wrote an empty death into a run
 	 * written at 2.
 	 *
 	 * 4 SINCE 2026-11-02. The run keeps its Cataclysm boss dungeon (issue #1324 slice 6b): whether it has opened, the
 	 * day it opened and the floors it rolled, `bCataclysmDungeonOpened` to `CataclysmDungeonBaseFloors`, and
-	 * `Migrate_3_to_4` writes a boss not yet opened into a run written at 3.
+	 * The upgrade step to version 4 (removed 2026-11-27) wrote a boss not yet opened into a run written at 3.
 	 *
 	 * 5 SINCE 2026-11-03. The run carries the win of the run before it (issue #1324 slice 6e): the day, the tier, the
-	 * Cataclysm and the passive points, `LastRunWonDay` to `LastRunWonPassivePoints`, and `Migrate_4_to_5` writes "the
+	 * Cataclysm and the passive points, `LastRunWonDay` to `LastRunWonPassivePoints`, and the upgrade step to version 5 (removed 2026-11-27) wrote "the
 	 * run before this one was not won" into a run written at 4.
 	 *
 	 * 6 SINCE 2026-11-17. A trip between the capital and a dungeon is a save and a load (issue #2733 slice 3), so the run
 	 * carries what the map a walk's end returns to shows: the last defeat's empire points, `LastEmpirePointsAwarded`
 	 * (ruled Q3), the last clear, `LastClearDay` to `LastClearWalkDays`, and what the last walk's days did,
-	 * `LastDaysAway` (both ruled Q6). `Migrate_5_to_6` writes "no award, no clear, no walk ended" into a run written at 5.
+	 * `LastDaysAway` (both ruled Q6). The upgrade step to version 6 (removed 2026-11-27) wrote "no award, no clear, no walk ended" into a run written at 5.
 	 *
 	 * 7 SINCE 2026-11-18. A gold pile can lie on the floor (issue #2742), so a ground item carries `Gold`, and
-	 * `Migrate_6_to_7` writes a `Gold` of 0 on every ground item of a run written at 6: no kill dropped gold before.
+	 * The upgrade step to version 7 (removed 2026-11-27) wrote a `Gold` of 0 on every ground item of a run written at 6: no kill dropped gold before.
 	 *
 	 * 8 SINCE 2026-11-18. The run carries its mask on every dungeon's walk seed, `WalkSeedMask` (issue #2749, B10), so
-	 * two runs' dungeons differ, and `Migrate_7_to_8` writes a mask of 0 into a run written at 7: the mask that gives
+	 * two runs' dungeons differ, and the upgrade step to version 8 (removed 2026-11-27) wrote a mask of 0 into a run written at 7: the mask that gives
 	 * every dungeon the seed it had then, so that run's floors, Edicts and Corrupted Stalker roll stay as they were.
 	 *
 	 * 9 SINCE 2026-11-19. The run carries what the empire upgrade tree's event rules count (issue #2741 slice 3b): the
 	 * clears since the last surge, the cities reclaimed and whether the Last Stand has held, `ClearsSinceLastSurge` to
-	 * `bSanctuaryLastStandSpent`; and each city upgrade carries the day it was bought, `BoughtDay`. `Migrate_8_to_9`
+	 * `bSanctuaryLastStandSpent`; and each city upgrade carries the day it was bought, `BoughtDay`. The upgrade step to version 9 (removed 2026-11-27)
 	 * writes 0, 0, false and a `BoughtDay` of 0 on every upgrade into a run written at 8: nothing counted, and every
 	 * upgrade held since the run began.
 	 *
 	 * 10 SINCE 2026-11-19. A saved creature says whether it is a Vengeful Wraith, `bIsVengefulWraith` (issue #2725),
-	 * and `Migrate_9_to_10` writes false on every saved creature of a run written at 9: nothing in it tells a wraith
+	 * and the upgrade step to version 10 (removed 2026-11-27) wrote false on every saved creature of a run written at 9: nothing in it tells a wraith
 	 * from another risen creature. THE RUN RECORD'S 10, not the character record's, which reached its own 10 on the
 	 * same day for skill levels (issue #2764); the two numbers are each record's own.
 	 *
 	 * 11 SINCE 2026-11-20. The run carries the dungeons cleared since the character last died, `ClearsSinceLastDeath`
-	 * (issue #2741 slice 5b, Relentless Pursuit), and `Migrate_10_to_11` writes into a run written at 10 the run's own
+	 * (issue #2741 slice 5b, Relentless Pursuit), and the upgrade step to version 11 (removed 2026-11-27) wrote into a run written at 10 the run's own
 	 * `DungeonsCleared` when it records no death (an empty `LastDeathDungeonName`), every clear having been made
 	 * without dying, and 0 when it records one, because the clears after it cannot be told from the clears before.
 	 *
 	 * 12 SINCE 2026-11-20. Issue #2741 slice 6b: each city carries whether a dungeon has damaged it this run,
 	 * `bTookSurgeDamage` (Price Controls); the run carries whether its population has fallen below half since a city
 	 * was last reclaimed, `bPopulationFellBelowHalf` (Stimulus Package); and the walk carries the gold dropped and
-	 * picked up in it, `GoldDroppedThisWalk` and `GoldPickedUpThisWalk` (Cleanup Crew). `Migrate_11_to_12` writes false
+	 * picked up in it, `GoldDroppedThisWalk` and `GoldPickedUpThisWalk` (Cleanup Crew). The upgrade step to version 12 (removed 2026-11-27) wrote false
 	 * on every city, false on the run and 0 and 0 on the walk: the record cannot prove a city's past damage (a city
 	 * below its maximum may be one whose maximum the tree raised), the effective maximum the run's flag compares against
 	 * depends on the tree, which the record does not hold, and a walk resumed from it counts its gold from the load.
 	 *
 	 * 13 FROM 2026-11-21. Issue #2825: a city upgrade takes days to build, so each city carries what it is building,
-	 * `Building`, and each upgrade the days left on it, `BuildDaysLeft`. `Migrate_12_to_13` writes an empty `Building`
+	 * `Building`, and each upgrade the days left on it, `BuildDaysLeft`. The upgrade step to version 13 (removed 2026-11-27) wrote an empty `Building`
 	 * on every city and a `BuildDaysLeft` of 0 on every upgrade it holds: a version 12 run could build nothing, since
 	 * every purchase was finished at once.
 	 *
 	 * 15 SINCE 2026-11-22. Issue #2741 slice 9: Economic Bailout's once a run on each city (`FCataclysmCity::bBailedOut`),
 	 * Scout Parties' bonus dungeons (`FCataclysmDungeon::bBonus`, `BonusDungeonsCleared`) and Bribery's once a surge
-	 * (`bBribedThisSurge`). `Migrate_14_to_15` writes each false or 0: a version 14 run could use none of slice 9's nodes.
+	 * (`bBribedThisSurge`). The upgrade step to version 15 (removed 2026-11-27) wrote each false or 0: a version 14 run could use none of slice 9's nodes.
 	 *
 	 * 16 SINCE 2026-11-22. Issue #2838: whether the cleanse city upgrade has been bought in the run,
-	 * `bCleanseBoughtThisRun`, once a run. `Migrate_15_to_16` writes false: a version 15 run could not buy it, because
+	 * `bCleanseBoughtThisRun`, once a run. The upgrade step to version 16 (removed 2026-11-27) wrote false: a version 15 run could not buy it, because
 	 * it was refused as not built.
 	 *
 	 * 17 SINCE 2026-11-22. Issue #2840: a thrall's saved creature keeps the skill that took it and that skill's level
-	 * factor at the take (`FCataclysmSavedCreature::TakenBySkillRow`, `TakenLevelFactorOnCreatures`). `Migrate_16_to_17`
+	 * factor at the take (`FCataclysmSavedCreature::TakenBySkillRow`, `TakenLevelFactorOnCreatures`). The upgrade step to version 17 (removed 2026-11-27)
 	 * writes, on a creature the player commanded, Subjugate's row (`Demonic_Staff_Ultimate`, the one row of
 	 * `WeaponSkills.csv` that takes a creature) and 1, the factor at level 1, since the level at the take was not
 	 * recorded; and None and 1 on every other creature. Ruled by the coordinating session on 2026-11-22 (Q1).
 	 *
 	 * 18 SINCE 2026-11-24. An item records the gear level and the difficulty tier it arrived at
-	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2). `Migrate_17_to_18` writes -1 and 0,
+	 * (`FCataclysmItem::GearLevelAtDrop`, `TierAtDrop`, issue #2848 slice S2). The upgrade step to version 18 (removed 2026-11-27) wrote -1 and 0,
 	 * "not known", on every ground item: nothing recorded it before. A version and not a default, ruled by the
 	 * coordinating session on 2026-11-24, as the character record's 15.
 	 *
 	 * 19 SINCE 2026-11-24. A Rift's altars that have fallen on the floor being fought on
 	 * (`FCataclysmSavedFloorRuleState::RiftAltarsDestroyed`, issue #51 slice B1), so a load does not stand them up
-	 * again. `Migrate_18_to_19` writes an empty list into the floor's rule state: no altar stood in any dungeon before.
+	 * again. The upgrade step to version 19 (removed 2026-11-27) wrote an empty list into the floor's rule state: no altar stood in any dungeon before.
 	 *
 	 * 14 FROM 2026-11-22. Issue #46, slices G3 and G5: an item's `Sockets` is a list of typed sockets where it was a
-	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). `Migrate_13_to_14` writes
+	 * count, and a ground item may be a stack of gems (`Gem`, `GemRarity`, `GemQuantity`). The upgrade step to version 14 (removed 2026-11-27) wrote
 	 * each saved count of N as N empty sockets that fit any type, as the coordinating session ruled on 2026-11-21, and
 	 * no gem on every ground item: no kill dropped a gem before.
 	 *
 	 * 20 SINCE 2026-11-25. Issue #2864 (written as 18 on 2026-11-24 and renumbered when it was rebuilt on development), the owner's redesign of Abyssal Rifts: a floor holds several rifts the player
 	 * can kill, so the floor's rule state carries each rift's health left and seconds stood
 	 * (`FCataclysmSavedFloorRuleState::AbyssalRiftHealthLeft`, `AbyssalRiftSecondsAlive`) where it carried one rift's
-	 * state (`AbyssalRiftState`). `Migrate_19_to_20` removes the state and writes, for a state other than 0 -- a rift
+	 * state (`AbyssalRiftState`). The upgrade step to version 20 (removed 2026-11-27) removed the state and writes, for a state other than 0 -- a rift
 	 * the player had met, which loaded closed and failed -- every rift a floor can hold as killed, and for 0 nothing.
 	 *
 	 * 21 SINCE 2026-11-25. Issue #51 slice B4, the War quest: a Siege's growth counts the days on the city it stands on
 	 * now, so each dungeon carries the day it reached that city (`FCataclysmDungeon::ArrivedDay`, `INDEX_NONE` until
 	 * it first moves), and each city the Cataclysm whose hit felled it (`FCataclysmCity::FellTo`), which decides
-	 * whether a fall was to War. `Migrate_20_to_21` writes `INDEX_NONE` into every dungeon -- growth then counts from
+	 * whether a fall was to War. The upgrade step to version 21 (removed 2026-11-27) wrote `INDEX_NONE` into every dungeon -- growth then counts from
 	 * `SpawnedDay`, as it did -- and `None` into every city: what felled a city before was not recorded.
 	 *
 	 * 22 SINCE 2026-11-25. Issue #51 slice B5, the Death quest: an Abomination lair's boss grows with the cities fallen
 	 * when the lair appeared, so each dungeon carries that count (`FCataclysmDungeon::CitiesFallenBefore`, 0 for a
-	 * dungeon that is not a lair). `Migrate_21_to_22` writes 0 into every dungeon: no version 21 run recorded it, and a
+	 * dungeon that is not a lair). The upgrade step to version 22 (removed 2026-11-27) wrote 0 into every dungeon: no version 21 run recorded it, and a
 	 * lair loaded from one has an Abomination of the base strength.
 	 */
 	static constexpr int32 SchemaVersionNow = 22;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }
-	virtual TArrayView<const FCataclysmSaveMigrationStep> MigrationSteps() const override;
 
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	FGuid RunId;
@@ -2102,8 +2098,7 @@ public:
 	 * the reason above. **Adding a field with a sensible default is not a schema
 	 * version bump**: `docs/Save_System_Design.md` section 5 says so, because a
 	 * `UPROPERTY(SaveGame)` field missing from a file simply keeps its default.
-	 * So `SchemaVersionNow` stays at 1 and no migration step is needed, and
-	 * `Run_v1.json` still loads.
+	 * So `SchemaVersionNow` did not move for it.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	float PartialDay = 0.0f;
@@ -2358,7 +2353,7 @@ public:
 	/**
 	 * The empire screen's last-death line: the day, the dungeon's name, the walk's days, the death's own days, and
 	 * the cities its resolve felled. `UCataclysmEmpireRun::LastDeathDay` and the four beside it; issue #41, ruled
-	 * 2026-11-02. SAVED BECAUSE THE LAST HIT IS, and so A SCHEMA VERSION, 3: `Migrate_2_to_3` writes an empty death
+	 * 2026-11-02. SAVED BECAUSE THE LAST HIT IS, and so A SCHEMA VERSION, 3: the upgrade step to version 3 (removed 2026-11-27) wrote an empty death
 	 * into a run written at 2, where none was kept.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -2379,7 +2374,7 @@ public:
 	/**
 	 * The run's Cataclysm boss dungeon: whether it has opened, the day it opened, and the floors it rolled before any
 	 * ordinary dungeon's floor was added. `UCataclysmEmpireRun::bCataclysmDungeonOpened` and the two beside it; issue
-	 * #1324 slice 6b, 2026-11-02. A SCHEMA VERSION, 4: `Migrate_3_to_4` writes a boss not yet opened -- false, 0 and 0
+	 * #1324 slice 6b, 2026-11-02. A SCHEMA VERSION, 4: the upgrade step to version 4 (removed 2026-11-27) wrote a boss not yet opened -- false, 0 and 0
 	 * -- into a run written at 3, which is what such a run was, since nothing opened one before.
 	 *
 	 * THE DEPTH IS NOT SAVED HERE, because it is worked out: the floors rolled plus `BasicDungeonsCleared`, which is
@@ -2397,7 +2392,7 @@ public:
 	/**
 	 * The run before this one, when it was won: the day it was won, the tier it was played at, the Cataclysm whose boss
 	 * the win was paid for, and the passive points that paid. `UCataclysmEmpireRun::LastRunWonDay` and the three beside
-	 * it; issue #1324 slice 6e, 2026-11-03. A SCHEMA VERSION, 5: `Migrate_4_to_5` writes "not won" -- 0, 0, `None` and
+	 * it; issue #1324 slice 6e, 2026-11-03. A SCHEMA VERSION, 5: the upgrade step to version 5 (removed 2026-11-27) wrote "not won" -- 0, 0, `None` and
 	 * 0 -- into a run written at 4, which is what such a run carried, since no run could be won before.
 	 *
 	 * WHY A RUN RECORD CARRIES THE RUN BEFORE IT. A won run is replaced by the next one at once, in the same slot, and
@@ -2418,7 +2413,7 @@ public:
 	/**
 	 * What the last defeat in this run awarded in empire upgrade points: `UCataclysmEmpireRun::LastEmpirePointsAwarded`,
 	 * which the empire map shows as "(+x from the last dungeon defeated)". Issue #2733 slice 3, ruled by the coordinating
-	 * session on 2026-11-17 (Q3). A SCHEMA VERSION, 6: `Migrate_5_to_6` writes 0, no award, into a run written at 5.
+	 * session on 2026-11-17 (Q3). A SCHEMA VERSION, 6: the upgrade step to version 6 (removed 2026-11-27) wrote 0, no award, into a run written at 5.
 	 *
 	 * WHY IT IS SAVED NOW. Until slice 3 it was kept in memory only, and a loaded run showed the bank without the last
 	 * award until its next clear. A walk's end now returns to the capital by a save and a load, so without this every
@@ -2430,7 +2425,7 @@ public:
 	/**
 	 * The player's last clear of a dungeon of the empire: the day the walk had reached, what the dungeon was called and
 	 * the whole days the walk spent. `UCataclysmEmpireRun::LastClearDay` and the two beside it, for the map's clear
-	 * line. Issue #2733 slice 3 (Q6). A SCHEMA VERSION, 6: `Migrate_5_to_6` writes "no clear" -- `INDEX_NONE`, empty
+	 * line. Issue #2733 slice 3 (Q6). A SCHEMA VERSION, 6: the upgrade step to version 6 (removed 2026-11-27) wrote "no clear" -- `INDEX_NONE`, empty
 	 * and 0 -- into a run written at 5.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -2444,7 +2439,7 @@ public:
 
 	/**
 	 * What the days of the last walk did while the player was away: `UCataclysmEmpireRun::LastDaysAway`, for the map's
-	 * summary of them. Issue #2733 slice 3 (Q6). A SCHEMA VERSION, 6: `Migrate_5_to_6` writes "no walk has ended" --
+	 * summary of them. Issue #2733 slice 3 (Q6). A SCHEMA VERSION, 6: the upgrade step to version 6 (removed 2026-11-27) wrote "no walk has ended" --
 	 * days `INDEX_NONE`, nothing hit, nothing fallen, no surge -- into a run written at 5.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -2498,13 +2493,13 @@ public:
 
 	/**
 	 * `UCataclysmEmpireRun::WalkSeedMask`, drawn from the seed the run began with like `CorruptedStalkerSeed`. Issue
-	 * #2749 (B10). VERSION 8: a record written before the field is at version 7, and `Migrate_7_to_8` writes 0 into it.
+	 * #2749 (B10). VERSION 8: a record written before the field is at version 7, and the upgrade step to version 8 (removed 2026-11-27) wrote 0 into it.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 WalkSeedMask = 0;
 
 	// ---- THE EMPIRE UPGRADE TREE'S EVENT COUNTS, issue #2741 slice 3b. VERSION 9: a record written before them is at
-	// version 8, and `Migrate_8_to_9` writes 0, 0 and false into it. Each city upgrade's `BoughtDay` is in `Cities`. ----
+	// version 8, and the upgrade step to version 9 (removed 2026-11-27) wrote 0, 0 and false into it. Each city upgrade's `BoughtDay` is in `Cities`. ----
 
 	/** `UCataclysmEmpireRun::ClearsSinceLastSurge`, which Global Vigilance reads. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -2519,7 +2514,7 @@ public:
 	bool bSanctuaryLastStandSpent = false;
 
 	// ---- THE EMPIRE TREE'S NINTH SLICE, issue #2741 slice 9. RUN RECORD VERSION 15: a record written before it is at
-	// version 14, and `Migrate_14_to_15` writes 0 and false into it. Each city's `bBailedOut` and each dungeon's `bBonus`
+	// version 14, and the upgrade step to version 15 (removed 2026-11-27) wrote 0 and false into it. Each city's `bBailedOut` and each dungeon's `bBonus`
 	// are in `Cities` and `Dungeons`. ----
 
 	/** `UCataclysmEmpireRun::BonusDungeonsCleared`: Scout Parties' bonus dungeons cleared, which the kinds leave out. */
@@ -2531,20 +2526,20 @@ public:
 	bool bBribedThisSurge = false;
 
 	// ---- THE CLEANSE, issue #2838. RUN RECORD VERSION 16: a record written before it is at version 15, and
-	// `Migrate_15_to_16` writes false into it. ----
+	// The upgrade step to version 16 (removed 2026-11-27) wrote false into it. ----
 
 	/** `UCataclysmEmpireRun::bCleanseBoughtThisRun`: whether the cleanse city upgrade has been bought in this run. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	bool bCleanseBoughtThisRun = false;
 
 	// ---- RELENTLESS PURSUIT'S CLEARS IN A ROW, issue #2741 slice 5b. RUN RECORD VERSION 11: a record written before it is
-	// at version 10, and `Migrate_10_to_11` writes the run's clears into it when it records no death, else 0. ----
+	// at version 10, and the upgrade step to version 11 (removed 2026-11-27) wrote the run's clears into it when it records no death, else 0. ----
 
 	/** `UCataclysmEmpireRun::ClearsSinceLastDeath`, which Relentless Pursuit reads. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 ClearsSinceLastDeath = 0;
 
-	// ---- STIMULUS PACKAGE'S FLAG, issue #2741 slice 6b. RUN RECORD VERSION 12: `Migrate_11_to_12` writes false. ----
+	// ---- STIMULUS PACKAGE'S FLAG, issue #2741 slice 6b. RUN RECORD VERSION 12: the upgrade step to version 12 (removed 2026-11-27) wrote false. ----
 
 	/** `UCataclysmEmpireRun::bPopulationFellBelowHalf`, which Stimulus Package reads. */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
@@ -2556,7 +2551,7 @@ public:
  * them alike.
  *
  * WHAT USES IT IS THE TESTS, and that is the point. A check that every record
- * type's migration chain reaches its own version, or that every record writes
+ * type has its own name and version, or that every record writes
  * its version first, is only worth anything if it cannot miss one. A list here
  * that a reviewer can compare against `docs/Save_System_Design.md` section 1 is
  * harder to leave a record out of than three separate tests are.

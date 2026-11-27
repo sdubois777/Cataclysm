@@ -25,7 +25,6 @@ WHAT IS CHECKED:
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 import sys
@@ -237,21 +236,6 @@ def test_a_bonus_dungeon_pays_and_moves_nothing_of_the_empires_pressure() -> Non
     assert "if (Dungeon.CityId != CityId || Dungeon.bBonus) { continue; }" in run, "the scheduled loss counts a bonus dungeon"
 
 
-def test_the_new_steps_write_each_fields_default() -> None:
-    records = code(RECORDS_CPP)
-    account = body(records, "namespace CataclysmAccountSaveMigration", "x")
-    character = body(records, "namespace CataclysmCharacterSaveMigration", "x")
-    run = body(records, "namespace CataclysmRunSaveMigration", "x")
-    for chain, step in ((account, "Migrate_6_to_7"), (character, "Migrate_13_to_14")):
-        text = flat(body(chain, f"bool {step}(", step))
-        assert 'Record->SetNumberField(TEXT("GoldSpentOnCityUpgrades"), Held);' in text and "return false;" in text, (
-            f"{step} does not write the count, keeping a number and refusing anything else")
-    step = flat(body(run, "bool Migrate_14_to_15(", "the run record"))
-    for part in ('SetBoolField(TEXT("bBailedOut"), false)', 'SetBoolField(TEXT("bBonus"), false)',
-                 'SetNumberField(TEXT("BonusDungeonsCleared"), 0)', 'SetBoolField(TEXT("bBribedThisSurge"), false)'):
-        assert part in step, f"Migrate_14_to_15 does not {part}"
-
-
 def test_each_record_declares_the_fields_its_step_writes() -> None:
     """A step that writes a field the record does not declare compiles; the code that reads the field does not. The
     rebase onto the gems window left the character record without its count, and only the Unreal build found it."""
@@ -272,27 +256,6 @@ def test_each_record_declares_the_fields_its_step_writes() -> None:
     for path, field in ((SOURCE / "CataclysmEmpire" / "Empire" / "CataclysmEmpireMap.h", r"bool\s+bBailedOut\s*=\s*false\s*;"),
                         (SOURCE / "CataclysmEmpire" / "Empire" / "CataclysmSurge.h", r"bool\s+bBonus\s*=\s*false\s*;")):
         assert re.search(saved + field, flat(code(path))), f"{path.name} does not declare {field} as a saved field"
-
-
-def test_the_committed_files_are_the_previous_ones_with_the_new_fields() -> None:
-    # FRACTIONS, because the count is a double and unrounded (V20): a whole number would not show one kept.
-    for old, new, added in (("Account_v6.json", "Account_v7.json", {"GoldSpentOnCityUpgrades": 75000.5}),
-                            ("Character_v13.json", "Character_v14.json", {"GoldSpentOnCityUpgrades": 50000.25}),
-                            ("Run_v14.json", "Run_v15.json", {"BonusDungeonsCleared": 2, "bBribedThisSurge": True})):
-        before = json.loads((FIXTURES / old).read_text(encoding="utf-8"))
-        after = json.loads((FIXTURES / new).read_text(encoding="utf-8"))
-        assert after.pop("SchemaVersion") == before.pop("SchemaVersion") + 1
-        for key, value in added.items():
-            assert after.pop(key) == value, f"{new}'s {key} is not {value}, a figure rather than the default"
-        if new.startswith("Run"):
-            assert [city.pop("bBailedOut") for city in after["Cities"]] == [True, False]
-            # FALSE, THE DEFAULT, ON PURPOSE: its one dungeon is a Siege, and a bonus dungeon never is (V18).
-            assert [dungeon.pop("bBonus") for dungeon in after["Dungeons"]] == [False]
-            assert all(dungeon["SubType"] == "Siege" for dungeon in after["Dungeons"])
-        assert after == before, f"{new} differs from {old} beyond its version and the new fields"
-    readme = (FIXTURES / "README.md").read_text(encoding="utf-8")
-    for name in ("Account_v7.json", "Character_v14.json", "Run_v15.json"):
-        assert f"| `{name}` |" in readme, f"the fixtures README does not list {name}"
 
 
 def test_every_chain_test_adds_what_the_three_new_steps_write() -> None:

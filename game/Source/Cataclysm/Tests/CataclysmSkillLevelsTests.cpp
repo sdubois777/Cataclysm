@@ -24,7 +24,6 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
 #include "Save/CataclysmSaveGather.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "Tests/CataclysmSaveFixtures.h"
@@ -601,105 +600,6 @@ bool FCataclysmSkillLevelsKillingBlowTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelsMigrationTest,
-	"Cataclysm.SkillLevels.ACharacterFromBeforeSkillLevelsMigratesWithNoSkillExperience",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-/**
- * `Migrate_9_to_10` writes an empty `SkillExperience`, keeps a list already there, and refuses a key holding anything
- * but a list: run on the committed version 9 file as it is, with one entry, and with a word. And `Character_v9.json`
- * reads through the chain into a record at the current version with every other field kept.
- */
-bool FCataclysmSkillLevelsMigrationTest::RunTest(const FString&)
-{
-	FString Text;
-	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v9.json"), Text, Reason))
-	{
-		AddError(Reason);
-		return false;
-	}
-	const TSharedPtr<FJsonObject> AsItIs = CataclysmSaveFixtures::Parse(Text);
-	const TSharedPtr<FJsonObject> Held = CataclysmSaveFixtures::Parse(Text);
-	const TSharedPtr<FJsonObject> Word = CataclysmSaveFixtures::Parse(Text);
-	if (!TestTrue(TEXT("set-up: Character_v9.json is a JSON object"), AsItIs.IsValid() && Held.IsValid() && Word.IsValid())
-		|| !TestFalse(TEXT("set-up: and holds no skill experience"), AsItIs->HasField(TEXT("SkillExperience"))))
-	{
-		return false;
-	}
-	const TSharedRef<FJsonObject> Entry = MakeShared<FJsonObject>();
-	Entry->SetStringField(TEXT("SkillRow"), TEXT("Demonic_Greataxe_Heavy"));
-	Entry->SetNumberField(TEXT("Experience"), 12.5);
-	TArray<TSharedPtr<FJsonValue>> OneEntry;
-	OneEntry.Add(MakeShared<FJsonValueObject>(Entry));
-	Held->SetArrayField(TEXT("SkillExperience"), OneEntry);
-	Word->SetStringField(TEXT("SkillExperience"), TEXT("plenty"));
-
-	const TArrayView<const FCataclysmSaveMigrationStep> Steps = GetDefault<UCataclysmCharacterSave>()->MigrationSteps();
-	FString AsItIsMessage;
-	FString HeldMessage;
-	FString WordMessage;
-	const ECataclysmSaveMigrationResult AsItIsResult = FCataclysmSaveMigration::Migrate(
-		Steps, UCataclysmCharacterSave::SchemaVersionNow, AsItIs.ToSharedRef(), AsItIsMessage);
-	const ECataclysmSaveMigrationResult HeldResult = FCataclysmSaveMigration::Migrate(
-		Steps, UCataclysmCharacterSave::SchemaVersionNow, Held.ToSharedRef(), HeldMessage);
-	const ECataclysmSaveMigrationResult WordResult = FCataclysmSaveMigration::Migrate(
-		Steps, UCataclysmCharacterSave::SchemaVersionNow, Word.ToSharedRef(), WordMessage);
-	const TArray<TSharedPtr<FJsonValue>>* Written = nullptr;
-	const TArray<TSharedPtr<FJsonValue>>* Kept = nullptr;
-	const bool bWritten = AsItIs->TryGetArrayField(TEXT("SkillExperience"), Written) && Written != nullptr;
-	const bool bKept = Held->TryGetArrayField(TEXT("SkillExperience"), Kept) && Kept != nullptr;
-
-	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
-	FString Message;
-	const UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
-		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
-	if (Read == nullptr)
-	{
-		AddError(FString::Printf(TEXT("Character_v9.json would not load: %s -- %s"),
-								 FCataclysmSaveStorage::Describe(Result), *Message));
-		return false;
-	}
-	const TSharedPtr<FJsonObject> Expected = CataclysmSaveFixtures::Parse(Text);
-	Expected->SetNumberField(TEXT("SchemaVersion"), UCataclysmCharacterSave::SchemaVersionNow);
-	CataclysmSaveFixtures::AddTheCharactersVersion10Defaults(*Expected);
-	CataclysmSaveFixtures::AddTheCharactersVersion11Defaults(*Expected); // And 11, #2741 slice 6e: no debt.
-	CataclysmSaveFixtures::AddTheCharactersVersion12Defaults(*Expected); // And 12, #2741 slice 8: no extra option.
-	CataclysmSaveFixtures::AddTheCharactersVersion13Defaults(*Expected); // And 13, #46 G2 and G3: socket lists, no gem.
-	CataclysmSaveFixtures::AddTheCharactersVersion14Defaults(*Expected); // And issue #2741 slice 9's step.
-	CataclysmSaveFixtures::AddTheCharactersVersion15Defaults(*Expected); // And issue #2848's step: where each item arrived.
-	CataclysmSaveFixtures::AddTheCharactersVersion16Defaults(*Expected); // And 16, issue #2849: stacks to their tabs.
-	CataclysmSaveFixtures::AddTheCharactersVersion17Defaults(*Expected); // And 17, issue #837 slice 1: no remembered defaults.
-	CataclysmSaveFixtures::AddTheCharactersVersion18Defaults(*Expected); // And 18, #47 slice F6a: nothing spent at the forge.
-	FString Rewritten;
-	FString Error;
-	const bool bWroteBack = FCataclysmSaveStorage::ToJson(Read, Rewritten, Error);
-	FString Where;
-	const bool bSame = bWroteBack
-		&& CataclysmSaveFixtures::SameObject(Expected, CataclysmSaveFixtures::Parse(Rewritten), Where);
-
-	AddInfo(FString::Printf(TEXT("SKILLS MIGRATED: as it is %d (%s) -> %s; one entry %d (%s) -> %d; a word %d (%s); "
-								 "Character_v9.json %s at version %d, the rest %s"),
-							static_cast<int32>(AsItIsResult), *AsItIsMessage,
-							bWritten ? *FString::Printf(TEXT("%d entries"), Written->Num()) : TEXT("NO LIST"),
-							static_cast<int32>(HeldResult), *HeldMessage, bKept ? Kept->Num() : -1,
-							static_cast<int32>(WordResult), *WordMessage, FCataclysmSaveStorage::Describe(Result),
-							Read->SchemaVersion, bSame ? TEXT("kept") : *Where));
-
-	TestEqual(TEXT("a character at 9 migrates"), static_cast<int32>(AsItIsResult),
-			  static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestTrue(TEXT("GAINING AN EMPTY LIST OF SKILL EXPERIENCE, written out"), bWritten && Written->Num() == 0);
-	TestTrue(TEXT("one holding an entry keeps it"), bKept && Kept->Num() == 1);
-	TestNotEqual(TEXT("one holding a word is refused"), static_cast<int32>(WordResult),
-				 static_cast<int32>(ECataclysmSaveMigrationResult::Migrated));
-	TestEqual(TEXT("Character_v9.json is migrated"), static_cast<int32>(Result),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestEqual(TEXT("to the record's current version"), Read->SchemaVersion, UCataclysmCharacterSave::SchemaVersionNow);
-	TestEqual(TEXT("holding no skill experience"), Read->SkillExperience.Num(), 0);
-	TestTrue(TEXT("and every other field"), bSame);
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillLevelsSaveTest,
 	"Cataclysm.SkillLevels.SkillExperienceIsGatheredIntoTheCharacterRecordAndPutBack",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -746,7 +646,7 @@ bool FCataclysmSkillLevelsSaveTest::RunTest(const FString&)
 	const bool bGathered = FCataclysmSaveGather::CharacterFrom(*Player.Character, *Record);
 
 	// CONTROL: THE SAME RECORD WITH NO VERSION IS REFUSED. `CharacterFrom` does not set the version, and a record
-	// nobody gave one is version 0, which `FCataclysmSaveMigration::Migrate` refuses ("the first real version is 1").
+	// nobody gave one is version 0, which `FCataclysmSaveVersion::Check` refuses ("the first real version is 1").
 	// Window skills-w1 (2026-11-19) ran this test without the line below, and the read came back null for that reason;
 	// this keeps the cause measured.
 	FString Unversioned;
@@ -787,7 +687,7 @@ bool FCataclysmSkillLevelsSaveTest::RunTest(const FString&)
 	TestEqual(TEXT("THE RECORD HOLDS BOTH SKILLS"), Record->SkillExperience.Num(), 2);
 	TestNull(TEXT("CONTROL: WITH NO VERSION IT IS REFUSED, as in window skills-w1"), ReadUnversioned);
 	TestEqual(TEXT("by the version check"), static_cast<int32>(UnversionedResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::MigrationRefusedIt));
+			  static_cast<int32>(ECataclysmSaveLoadResult::VersionRefusedIt));
 	if (!TestNotNull(*FString::Printf(TEXT("AT THE WRITER'S VERSION IT READS BACK (%s -- %s)"),
 									  FCataclysmSaveStorage::Describe(Result), *Message),
 					 Read))

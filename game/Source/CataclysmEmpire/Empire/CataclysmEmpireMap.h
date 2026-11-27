@@ -606,7 +606,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * reads. Issue #2741 slice 6b, the coordinating session's B1 of 2026-11-20. Set by `UCataclysmEmpireMap::Damage`
 	 * whenever the city loses defence or population, and every caller of it is a dungeon's damage (C4: an ordinary
 	 * resolve, a Quest dungeon's timer and a Siege's daily share); never cleared within the run, and a new run builds
-	 * a new map. RUN RECORD VERSION 12: `Migrate_11_to_12` writes false on every city of an older run, because the
+	 * a new map. RUN RECORD VERSION 12: the upgrade step to version 12 (removed 2026-11-27) wrote false on every city of an older run, because the
 	 * record cannot prove past damage -- a city below its maximum may be one whose maximum the tree raised (S1), which
 	 * is why the reading "below its maximum now" was withdrawn.
 	 */
@@ -617,7 +617,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 * WHETHER ECONOMIC BAILOUT HAS SAVED THIS CITY IN THIS RUN: "Once per city per Tier", ruled once per city per run
 	 * (2026-11-21). Set by `UCataclysmEmpireRun::SaveCityFromFalling` when the fee was paid; a bailout the balance could
 	 * not pay leaves it false (V9). Never cleared within the run. Issue #2741 slice 9. RUN RECORD VERSION 15:
-	 * `Migrate_14_to_15` writes false on every city of an older run, which could not have been saved.
+	 * The upgrade step to version 15 (removed 2026-11-27) wrote false on every city of an older run, which could not have been saved.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bBailedOut = false;
@@ -727,7 +727,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCity
 	 *
 	 * IT DOES NOTHING UNTIL IT IS FINISHED. `UCataclysmEmpireRun::AdvanceCityBuilds` takes a day off it for each day
 	 * that passes while this city is neither fallen nor besieged, and at nought moves it to `Upgrades` and applies it.
-	 * RUN RECORD VERSION 13; `Migrate_12_to_13` writes an empty list on every city.
+	 * RUN RECORD VERSION 13; the upgrade step to version 13 (removed 2026-11-27) wrote an empty list on every city.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	TArray<FCataclysmCityUpgrade> Building;

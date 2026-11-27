@@ -10,11 +10,8 @@ class UCataclysmSaveRecord;
 /** What happened when a record was read. */
 enum class ECataclysmSaveLoadResult : uint8
 {
-	/** Read, and it was already at the version this build understands. */
+	/** Read, at the version this build writes. */
 	Loaded,
-
-	/** Read, and it was brought up to this build's version on the way in. */
-	Migrated,
 
 	/** There is nothing in that slot. NOT a failure: it is what a new player has. */
 	SlotIsEmpty,
@@ -28,14 +25,14 @@ enum class ECataclysmSaveLoadResult : uint8
 	/** It is JSON but the top of it is not an object. */
 	NotARecord,
 
-	/** The migration chain refused it. `Describe` and the message say why. */
-	MigrationRefusedIt,
+	/**
+	 * Its version is not this build's: older, newer, missing or not real. `Describe` and the message say which. An
+	 * older record is refused and left on disk, the owner's ruling of 2026-11-27 (issue #2928 slice 12).
+	 */
+	VersionRefusedIt,
 
-	/** It migrated, but the fields would not read back into the record. */
+	/** It is at this build's version, but the fields would not read back into the record. */
 	FieldsWouldNotRead,
-
-	/** It was read, but writing the migrated record back to the slot failed. */
-	MigratedButCouldNotBeWrittenBack,
 };
 
 /**
@@ -44,8 +41,8 @@ enum class ECataclysmSaveLoadResult : uint8
  * WHY JSON AND NOT THE ENGINE'S BINARY ARCHIVE. `docs/Save_System_Design.md`
  * section 4 weighs both against shipped games in the genre -- Last Epoch writes
  * JSON, Grim Dawn writes a custom binary -- and picks JSON, because this game
- * will change constantly through development and a migration written against a
- * readable format can be inspected, diffed and tested by hand. The cost is size
+ * will change constantly through development and a readable file can be
+ * inspected, diffed and tested by hand. The cost is size
  * and load time, and the document says to measure before ever switching.
  *
  * WHICH ENGINE CALL, AND WHY NOT THE OBVIOUS ONE.
@@ -93,18 +90,17 @@ public:
 	/**
 	 * Read the schema version out of the text, without interpreting the record.
 	 *
-	 * THIS IS WHAT RULE 1 IS FOR. Deciding whether to migrate, whether to refuse,
-	 * and whether to write a backup all happen before anything knows what shape
-	 * the rest of the file is.
+	 * THIS IS WHAT RULE 1 IS FOR. Whether to refuse a record is decided before
+	 * anything knows what shape the rest of the file is.
 	 */
 	static bool ReadSchemaVersion(const FString& Json, int32& OutVersion);
 
 	/**
-	 * Build a record from the text, migrating it first if it is older.
+	 * Build a record from the text, refusing it whole when its version is not this build's.
 	 *
 	 * @param Outer       what owns the new object. `GetTransientPackage()` when
 	 *                    nothing else does.
-	 * @param OutMessage  why, whenever the answer is not Loaded or Migrated.
+	 * @param OutMessage  why, whenever the answer is not Loaded.
 	 * @return the record, or null. A null answer with `SlotIsEmpty` is normal.
 	 */
 	static UCataclysmSaveRecord* FromJson(
@@ -167,12 +163,11 @@ public:
 	static bool HasAWriteInFlight(const FString& SlotName);
 
 	/**
-	 * Read a record from a slot, migrating it if it is older than this build.
+	 * Read a record from a slot.
 	 *
-	 * THE BACKUP IS WRITTEN BEFORE ANY STEP RUNS, and the original slot is only
-	 * replaced once the migrated record has been read back successfully. Section
-	 * 5, rule 6. So a migration that goes wrong costs the player nothing: the
-	 * file they had is still there under its backup name.
+	 * NOTHING IS WRITTEN. A record of another version is refused and the file is
+	 * left exactly as it was; there is no migration, so there is nothing to back up
+	 * and nothing to write back (issue #2928 slice 12, 2026-11-27).
 	 */
 	static UCataclysmSaveRecord* ReadFromSlot(
 		const FString& SlotName,
@@ -182,26 +177,20 @@ public:
 		ECataclysmSaveLoadResult& OutResult,
 		FString& OutMessage);
 
-	/**
-	 * What the backup written before a migration is called.
-	 *
-	 * IT NAMES THE VERSION IT HOLDS, so a player who migrates through three
-	 * versions keeps three separate backups rather than overwriting the first
-	 * one, which is the copy furthest from the current build and the one most
-	 * likely to be wanted.
-	 */
-	static FString BackupSlotName(const FString& SlotName, int32 FromVersion);
-
 	/** The result in words, for a log line or a test failure. */
 	static const TCHAR* Describe(ECataclysmSaveLoadResult Result);
 
 	/** Whether a record came back usable. */
 	static bool Succeeded(ECataclysmSaveLoadResult Result)
 	{
-		return Result == ECataclysmSaveLoadResult::Loaded
-			|| Result == ECataclysmSaveLoadResult::Migrated;
+		return Result == ECataclysmSaveLoadResult::Loaded;
 	}
 
-	/** What every backup slot name has in the middle of it. */
+	/**
+	 * What the backups written before a migration had in the middle of their slot names, `<slot>_BackupOfVersion<N>`.
+	 *
+	 * NOTHING WRITES ONE ANY MORE: the migration chain and its backups were removed on 2026-11-27 (issue #2928 slice
+	 * 12). Kept so that deleting a character still deletes the backups an older build left beside its slots.
+	 */
 	static const TCHAR* BackupInfix;
 };

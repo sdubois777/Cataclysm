@@ -11,8 +11,8 @@
 #include "Misc/ScopeLock.h"
 #include "PlatformFeatures.h"
 #include "SaveGameSystem.h"
-#include "Save/CataclysmSaveMigration.h"
 #include "Save/CataclysmSaveRecord.h"
+#include "Save/CataclysmSaveVersion.h"
 #include "Save/CataclysmTestSaves.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -132,9 +132,8 @@ bool FCataclysmSaveStorage::ToJson(const UCataclysmSaveRecord* Record, FString& 
 	// Without it the converter lowercases the first letter, so `SchemaVersion`
 	// would be written as `schemaVersion` while the reader looks the property up
 	// under its authored name. Reading would still work, because an FString map
-	// key compares without regard to case -- but a hand-written fixture, a
-	// migration reaching for a key, and the C++ field would then be spelled three
-	// ways for no reason.
+	// key compares without regard to case -- but a hand-written fixture and the
+	// C++ field would then be spelled two ways for no reason.
 	if (!FJsonObjectConverter::UStructToJsonAttributes(
 			Record->GetClass(), Record, Json, CPF_SaveGame, 0, nullptr,
 			EJsonObjectConversionFlags::SkipStandardizeCase))
@@ -215,24 +214,22 @@ UCataclysmSaveRecord* FCataclysmSaveStorage::FromJson(
 
 	const TSharedRef<FJsonObject> Record = Parsed.ToSharedRef();
 
-	// MIGRATE BEFORE INTERPRETING, NOT AFTER. A migration exists because the old
-	// shape is not the current shape, so an old field may have no C++ property to
-	// be read into. Deserialising first would throw the old field away and leave
-	// the migration nothing to work from.
-	FString MigrationMessage;
-	const ECataclysmSaveMigrationResult Migration = FCataclysmSaveMigration::Migrate(
-		Default->MigrationSteps(),
-		Default->CurrentSchemaVersion(),
-		Record,
-		MigrationMessage);
+	// THE VERSION IS CHECKED BEFORE ANYTHING IS INTERPRETED. Only this build's
+	// version is read: an older record may lack a field this build needs, and a
+	// newer one may hold fields it would drop, so either is refused whole rather
+	// than half-read. The owner's ruling of 2026-11-27, "Remove; old saves reset"
+	// (issue #2928 slice 12): there is no upgrade step, and the file is left as it is.
+	FString VersionMessage;
+	const ECataclysmSaveVersionResult Version =
+		FCataclysmSaveVersion::Check(Default->CurrentSchemaVersion(), Record, VersionMessage);
 
-	if (!FCataclysmSaveMigration::Succeeded(Migration))
+	if (Version != ECataclysmSaveVersionResult::Current)
 	{
-		OutResult = ECataclysmSaveLoadResult::MigrationRefusedIt;
+		OutResult = ECataclysmSaveLoadResult::VersionRefusedIt;
 		OutMessage = FString::Printf(TEXT("a %s record was refused: %s -- %s"),
 			*Default->RecordType().ToString(),
-			FCataclysmSaveMigration::Describe(Migration),
-			*MigrationMessage);
+			FCataclysmSaveVersion::Describe(Version),
+			*VersionMessage);
 		return nullptr;
 	}
 
@@ -260,9 +257,7 @@ UCataclysmSaveRecord* FCataclysmSaveStorage::FromJson(
 	// every other field, so a build where the version field stopped being
 	// persisted produces a record saying 0 and the tests notice. Stamping it here
 	// would hide exactly that.
-	OutResult = Migration == ECataclysmSaveMigrationResult::Migrated
-		? ECataclysmSaveLoadResult::Migrated
-		: ECataclysmSaveLoadResult::Loaded;
+	OutResult = ECataclysmSaveLoadResult::Loaded;
 	return Loaded;
 }
 
@@ -420,74 +415,17 @@ UCataclysmSaveRecord* FCataclysmSaveStorage::ReadFromSlot(
 	FString Json;
 	FFileHelper::BufferToString(Json, Bytes.GetData(), Bytes.Num());
 
-	const UCataclysmSaveRecord* Default = RecordClass.GetDefaultObject();
-	const int32 Target = Default != nullptr ? Default->CurrentSchemaVersion() : 0;
-
-	// THE BACKUP GOES DOWN BEFORE ANY STEP RUNS. Section 5, rule 6. The bytes
-	// written are the ones just read, untouched, so the backup is the file the
-	// player had rather than this build's idea of it.
-	int32 OnDisk = 0;
-	const bool bHaveVersion = ReadSchemaVersion(Json, OnDisk);
-	const bool bWillMigrate = bHaveVersion && OnDisk >= UCataclysmSaveRecord::FirstSchemaVersion
-		&& OnDisk < Target;
-
-	if (bWillMigrate)
-	{
-		const FString Backup = BackupSlotName(SlotName, OnDisk);
-		// A BACKUP IS NOTED ONLY WITH THE SLOT IT BACKS UP, so a slot that was there before a test keeps its backup.
-		FCataclysmTestSaves::NoteABackup(Backup, SlotName, UserIndex);
-		if (!UGameplayStatics::SaveDataToSlot(Bytes, Backup, UserIndex))
-		{
-			// REFUSED RATHER THAN MIGRATED WITHOUT ONE. A migration with no way
-			// back is the case rule 6 exists to prevent, so failing to write the
-			// backup stops the load instead of proceeding without it.
-			OutResult = ECataclysmSaveLoadResult::SlotCouldNotBeRead;
-			OutMessage = FString::Printf(
-				TEXT("slot '%s' holds a version %d record and this build is at version %d, ")
-				TEXT("but the backup '%s' could not be written, so nothing was migrated"),
-				*SlotName, OnDisk, Target, *Backup);
-			return nullptr;
-		}
-	}
-
 	UCataclysmSaveRecord* Loaded = FromJson(Json, RecordClass, Outer, OutResult, OutMessage);
 	if (Loaded == nullptr)
 	{
 		return nullptr;
 	}
 
-	// WHERE IT CAME FROM, WHICH IS NOT PART OF THE RECORD. It is Transient, so
-	// it never reaches the file; it is here so a caller writing the record back
+	// WHERE IT CAME FROM, WHICH IS NOT PART OF THE RECORD. It is not persisted,
+	// so it never reaches the file; it is here so a caller writing the record back
 	// does not have to be told the slot a second time.
 	Loaded->SlotItWasReadFrom = SlotName;
-
-	if (OutResult == ECataclysmSaveLoadResult::Migrated)
-	{
-		// AND ONLY NOW IS THE ORIGINAL REPLACED, with the record having been read
-		// back successfully -- which is the line above.
-		FString WriteError;
-		if (!WriteToSlot(Loaded, SlotName, UserIndex, WriteError))
-		{
-			OutResult = ECataclysmSaveLoadResult::MigratedButCouldNotBeWrittenBack;
-			OutMessage = FString::Printf(
-				TEXT("a %s record migrated from version %d to version %d but could not be ")
-				TEXT("written back to slot '%s': %s"),
-				*Loaded->RecordType().ToString(), OnDisk, Target, *SlotName, *WriteError);
-			return Loaded;
-		}
-	}
-
 	return Loaded;
-}
-
-FString FCataclysmSaveStorage::BackupSlotName(const FString& SlotName, int32 FromVersion)
-{
-	if (SlotName.IsEmpty())
-	{
-		return FString();
-	}
-
-	return FString::Printf(TEXT("%s%s%d"), *SlotName, BackupInfix, FromVersion);
 }
 
 const TCHAR* FCataclysmSaveStorage::Describe(ECataclysmSaveLoadResult Result)
@@ -495,15 +433,12 @@ const TCHAR* FCataclysmSaveStorage::Describe(ECataclysmSaveLoadResult Result)
 	switch (Result)
 	{
 		case ECataclysmSaveLoadResult::Loaded:            return TEXT("read");
-		case ECataclysmSaveLoadResult::Migrated:          return TEXT("read, and migrated on the way in");
 		case ECataclysmSaveLoadResult::SlotIsEmpty:       return TEXT("there is nothing in that slot");
 		case ECataclysmSaveLoadResult::SlotCouldNotBeRead: return TEXT("the slot could not be read");
 		case ECataclysmSaveLoadResult::NotValidJson:      return TEXT("what is in the slot is not valid JSON");
 		case ECataclysmSaveLoadResult::NotARecord:        return TEXT("what is in the slot is not a JSON object");
-		case ECataclysmSaveLoadResult::MigrationRefusedIt: return TEXT("the migration chain refused it");
+		case ECataclysmSaveLoadResult::VersionRefusedIt:  return TEXT("its version is not this build's");
 		case ECataclysmSaveLoadResult::FieldsWouldNotRead: return TEXT("its fields would not read back");
-		case ECataclysmSaveLoadResult::MigratedButCouldNotBeWrittenBack:
-			return TEXT("it migrated but could not be written back");
 	}
 
 	return TEXT("an unnamed result");

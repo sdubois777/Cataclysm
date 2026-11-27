@@ -27,7 +27,6 @@ WHAT IS CHECKED:
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -70,41 +69,6 @@ def body(text: str, signature: str, where: str) -> str:
     return braced(text, start, f"{signature!r} in {where}")
 
 
-def test_run_v11_is_run_v10_with_the_clears_since_the_last_death() -> None:
-    before = json.loads((FIXTURES / "Run_v10.json").read_text(encoding="utf-8"))
-    after = json.loads((FIXTURES / "Run_v11.json").read_text(encoding="utf-8"))
-    assert before["SchemaVersion"] == 10 and after["SchemaVersion"] == 11
-    count = after.get("ClearsSinceLastDeath")
-    migrated = before["DungeonsCleared"] if not before.get("LastDeathDungeonName") else 0
-    assert count not in (None, 0, migrated), (
-        f"Run_v11.json's ClearsSinceLastDeath is {count!r}: 0 is the default and {migrated} what the migration writes "
-        "for this run, so neither shows the field is read")
-    rest = dict(after)
-    rest["SchemaVersion"] = 10
-    del rest["ClearsSinceLastDeath"]
-    assert rest == before, "Run_v11.json differs from Run_v10.json beyond its version and its clears since the last death"
-
-
-def test_the_run_record_is_at_version_11_and_migrate_10_to_11_writes_the_clears_it_can_prove() -> None:
-    header = code(SAVE / "CataclysmSaveRecords.h")
-    run_class = header.split("class CATACLYSM_API UCataclysmRunSave")[1]
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_class)
-    assert version is not None and int(version.group(1)) >= 11, "the run record is below version 11"
-    assert re.search(r"\bint32\s+ClearsSinceLastDeath\s*=\s*0\s*;", run_class), (
-        "the run record does not carry ClearsSinceLastDeath")
-
-    records = code(SAVE / "CataclysmSaveRecords.cpp")
-    migrations = braced(records, records.index("namespace CataclysmRunSaveMigration"), "CataclysmRunSaveMigration")
-    step = body(migrations, "bool Migrate_10_to_11(", "the run record's migrations")
-    for read in ('TEXT("LastDeathDungeonName")', 'TEXT("DungeonsCleared")'):
-        assert read in step, f"Migrate_10_to_11 does not read {read}"
-    assert re.search(r'SetNumberField\(\s*TEXT\("ClearsSinceLastDeath"\)', step), (
-        "Migrate_10_to_11 does not write ClearsSinceLastDeath")
-    chain = body(migrations, "const FCataclysmSaveMigrationStep RunSteps[] =", "the run record's chain")
-    steps = re.findall(r"\{\s*(\d+)\s*,\s*TEXT\(\"(Migrate_\d+_to_\d+)\"\)", chain)
-    assert ("10", "Migrate_10_to_11") in steps, f"the run record's chain has no step from 10: {steps}"
-
-
 def test_the_count_is_saved_raised_by_a_clear_and_ended_by_a_death_and_a_new_run_only() -> None:
     gather = code(SAVE / "CataclysmSaveGather.cpp")
     apply = code(SAVE / "CataclysmSaveApply.cpp")
@@ -142,27 +106,3 @@ def test_a_kill_passes_scavengers_chance_and_rolls_the_extra_drops_after_its_gol
     assert "LowTierMaterialExtraChance" in own, "the kill's own drops are not given Scavenger's chance"
 
 
-def test_every_chain_test_adds_version_11_and_only_the_migration_reads_run_v10() -> None:
-    ten = 0
-    for path in sorted(TESTS.glob("*.cpp")):
-        text = path.read_text(encoding="utf-8")
-        ten_here = text.count("CataclysmSaveFixtures::AddTheRunsVersion10Defaults(*Expected);")
-        eleven_here = text.count("CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);")
-        assert ten_here <= eleven_here, (
-            f"{path.name} adds what Migrate_9_to_10 writes in {ten_here} place(s) and what Migrate_10_to_11 writes in "
-            f"{eleven_here}: a chain test that stops at version 10 compares the wrong file")
-        ten += ten_here
-        for match in re.finditer(r'"Run_v10\.json"', text):
-            names = re.findall(r'"Cataclysm\.[A-Za-z]+\.([A-Za-z0-9]+)"', text[:match.start()])
-            assert names and names[-1] == MIGRATION_TEST, (
-                f"{path.name} reads Run_v10.json in {names[-1] if names else 'a test with no name before it'}: the "
-                "committed run file is Run_v11.json since the run record went to version 11 (issue #2741 slice 5b)")
-    assert ten >= 9, f"only {ten} chain tests were found; the sweep reads the wrong folder"
-    helpers = code(TESTS / "CataclysmSaveFixtures.h")
-    defaults = body(helpers, "inline void AddTheRunsVersion11Defaults(", "CataclysmSaveFixtures.h")
-    assert 'TEXT("LastDeathDungeonName")' in defaults and 'TEXT("ClearsSinceLastDeath")' in defaults
-
-
-def test_the_fixtures_readme_lists_run_v11() -> None:
-    readme = (FIXTURES / "README.md").read_text(encoding="utf-8")
-    assert "| `Run_v11.json` |" in readme, "game/Tests/SaveFixtures/README.md does not list Run_v11.json"

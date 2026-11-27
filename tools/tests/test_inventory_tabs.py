@@ -20,7 +20,6 @@ WHAT IS CHECKED:
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -88,26 +87,6 @@ def test_the_forge_asks_no_gear_slot_for_a_stack() -> None:
     assert "const bool bRoom = From != nullptr;" in body(craft, "FCataclysmForgeSocketing UCataclysmForgeCraft::UnsocketPlanFor(")
 
 
-def test_the_record_is_at_sixteen_and_its_step_moves_and_blanks() -> None:
-    header = code(RECORDS_H)
-    character = header[header.index("class CATACLYSM_API UCataclysmCharacterSave"):]
-    # AT 16 OR LATER: issue #837 slice 1 took it to 17 (the keys' remembered defaults); a later step keeps this one's.
-    version = re.search(r"SchemaVersionNow\s*=\s*(\d+)\s*;", character)
-    assert version and int(version.group(1)) >= 16, "the character record is below version 16"
-    for field in ("TArray<FCataclysmCarriedSlot> CarriedMaterials;", "TArray<FCataclysmCarriedSlot> CarriedGems;"):
-        assert field in flat(character), f"the character record has no {field}"
-    # THE CHARACTER RECORD'S OWN STEPS: the run record has a `Migrate_15_to_16` too (issue #2838's cleanse).
-    records = body(code(RECORDS_CPP), "namespace CataclysmCharacterSaveMigration")
-    assert '{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 }' in flat(records), "Migrate_15_to_16 is not a step"
-    step = body(records, "bool Migrate_15_to_16(")
-    for written in ('Slot->SetStringField(TEXT("Material"), TEXT("None"));',
-                    'Slot->SetNumberField(TEXT("Quantity"), 0.0);',
-                    'Record->SetArrayField(TEXT("CarriedMaterials"), Materials);',
-                    'Record->SetArrayField(TEXT("CarriedGems"), Gems);'):
-        assert written in step, f"Migrate_15_to_16 does not write {written}"
-    assert "RemoveAt" not in step and "RemoveField" not in step, "Migrate_15_to_16 removes a cell rather than blanking it"
-
-
 def test_the_save_gathers_and_restores_both_tabs_the_tabs_first() -> None:
     gathered = body(code(GATHER), "bool FCataclysmSaveGather::CharacterFrom(")
     assert "CarriedStacksFrom(*Inventory, Record.CarriedMaterials, Record.CarriedGems);" in gathered
@@ -115,37 +94,6 @@ def test_the_save_gathers_and_restores_both_tabs_the_tabs_first() -> None:
     stacks = applied.find("Inventory->RestoreStacks(Record.CarriedMaterials, Record.CarriedGems);")
     slots = applied.find("Inventory->RestoreSlots(Record.CarriedSlots);")
     assert -1 < stacks < slots, "the tabs are not restored before the slots, so a stack in a saved slot would be lost"
-
-
-def test_the_version_16_file_is_version_15_with_its_stack_moved_and_a_gem() -> None:
-    old = json.loads((FIXTURES / "Character_v15.json").read_text(encoding="utf-8"))
-    new = json.loads((FIXTURES / "Character_v16.json").read_text(encoding="utf-8"))
-    assert new["SchemaVersion"] == 16
-    moved = old["CarriedSlots"][1]
-    assert moved["Material"] != "None" and moved["Quantity"] > 0, "Character_v15.json's second slot is no stack"
-    assert new["CarriedMaterials"] == [moved], "the stack is not what Character_v15.json carried"
-    blank = new["CarriedSlots"][1]
-    assert (blank["Material"], blank["Gem"], blank["Quantity"]) == ("None", "None", 0), "its cell is not blank"
-    assert new["CarriedSlots"][0] == old["CarriedSlots"][0], "the gear's cell changed"
-    assert len(new["CarriedGems"]) == 1 and new["CarriedGems"][0]["GemRarity"] != "Everyday", (
-        "the gems tab holds no gem at a rarity other than the default, so a field read wrongly would not show")
-    rest = {key: value for key, value in new.items()
-            if key not in ("SchemaVersion", "CarriedSlots", "CarriedMaterials", "CarriedGems")}
-    assert rest == {key: value for key, value in old.items() if key not in ("SchemaVersion", "CarriedSlots")}, (
-        "Character_v16.json changed a field the step does not write")
-    assert "| `Character_v16.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
-
-
-def test_every_chain_test_adds_version_16s_writes_after_version_15s() -> None:
-    fifteen = 0
-    for path in sorted(TESTS.glob("*.cpp")):
-        text = code(path)
-        # "(" AND NOT "(*Expected)": a test may pass the step on as a function (DM11, issue #2848's dismantling).
-        old = text.count("AddTheCharactersVersion15Defaults(")
-        new = text.count("AddTheCharactersVersion16Defaults(")
-        assert new >= old, f"{path.name} adds version 15's writes {old} time(s) and version 16's {new}"
-        fifteen += old
-    assert fifteen > 0, "no chain test found: the search no longer finds what it counts"
 
 
 def test_the_screen_asks_for_a_tab_before_a_cell() -> None:

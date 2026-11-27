@@ -186,8 +186,9 @@ by `git add` with no error and no warning. Guarded by
   [#650](https://github.com/sdubois777/Cataclysm/issues/650).
 - **The game saves itself and cannot load what it saved.** Three `USaveGame`
   records in `Source/Cataclysm/Save/` are written as JSON, with a schema
-  version and a migration chain (issue
-  [#529](https://github.com/sdubois777/Cataclysm/issues/529)); `UCataclysmSaveWriter` writes them on a 15 second
+  version, and only the current version is read: an older save is refused and left
+  on disk (issues [#529](https://github.com/sdubois777/Cataclysm/issues/529) and
+  [#2928](https://github.com/sdubois777/Cataclysm/issues/2928), 2026-11-27); `UCataclysmSaveWriter` writes them on a 15 second
   clock and immediately when a fight starts, a creature dies, health falls
   through half, or an item moves, and **a death is written before the frame
   ends** (issue [#750](https://github.com/sdubois777/Cataclysm/issues/750)); and a live floor can be read into a

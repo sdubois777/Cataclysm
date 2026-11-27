@@ -229,29 +229,6 @@ namespace CataclysmRiftAltarsTest
 							 UCataclysmSkillEffects::IsDead(Victim));
 	}
 
-	/** One run fixture, read through the save system as a load reads it. Null, with an error, when it will not load. */
-	const UCataclysmRunSave* ReadRiftAltarsRunFixture(FAutomationTestBase& Test, const TCHAR* Name,
-													  ECataclysmSaveLoadResult& OutResult)
-	{
-		FString Text;
-		FString Reason;
-		if (!CataclysmSaveFixtures::Read(Name, Text, Reason))
-		{
-			Test.AddError(Reason);
-			return nullptr;
-		}
-		FString Message;
-		OutResult = ECataclysmSaveLoadResult::NotValidJson;
-		const UCataclysmRunSave* Read = Cast<UCataclysmRunSave>(FCataclysmSaveStorage::FromJson(
-			Text, UCataclysmRunSave::StaticClass(), GetTransientPackage(), OutResult, Message));
-		if (Read == nullptr)
-		{
-			Test.AddError(FString::Printf(TEXT("%s would not load: %s -- %s"), Name,
-										  FCataclysmSaveStorage::Describe(OutResult), *Message));
-		}
-		return Read;
-	}
-
 	/** A list of ints written "a,b,c", for a message and a comparison. */
 	FString RiftAltarsJoined(const TArray<int32>& Numbers)
 	{
@@ -1062,45 +1039,6 @@ bool FCataclysmRiftAltarsSavedByPlaceTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and the third"), After[1]->GetActorLocation().Equals(Where[2], 1.0f));
 	TestEqual(TEXT("two of four have fallen: floor 1's and this one"), Mode->RiftAltarsFallen(), 2);
 	TestTrue(TEXT("the two standing still seal the stairs"), Mode->StairsSealedBy().Contains(AltarSeal));
-	return true;
-}
-
-/**
- * The run record's step to 19 (issue #51 slice B1): `Run_v18.json`, written before a floor's rule state kept a Rift's
- * fallen altars, migrates to none fallen. CONTROL: `Run_v22.json` is read, not migrated, and states places 0 and 2, not
- * the default, so the field is read from the file. Every other field is checked by the tests that run every older run
- * file through the whole chain, each of which adds `CataclysmSaveFixtures::AddTheRunsVersion19Defaults`. Prints "RIFT
- * ALTARS FILES".
- */
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRiftAltarsMigrationTest,
-	"Cataclysm.RiftAltars.ARunFileFromVersion18MigratesWithNoAltarFallen",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FCataclysmRiftAltarsMigrationTest::RunTest(const FString& Parameters)
-{
-	using namespace CataclysmRiftAltarsTest;
-
-	ECataclysmSaveLoadResult OldResult = ECataclysmSaveLoadResult::NotValidJson;
-	ECataclysmSaveLoadResult NewResult = ECataclysmSaveLoadResult::NotValidJson;
-	const UCataclysmRunSave* Old = ReadRiftAltarsRunFixture(*this, TEXT("Run_v18.json"), OldResult);
-	const UCataclysmRunSave* Committed = ReadRiftAltarsRunFixture(*this, TEXT("Run_v22.json"), NewResult);
-	if (!TestNotNull(TEXT("Run_v18.json loads"), Old) || !TestNotNull(TEXT("Run_v22.json loads"), Committed))
-	{
-		return false;
-	}
-	AddInfo(FString::Printf(TEXT("RIFT ALTARS FILES: Run_v18.json %s, fallen [%s]; Run_v22.json %s, fallen [%s]"),
-							FCataclysmSaveStorage::Describe(OldResult),
-							*RiftAltarsJoined(Old->Floor.RuleState.RiftAltarsDestroyed),
-							FCataclysmSaveStorage::Describe(NewResult),
-							*RiftAltarsJoined(Committed->Floor.RuleState.RiftAltarsDestroyed)));
-
-	TestEqual(TEXT("Run_v18.json is migrated"), static_cast<int32>(OldResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Migrated));
-	TestTrue(TEXT("**and holds no Rift altar fallen**"), Old->Floor.RuleState.RiftAltarsDestroyed.IsEmpty());
-	TestEqual(TEXT("CONTROL: Run_v22.json is read, not migrated"), static_cast<int32>(NewResult),
-			  static_cast<int32>(ECataclysmSaveLoadResult::Loaded));
-	TestEqual(TEXT("CONTROL: and states places 0 and 2, not the default"),
-			  RiftAltarsJoined(Committed->Floor.RuleState.RiftAltarsDestroyed), FString(TEXT("0,2")));
 	return true;
 }
 

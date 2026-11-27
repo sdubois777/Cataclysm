@@ -69,6 +69,137 @@ The figures for all nine meshes are in `game/docs/weapon-source-assets.md`.
 
 ---
 
+## 2026-11-27 — Saves: only the current version is read; the 45 upgrade steps, their tests and the old example files are removed (#2928, slice 12)
+
+**Affects:** `game/Source/Cataclysm/Save/` (`CataclysmSaveVersion.h` and `.cpp` replace `CataclysmSaveMigration.h` and
+`.cpp`; `CataclysmSaveStorage`, `CataclysmSaveLoad`, `CataclysmSaveRecord.h`, `CataclysmSaveRecords`,
+`CataclysmTestSaves`), the save tests in `game/Source/Cataclysm/Tests/`, `game/Tests/SaveFixtures/`, 23 files in
+`tools/tests/`, `docs/Save_System_Design.md` section 5, `docs/README.md` and `game/README.md`.
+
+**Files deleted:** `game/Source/Cataclysm/Save/CataclysmSaveMigration.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveMigration.h`, `game/Source/Cataclysm/Tests/CataclysmGemSaveTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmSaveMigrationTests.cpp`, `game/Tests/SaveFixtures/Account_v1.json`,
+`game/Tests/SaveFixtures/Account_v2.json`, `game/Tests/SaveFixtures/Account_v3.json`,
+`game/Tests/SaveFixtures/Account_v4.json`, `game/Tests/SaveFixtures/Account_v5.json`,
+`game/Tests/SaveFixtures/Account_v6.json`, `game/Tests/SaveFixtures/Account_v7.json`,
+`game/Tests/SaveFixtures/Character_v1.json`, `game/Tests/SaveFixtures/Character_v10.json`,
+`game/Tests/SaveFixtures/Character_v11.json`, `game/Tests/SaveFixtures/Character_v12.json`,
+`game/Tests/SaveFixtures/Character_v13.json`, `game/Tests/SaveFixtures/Character_v14.json`,
+`game/Tests/SaveFixtures/Character_v15.json`, `game/Tests/SaveFixtures/Character_v16.json`,
+`game/Tests/SaveFixtures/Character_v17.json`, `game/Tests/SaveFixtures/Character_v2.json`,
+`game/Tests/SaveFixtures/Character_v3.json`, `game/Tests/SaveFixtures/Character_v4.json`,
+`game/Tests/SaveFixtures/Character_v5.json`, `game/Tests/SaveFixtures/Character_v6.json`,
+`game/Tests/SaveFixtures/Character_v7.json`, `game/Tests/SaveFixtures/Character_v8.json`,
+`game/Tests/SaveFixtures/Character_v9.json`, `game/Tests/SaveFixtures/Example_v1.json`,
+`game/Tests/SaveFixtures/Example_v2.json`, `game/Tests/SaveFixtures/Example_v3.json`,
+`game/Tests/SaveFixtures/Run_v1.json`, `game/Tests/SaveFixtures/Run_v10.json`, `game/Tests/SaveFixtures/Run_v11.json`,
+`game/Tests/SaveFixtures/Run_v12.json`, `game/Tests/SaveFixtures/Run_v13.json`, `game/Tests/SaveFixtures/Run_v14.json`,
+`game/Tests/SaveFixtures/Run_v15.json`, `game/Tests/SaveFixtures/Run_v16.json`, `game/Tests/SaveFixtures/Run_v17.json`,
+`game/Tests/SaveFixtures/Run_v18.json`, `game/Tests/SaveFixtures/Run_v19.json`, `game/Tests/SaveFixtures/Run_v2.json`,
+`game/Tests/SaveFixtures/Run_v20.json`, `game/Tests/SaveFixtures/Run_v21.json`, `game/Tests/SaveFixtures/Run_v3.json`,
+`game/Tests/SaveFixtures/Run_v4.json`, `game/Tests/SaveFixtures/Run_v5.json`, `game/Tests/SaveFixtures/Run_v6.json`,
+`game/Tests/SaveFixtures/Run_v7.json`, `game/Tests/SaveFixtures/Run_v8.json`, `game/Tests/SaveFixtures/Run_v9.json`,
+`tools/tests/test_gems_are_saved_at_the_new_record_versions.py`,
+`tools/tests/test_passive_nodes_are_named_for_a_frozen_class.py`,
+`tools/tests/test_save_migrations_are_single_steps.py`.
+
+### The ruling
+
+**The owner, 2026-11-27, their chosen option verbatim: "Remove; old saves reset".** Asked by the coordinating session
+from the survey of issue #2928 (its slice 12: about 90 tests, 48 fixtures and 19,132 lines held up a 45-step migration
+chain). The game has not shipped and no player holds an old save. A save older than the current version is not loaded,
+and a future save change needs no upgrade step. Current versions, unchanged: run 22, character 18, account 8.
+
+### What an older record does now, and why that
+
+**Decided from what the game already did with a NEWER file**, as the coordinating session asked, and stated:
+
+- **The read refuses it.** `FCataclysmSaveVersion::Check` answers `OlderThanThisBuild`; `FCataclysmSaveStorage::FromJson`
+  returns nothing with `VersionRefusedIt` and the message "the record is version N and this build reads version M. It
+  was written by an older build; saves from before version M are not kept, and the file is left as it is". Nothing is
+  written: no backup (backups existed only for migration) and no write-back.
+- **The character select screen lists it as unreadable**: `FCataclysmSaveLoad::SavedCharacters` already marked any slot
+  that will not read `bReadable = false` with the reason, shown as "Unreadable save, <slot>: <reason>", which the player
+  can delete from that screen. Nothing deletes the file otherwise.
+- **A load refuses it** with "the character record in '<slot>' was written by an older build, at version N where this
+  build reads version M; saves from before version M are not kept, and the file is left as it is", the same path as a
+  newer record. **An older run refuses its character too**, as a newer run has since 2026-10-30: a new run begun there
+  would replace the character's run and lose the run in that file. A judgement by the same reasoning.
+- **An account record** that will not read was already logged and not banked into for the session, never replaced;
+  that path is unchanged.
+
+### What changed
+
+- **Game code:** the 45 `Migrate_N_to_N+1` steps and their helpers in `CataclysmSaveRecords.cpp` (1,722 lines to 45),
+  `MigrationSteps`, `FCataclysmSaveMigration`, the backup path in `ReadFromSlot`, `BackupSlotName`, the results
+  `Migrated` and `MigratedButCouldNotBeWrittenBack`, and `FCataclysmTestSaves::NoteABackup`. `BackupInfix` stays, so
+  deleting a character still deletes the `_BackupOfVersion<N>` slots an older build left. Comments that named a
+  removed step say "the upgrade step to version N (removed 2026-11-27)".
+- **Tests deleted: 48 Unreal tests** that loaded an older record or tested the chain, named in the pull request body,
+  with `CataclysmSaveMigrationTests.cpp` and `CataclysmGemSaveTests.cpp` whole and 810 lines of old-fixture defaults in
+  `CataclysmSaveFixtures.h`. **The test commit's message says 41; that is wrong**, and 48 is counted by name against
+  development (52 names gone, of which 4 were renames).
+- **Trimmed to their current-file halves and renamed** (4): `CityCleanseSave.WhetherTheCleanseWasBoughtIsSaved`,
+  `EmpireTreeNineSaves.TheCommittedFilesReadTheirFigures`, `ForgeGoldNodes.TheCommittedRecordsReadTheirForgeCounts`,
+  `SaveRecords.EachRecordTypeHasItsOwnNameAndVersion`; `SaveStorage.ATestsSavesAreDeletedWhenItEnds` loses its backup
+  half under its own name.
+- **New, `CataclysmSaveVersionTests.cpp`, group `Cataclysm.SaveVersion.`, 3 tests:**
+  `AnOlderRecordIsRefusedAndACurrentOneLoads` (new: a character record one version older refused by the check, by a
+  read from its slot, which leaves the file byte for byte and writes no backup, and by the character list; CONTROL the
+  same record at the current version reads whole and lists readable), and
+  `ARecordFromANewerBuildIsRefusedRatherThanGuessedAt` and `ARecordWithNoUsableVersionIsRefused`, ported from the
+  migration file.
+- **Fixtures:** the 45 older-version files and the example record's 3 deleted; `Account_v8.json`, `Character_v18.json`
+  and `Run_v22.json` kept; the README rewritten.
+- **Python: 62 test functions deleted**, 53 by name across 20 files and 9 in three files deleted whole
+  (`test_save_migrations_are_single_steps.py`, `test_passive_nodes_are_named_for_a_frozen_class.py`, whose frozen
+  class list existed only for the version 3 step, and `test_gems_are_saved_at_the_new_record_versions.py`), and four
+  tests trimmed to their current-record checks. `test_the_decisions_log_names_real_files.py` reads a new
+  block of deleted files (the one above), so the older entries that cite these files stay as written, and fails
+  if a file listed there exists again.
+
+### Registered for the window
+
+- **No editor step**: no CSV or asset changes.
+- **Groups alone (new only, the owner's rule of 2026-11-25):** `Cataclysm.SaveVersion.` 3.
+- **The whole suite: 6100**, with Python beside it, on development 487adb68c merged in (slice 4, #2955, which renames
+  two tests and adds none; the base below is then fr-w1's log, `fr_w1/fr_suite_engine_c82eae0b.log` in the
+  nice-carson worktree: "6145" completed, 895 saves, 62 skipped halves, on a tree declaring 6094 tests, development's
+  count; none of the removed tests wrote a save there). **This said 6093 against
+  rost-w1's log (6138 on 4520d824) until that merge**; development then held 7 tests more (the weapon grip's 3, slices
+  5 and 6's 1, and slices 1 and 3's 3), and slice 4's window had measured a newer whole suite. The base is that log,
+  `s4_suite_engine_9a04952f.log` (C:\w2928s4): "6145 tests performed", on a tree declaring 6094 tests, the same count
+  as development and differing only by two renames on that unmerged branch (more performed than declared, because some
+  tests report more than one result). This branch removes 52 names and adds 7, all simple tests: 6145 - 45. **Test
+  saves 895** and **skipped halves 62**, as in that log; read per test from its running total, none of the removed
+  tests wrote a save, and none is among the skipped halves. **THE SAVE FIGURE WAS WRONG: it is 893**, because a
+  trimmed test writes 2 fewer (below).
+- **One C++ guard proof, SV1**, that the older-record refusal is tested: in `CataclysmSaveVersion.cpp`,
+  `if (Version < CurrentVersion)` read as `if (false && Version < CurrentVersion)`. Predicted, narrowed to
+  `Cataclysm.SaveVersion.`: 3 performed, 1 failed, `AnOlderRecordIsRefusedAndACurrentOneLoads`; restored, 3 passed.
+
+### What the windows measured, on 05a9d49b5
+
+**s12-w1 STOPPED BEFORE THE PROOF, ON THE SAVE COUNT, WHICH WAS MY REGISTRATION'S FAULT.** The suite wrote "Test saves:
+893 written and deleted, 0 left behind" against the 895 registered. Compared test by test with fr-w1's log:
+`Cataclysm.SaveStorage.ATestsSavesAreDeletedWhenItEnds` wrote 4 there and 2 here, because this branch removed its
+migration half, which noted an old record's slot and its backup; the registration's per-test check had covered the
+deleted tests and not the trimmed one. The other lines that differ are slice 4's two renames, 1 save each under either
+name. **The right figure for this branch is 893.**
+
+- **s12-w1:** three builds succeeded (77, 71 and 27 files compiled, 0 warning or error lines). `Cataclysm.SaveVersion.`
+  alone: 3 performed, 3 succeeded; its line, "the record is version 17 and this build reads version 18. It was written
+  by an older build; saves from before version 18 are not kept, and the file is left as it is", older slot unchanged,
+  no backup, listed unreadable. The whole suite: "6100 tests performed, 6100 succeeded, 0 failed. 62 skipped part of
+  what they check"; "Declared: 6049 tests in the tree at 05a9d49b5; 6100 performed, gap -51; every declared test was
+  reported by the run"; saves 893, 0 left behind. Python beside it: "9665 passed, 10 skipped", JUnit 9675, 0 failures;
+  `ruff` clean.
+- **s12-w2, the proof alone on the same head** (the coordinating session's word): **SV1 PROVED**, "with the break in: 3
+  tests performed, 2 succeeded, 1 failed: AnOlderRecordIsRefusedAndACurrentOneLoads | restored: 3 tests performed, 3
+  succeeded, 0 failed", as predicted.
+
+---
+
 ## 2026-11-26 — War is not built: a character draws Demonic and Death first, and no longer War
 
 **Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmRoster.cpp` (`UCataclysmRoster::Built`) and its header;

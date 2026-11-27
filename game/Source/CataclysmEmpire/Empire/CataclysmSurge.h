@@ -569,7 +569,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * `max(1, DungeonId + 1)`, identifiers start at 0 in every run, and so every
 	 * run's dungeon N walked the same floors with the same creatures. A mask of
 	 * 0 gives exactly that old seed, which is what a run saved before version 8
-	 * of the run record is given (`Migrate_7_to_8`), so a walk saved then keeps
+	 * of the run record is given (the upgrade step to version 8 (removed 2026-11-27)), so a walk saved then keeps
 	 * its floors.
 	 *
 	 * A PARAMETER AND NOT A FIELD, so no caller can leave the run out: a call
@@ -656,7 +656,7 @@ struct CATACLYSMEMPIRE_API FCataclysmDungeon
 	 * in it, it leaves with no damage and no detonation counted (`UCataclysmEmpireRun::ResolveDungeon`). It is not
 	 * counted on the board for the empty-board surge or a city's dungeon cap. Its clear pays the player and counts for
 	 * what pays the player, and not for the boss's floors, a quest objective or Scout Parties' own roll (V16, V17).
-	 * RUN RECORD VERSION 15: `Migrate_14_to_15` writes false on every dungeon of an older run.
+	 * RUN RECORD VERSION 15: the upgrade step to version 15 (removed 2026-11-27) wrote false on every dungeon of an older run.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	bool bBonus = false;

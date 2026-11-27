@@ -25,7 +25,6 @@ WHAT IS CHECKED:
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -64,59 +63,6 @@ def body(text: str, signature: str, where: str) -> str:
     start = text.find(signature)
     assert start != -1, f"{where} no longer defines {signature!r}"
     return braced(text, start, f"{signature!r} in {where}")
-
-
-def test_run_v12_is_run_v11_with_the_marks_the_flag_and_the_walks_gold() -> None:
-    before = json.loads((FIXTURES / "Run_v11.json").read_text(encoding="utf-8"))
-    after = json.loads((FIXTURES / "Run_v12.json").read_text(encoding="utf-8"))
-    assert before["SchemaVersion"] == 11 and after["SchemaVersion"] == 12
-    marks = [city.get("bTookSurgeDamage") for city in after["Cities"]]
-    assert True in marks and False in marks, f"Run_v12.json's cities are marked {marks}: neither all false nor all true"
-    assert after.get("bPopulationFellBelowHalf") is True, "Run_v12.json's flag is the default the migration writes"
-    walk = after["Walk"]
-    assert walk.get("GoldDroppedThisWalk") not in (None, 0) and walk.get("GoldPickedUpThisWalk") not in (None, 0), (
-        "Run_v12.json's walk gold is the 0 the migration writes, so neither shows the field is read")
-    rest = json.loads(json.dumps(after))
-    rest["SchemaVersion"] = 11
-    del rest["bPopulationFellBelowHalf"]
-    for city in rest["Cities"]:
-        del city["bTookSurgeDamage"]
-    del rest["Walk"]["GoldDroppedThisWalk"]
-    del rest["Walk"]["GoldPickedUpThisWalk"]
-    assert rest == before, "Run_v12.json differs from Run_v11.json beyond its version and the three saved figures"
-
-
-def test_the_run_record_is_at_version_12_and_migrate_11_to_12_writes_nothing_proven() -> None:
-    header = code(SAVE / "CataclysmSaveRecords.h")
-    run_class = header.split("class CATACLYSM_API UCataclysmRunSave")[1]
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_class)
-    assert version is not None and int(version.group(1)) >= 12, "the run record is below version 12"
-    assert re.search(r"\bbool\s+bPopulationFellBelowHalf\s*=\s*false\s*;", run_class)
-    walk = header.split("struct CATACLYSM_API FCataclysmSavedWalk")[1].split("};")[0]
-    for field in ("GoldDroppedThisWalk", "GoldPickedUpThisWalk"):
-        assert re.search(rf"\bint64\s+{field}\s*=\s*0\s*;", walk), f"the walk record does not carry {field}"
-    city = code(EMPIRE / "CataclysmEmpireMap.h").split("struct CATACLYSMEMPIRE_API FCataclysmCity")[1].split("};")[0]
-    assert re.search(r"UPROPERTY\(SaveGame[^)]*\)\s*bool\s+bTookSurgeDamage\s*=\s*false\s*;", city), (
-        "FCataclysmCity does not save bTookSurgeDamage")
-
-    records = code(SAVE / "CataclysmSaveRecords.cpp")
-    # THE RUN RECORD'S OWN STEP: the character record has a `Migrate_11_to_12` too since issue #2741 slice 8, in its own
-    # namespace before the run record's.
-    run_steps = records.split("namespace CataclysmRunSaveMigration")[1].split("namespace CataclysmAccountSaveMigration")[0]
-    step = body(run_steps, "bool Migrate_11_to_12(", "the run record's migrations")
-    for write in (r'SetBoolField\(\s*TEXT\("bPopulationFellBelowHalf"\)\s*,\s*false\s*\)',
-                  r'SetBoolField\(\s*TEXT\("bTookSurgeDamage"\)\s*,\s*false\s*\)',
-                  r'SetNumberField\(\s*TEXT\("GoldDroppedThisWalk"\)\s*,\s*0\s*\)',
-                  r'SetNumberField\(\s*TEXT\("GoldPickedUpThisWalk"\)\s*,\s*0\s*\)'):
-        assert re.search(write, step), f"Migrate_11_to_12 does not write {write}"
-    assert re.search(r'\{\s*11\s*,\s*TEXT\("Migrate_11_to_12"\)', run_steps), "the run record's chain has no step from 11"
-
-    gather = code(SAVE / "CataclysmSaveGather.cpp")
-    apply = code(SAVE / "CataclysmSaveApply.cpp")
-    assert re.search(r"Record\.bPopulationFellBelowHalf\s*=\s*Run\.bPopulationFellBelowHalf\s*;", gather)
-    assert re.search(r"Run\.bPopulationFellBelowHalf\s*=\s*Record\.bPopulationFellBelowHalf\s*;", apply)
-    assert re.search(r"City->bTookSurgeDamage\s*=\s*Saved\.bTookSurgeDamage\s*;", apply), (
-        "the run's cities are applied field by field, and the mark is not among them")
 
 
 def test_a_bite_marks_its_city_and_the_flag_is_checked_after_bites_and_cleared_at_a_reclaim() -> None:
@@ -190,21 +136,3 @@ def test_the_walk_counts_its_gold_from_nought_and_saves_it() -> None:
         assert re.search(rf"\b{field}\s*=\s*Walk\.{field}\s*;", restored), f"the walk does not restore {field}"
 
 
-def test_every_chain_test_adds_version_12_and_only_the_migration_reads_run_v11() -> None:
-    eleven = 0
-    for path in sorted(TESTS.glob("*.cpp")):
-        text = path.read_text(encoding="utf-8")
-        eleven_here = text.count("CataclysmSaveFixtures::AddTheRunsVersion11Defaults(*Expected);")
-        twelve_here = text.count("CataclysmSaveFixtures::AddTheRunsVersion12Defaults(*Expected);")
-        assert eleven_here <= twelve_here, (
-            f"{path.name} adds what Migrate_10_to_11 writes in {eleven_here} place(s) and what Migrate_11_to_12 writes "
-            f"in {twelve_here}: a chain test that stops at version 11 compares the wrong file")
-        eleven += eleven_here
-        for match in re.finditer(r'TEXT\("Run_v11\.json"\)', text):
-            names = re.findall(r'"Cataclysm\.[A-Za-z]+\.([A-Za-z0-9]+)"', text[:match.start()])
-            assert names and names[-1] == MIGRATION_TEST, (
-                f"{path.name} reads Run_v11.json in {names[-1] if names else 'a test with no name before it'}: the "
-                "committed run file is Run_v12.json since the run record went to version 12 (issue #2741 slice 6b)")
-    assert eleven >= 10, f"only {eleven} chain tests were found; the sweep reads the wrong folder"
-    readme = (FIXTURES / "README.md").read_text(encoding="utf-8")
-    assert "| `Run_v12.json` |" in readme, "game/Tests/SaveFixtures/README.md does not list Run_v12.json"

@@ -370,7 +370,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 *
 	 * SET BY `UCataclysmEmpireRun::CompleteCityUpgrade`, ON THE DAY THE UPGRADE IS FINISHED, since issue #2825: an
 	 * upgrade does nothing while it is being built, so it has not been "active" until then. RUN RECORD VERSION 9: an
-	 * upgrade saved before the field is given day 0 by `Migrate_8_to_9`, so it counts as held since its run began.
+	 * upgrade saved before the field is given day 0 by the upgrade step to version 9 (removed 2026-11-27), so it counts as held since its run began.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")
 	int32 BoughtDay = 0;
@@ -381,7 +381,7 @@ struct CATACLYSMEMPIRE_API FCataclysmCityUpgrade
 	 * NOUGHT ON EVERY FINISHED UPGRADE, in `FCataclysmCity::Upgrades`. Above nought only on one in
 	 * `FCataclysmCity::Building`, where `UCataclysmEmpireRun::AdvanceCityBuilds` takes a day off it for each day that
 	 * passes while the city is neither fallen nor besieged. DAYS LEFT RATHER THAN A FINISHING DAY, because a pause
-	 * moves the finishing day and would have to rewrite it. RUN RECORD VERSION 13: `Migrate_12_to_13` writes 0 on every
+	 * moves the finishing day and would have to rewrite it. RUN RECORD VERSION 13: the upgrade step to version 13 (removed 2026-11-27) wrote 0 on every
 	 * upgrade a version 12 run holds, since all of them were finished.
 	 */
 	UPROPERTY(SaveGame, BlueprintReadOnly, Category = "Cataclysm|Empire")

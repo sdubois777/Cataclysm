@@ -26,8 +26,8 @@ class UWorld;
  * is standing, the health each creature has, its rarity and its modifiers, and
  * what is lying on the floor. **What a creature was in the middle of doing is
  * deliberately not read**, and section 6 says why: it is the data whose shape
- * changes every patch, and persisting it would cost a migration every patch for
- * state nobody wants preserved.
+ * changes every patch, and persisting it would cost a version bump, refusing every
+ * older save, every patch for state nobody wants preserved.
  *
  * PART OF THE CHARACTER RECORD STILL HAS NO SOURCE. The passive tree and the 18
  * equipped slots do not exist in the running game, so `CharacterFrom` fills the

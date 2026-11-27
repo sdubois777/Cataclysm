@@ -165,64 +165,6 @@ def test_one_build_at_a_time_after_the_slots_and_before_the_price_and_a_build_ta
 # 5 to 7: the run record
 # --------------------------------------------------------------------------
 
-def test_the_run_record_is_at_version_13_and_migrate_12_to_13_writes_nothing_building() -> None:
-    header = (SOURCE / "Cataclysm" / "Save" / "CataclysmSaveRecords.h").read_text(encoding="utf-8")
-    run_class = header.split("class CATACLYSM_API UCataclysmRunSave")[1]
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_class)
-    assert version is not None and int(version.group(1)) >= 13, "the run record is below version 13"
-    city = code(EMPIRE / "CataclysmEmpireMap.h")
-    assert re.search(r"UPROPERTY\(SaveGame[^)]*\)\s*TArray<FCataclysmCityUpgrade>\s+Building\s*;", city), (
-        "FCataclysmCity does not save what it is building")
-    assert re.search(r"UPROPERTY\(SaveGame[^)]*\)\s*int32\s+BuildDaysLeft\s*=\s*0\s*;",
-                     code(EMPIRE / "CataclysmCityUpgrade.h")), "FCataclysmCityUpgrade does not save its days left"
-    # THE RUN RECORD'S STEP: the character record has a `Migrate_12_to_13` of its own since the gems window (issue #46),
-    # in its own namespace, which comes first in the file.
-    records = code(SOURCE / "Cataclysm" / "Save" / "CataclysmSaveRecords.cpp")
-    records = records.split("namespace CataclysmRunSaveMigration")[1].split("namespace CataclysmAccountSaveMigration")[0]
-    step = body(records, "bool Migrate_12_to_13(", "the run record")
-    assert 'SetArrayField(TEXT("Building"), TArray<TSharedPtr<FJsonValue>>())' in step, (
-        "Migrate_12_to_13 does not write an empty build list")
-    assert 'SetNumberField(TEXT("BuildDaysLeft"), 0)' in step, "Migrate_12_to_13 does not write 0 days left"
-    assert re.search(r'\{\s*12\s*,\s*TEXT\("Migrate_12_to_13"\)', records), "the run record's chain has no step from 12"
-    apply = code(SOURCE / "Cataclysm" / "Save" / "CataclysmSaveApply.cpp")
-    assert re.search(r"City->Building\s*=\s*Saved\.Building\s*;", apply), "a load does not put the build back"
-
-
-def test_run_v13_is_run_v12_with_the_build_fields_and_one_build_under_way() -> None:
-    before = json.loads((FIXTURES / "Run_v12.json").read_text(encoding="utf-8"))
-    after = json.loads((FIXTURES / "Run_v13.json").read_text(encoding="utf-8"))
-    assert before["SchemaVersion"] == 12 and after["SchemaVersion"] == 13
-    building = [build for city in after["Cities"] for build in city["Building"]]
-    assert any(build["BuildDaysLeft"] > 0 for build in building), (
-        "Run_v13.json holds no build under way, so the test that reads it cannot show the field is read")
-    assert any(not city["Building"] for city in after["Cities"]), "every city in Run_v13.json is building"
-    rest = json.loads(json.dumps(after))
-    rest["SchemaVersion"] = 12
-    for city in rest["Cities"]:
-        del city["Building"]
-        for upgrade in city["Upgrades"]:
-            assert upgrade.pop("BuildDaysLeft") == 0, "a finished upgrade in Run_v13.json has days left"
-    assert rest == before, "Run_v13.json differs from Run_v12.json beyond its version and the build fields"
-
-
-def test_every_chain_test_adds_version_13_and_only_the_migration_reads_run_v12() -> None:
-    twelve = 0
-    for path in sorted(TESTS.glob("*.cpp")):
-        text = path.read_text(encoding="utf-8")
-        twelve_here = text.count("AddTheRunsVersion12Defaults(")
-        thirteen_here = text.count("AddTheRunsVersion13Defaults(")
-        twelve += twelve_here
-        assert twelve_here <= thirteen_here, (
-            f"{path.name} runs an older run file through the chain without what Migrate_12_to_13 writes")
-        for match in re.finditer(r'TEXT\("Run_v12\.json"\)', text):
-            names = re.findall(r'"Cataclysm\.[\w.]+\.(\w+)"', text[:match.start()])
-            assert names and names[-1] == MIGRATION_TEST, (
-                f"{path.name} reads Run_v12.json in {names[-1] if names else 'a test with no name before it'}: the "
-                "committed run file is Run_v13.json since the run record went to version 13 (issue #2825)")
-    assert twelve >= 10, f"only {twelve} chain tests were found; the sweep reads the wrong folder"
-    readme = (FIXTURES / "README.md").read_text(encoding="utf-8")
-    assert "| `Run_v13.json` |" in readme, "game/Tests/SaveFixtures/README.md does not list Run_v13.json"
-
 
 # --------------------------------------------------------------------------
 # 8 and 9: what the screens say, and War Funding

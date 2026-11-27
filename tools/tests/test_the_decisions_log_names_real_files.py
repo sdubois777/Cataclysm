@@ -39,6 +39,14 @@ them**, against 838 for the rule it replaces -- 100% against 61%. They name 379
 distinct files and every one resolves, so this carries no allowance list, which
 is the state to keep it in.
 
+A FILE DELETED ON PURPOSE IS NAMED IN A `**Files deleted:**` BLOCK of the entry that
+deleted it, one backticked path each, and a path named there counts as accounted for
+wherever an older entry cites it. Issue #2928 slice 12, 2026-11-27, deleted the save
+migration code, its tests and 48 example save files that older entries name; rewriting
+those entries would falsify what they record, and an allowance list here would stop
+checking those paths at all. The block is the opposite of an allowance: a path listed
+there that exists again fails `test_a_file_recorded_as_deleted_is_gone`.
+
 THE COMMIT IS NAMED BECAUSE THOSE ARE CLAIMS ABOUT A TREE, and a tree moves. A
 figure written into a test that no longer matches the file it describes is exactly
 the rot this test exists to catch, so it should not be the first thing to rot. The
@@ -187,6 +195,21 @@ def named_files(text: str) -> list[tuple[str, str]]:
     return found
 
 
+#: A `**Files deleted:**` block: the marker, then everything up to the next blank line.
+DELETED_BLOCK = re.compile(r"\*\*Files deleted:\*\*(?P<body>.*?)(?:\r?\n[ \t]*\r?\n|\Z)", re.DOTALL)
+
+
+def recorded_as_deleted(text: str) -> set[str]:
+    """Every backticked path in a `**Files deleted:**` block, as written."""
+    return {item for block in DELETED_BLOCK.finditer(text) for item in re.findall(r"`([^`]+)`", block.group("body"))}
+
+
+def deleted_on_purpose(path: str, deleted: set[str]) -> bool:
+    """True when `path`, as an Affects line means it, is one a later entry records deleting."""
+    names = {pathlib.PurePosixPath(item).name for item in deleted}
+    return path in deleted or f"{IMPLIED_PREFIX}{path}" in deleted or ("/" not in path and path in names)
+
+
 def resolves(path: str) -> bool:
     """True when this names something that is in the repository."""
     # A PATTERN RATHER THAN A PATH. One entry names every class tree at once.
@@ -252,10 +275,12 @@ def test_nearly_everything_that_names_a_file_is_read() -> None:
 
 def test_every_file_named_in_an_affects_line_exists() -> None:
     """A renamed or deleted file leaves the entries that cite it pointing at nothing."""
+    text = DECISIONS.read_text(encoding="utf-8")
+    deleted = recorded_as_deleted(text)
     missing = [
         (written, meant)
-        for written, meant in named_files(DECISIONS.read_text(encoding="utf-8"))
-        if not resolves(meant)
+        for written, meant in named_files(text)
+        if not resolves(meant) and not deleted_on_purpose(meant, deleted)
     ]
 
     assert not missing, (
@@ -267,5 +292,13 @@ def test_every_file_named_in_an_affects_line_exists() -> None:
         + "\n\nIf a file moved, correct the entries that name it. Do not delete "
         "the path from the entry -- the entry is a record of what that decision "
         "changed, and a decision about a file that no longer exists is still a "
-        "decision that was made."
+        "decision that was made. If it was deleted on purpose, name it in a "
+        "**Files deleted:** block of the entry that deleted it."
     )
+
+
+def test_a_file_recorded_as_deleted_is_gone() -> None:
+    """A `**Files deleted:**` block is a claim, and a path it names that exists again would hide a citation's rot."""
+    deleted = recorded_as_deleted(DECISIONS.read_text(encoding="utf-8"))
+    back = sorted(item for item in deleted if (REPO_ROOT / item).exists())
+    assert not back, f"recorded as deleted in {DECISIONS.name} but present again: {back}"
