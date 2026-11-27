@@ -21,9 +21,19 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOT BUILT, NOT RUN IN UNREAL AND NOT SEEN.** The coordinating session schedules the window.
-- **`DT_EnemyArchetypes` must be rebuilt in the editor**: `EnemyArchetypes.csv` changed, so
-  `test_every_csv_still_hashes_to_what_was_recorded` fails in Python until the window's editor step.
+- **BUILT AND RUN IN WINDOW cs-w1, 2026-11-27; NOT SEEN IN PLAY.** Nobody has watched a Sentinel walk on a real floor.
+  A world built for a test has no navigation system, so the tests show what the brain orders, not a walk across a
+  floor (see "Window cs-w1" below).
+- **`DT_EnemyArchetypes` was rebuilt in the window's editor step** (10 rows), so
+  `test_every_csv_still_hashes_to_what_was_recorded` passes again.
+- **THE WHOLE SUITE FOUND TWO TESTS THE BRANCH HAD NOT MOVED**, both fixed and re-run before this entry was written:
+  `Cataclysm.Enemy.CommanderReachesEveryCreatureThatCanBeBuffed` still held a buffed Sentinel at walk speed 0 (it is
+  now 3 m/s, its 2.5 m/s times the buff's 1.2, and still below the slowest class's 3.5); and
+  `Cataclysm.DungeonModifierEffects.AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound` failed three runs of three on
+  a draw no test pinned. Since #2943 what rises under Vengeful Wraiths is a Wraith, which draws its own rung
+  (`WraithRarityStep`, -1 by default), and it drew Herald, then Boss, past Volatile Evolution's ceiling of Herald. The
+  test helper `AFloorCarryingTheWraithsRow` now pins it to 0 beside the Imp's pin. **Not shown: that this branch could
+  not have made that draw likelier.** The test passed once in the Bone Colossus window earlier the same day.
 - **The design already said "the Sentinel does not fire without line of sight"; the game did not check.** Until this
   change the brain fired any ability whose target was in range, walls or not; only the bolt's flight was stopped by
   geometry. The Sentinel now checks.
@@ -82,6 +92,26 @@ toward the player and plant to fire. That replaced the design's "The Corrupted S
 6. **THE GATEKEEPER CHECK** (`tools/tests/test_gatekeeper_matches_the_model.py`) looked for two constants by names that
    do not exist, `AbyssalWardenNoticeRadiusCm` and `CorruptedSentinelNoticeRadiusCm`, so it never compared the Warden
    or the Sentinel. The names are fixed and its claim is now "furthest except the Corrupted Sentinel, which walks in".
+
+### Window cs-w1, 2026-11-27
+
+| Step | Result |
+|---|---|
+| Build, merge head `a7ed4d5c6` | Succeeded - 98 actions, 88 files compiled |
+| Editor step | `DT_EnemyArchetypes` rebuilt, 10 rows; committed as `dc0031e51` |
+| `Cataclysm.Sentinel.` alone, first run | 10 performed, 8 succeeded: `ItCarriesItsDesignedProfile` still held the notice to the bolt's 14 m, and `ItDoesNotFireWhileItWalks` read a walk status of idle |
+| The same, after both were fixed (`2cb8a24ec`) | 10 performed, 10 succeeded |
+| Whole suite, `2cb8a24ec` | **6109 performed**, 6107 succeeded, 2 failed (the two tests above); 893 saves written and deleted, 0 left behind |
+| Python beside it, `2cb8a24ec` | 9672 passed, 10 skipped; JUnit: 9682 tests, 0 failures, 0 errors, 10 skipped. Ruff: all checks passed |
+| After both were fixed (`25c582599`) | `Cataclysm.DungeonModifierEffects.` 788 of 788; `Cataclysm.Enemy.` 19 of 19 |
+| C++ guard proof, `Cataclysm.Sentinel.` | **PROVED.** `HasAClearShotAt` made to answer yes always: 10 performed, 1 failed, `ItWalksAgainWhenItsLineOfSightBreaksAndTheGatekeepersMortarDoesNotAsk`, the one predicted; restored, 10 of 10 |
+
+The whole suite was not run again after the last two tests changed; only their two groups were.
+
+**THE WALKING TEST READS WHAT THE BRAIN ORDERED, NOT A WALK'S STATUS.** A world built for a test has no navigation
+system, so `GetMoveStatus` never reports moving there. As the coordinating session ruled for that case, the test reads
+`ACataclysmEnemyController::MovesOrdered`, a new count of walks ordered through `MoveTo` whether or not they could be
+made: while walking it ordered a walk and began no ability; planted, it ordered no further walk and began a wind-up.
 
 ### Unreal tests
 
