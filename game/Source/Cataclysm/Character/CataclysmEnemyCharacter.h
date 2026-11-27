@@ -2429,7 +2429,7 @@ public:
 	 * Per enemy rather than one constant for all of them, which is the shape
 	 * Diablo II uses: its monstats.txt gives every monster type its own vision
 	 * distance. Issue #39's seven enemies are the reason -- a Hellhound that
-	 * charges and a Corrupted Sentinel that never moves cannot share one number.
+	 * charges and a Corrupted Sentinel that shoots from 14 metres cannot share one number.
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy", meta = (ClampMin = "0.0"))
 	float MeleeReachCm = 200.0f;

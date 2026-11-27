@@ -923,7 +923,8 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 
 	// TWO CREATURES THAT SIT AT OPPOSITE ENDS OF WHAT THE BUFF CAN DO. The Imp
 	// is the fastest and quickest thing in the roster; the Corrupted Sentinel
-	// cannot move at all, so 20% more of its walk speed must still be zero.
+	// is the slowest walker, at 2.5 m/s since it began to walk (2026-11-27).
+	// It could not move at all until then, and this case held it at zero.
 	const FCase Cases[] = {
 		{TEXT("the Imp"),
 		 Spawn<ACataclysmImpCharacter>(World, FVector(0.0f, 0.0f, 0.0f))},
@@ -965,10 +966,10 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 				TEXT("%s attacks more often while buffed"), Case.Name),
 			Case.Creature->SecondsBetweenAttacks(), DesignedInterval / Expected);
 
-		// **A CREATURE DESIGNED AT ZERO SPEED STAYS AT ZERO**, because 20% more
-		// of nothing is nothing. An aura does not un-root a turret, and the
-		// Corrupted Sentinel is the case that proves the arithmetic is a
-		// multiplication of the designed figure rather than an addition to it.
+		// **THE DESIGNED SPEED TIMES THE INCREASE**, a multiplication of the
+		// designed figure rather than an addition to it. The Corrupted Sentinel
+		// proved that while it was designed at zero; it walks now, and the
+		// figure below says what a buff makes of the slowest walker.
 		TestEqual(*FString::Printf(
 				TEXT("%s walks at its designed speed times the increase"),
 				Case.Name),
@@ -985,14 +986,18 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 	}
 
 	// THE SENTINEL SPECIFICALLY, said out loud rather than left implied by the
-	// loop above: it cannot move and the buff must not change that.
+	// loop above: buffed, its 2.5 m/s becomes 3.0 m/s, still slower than the
+	// slowest class (3.5 m/s), so a buffed Sentinel can still be walked away
+	// from. It was 0 until it began to walk (2026-11-27).
 	if (ACataclysmEnemyCharacter* Sentinel = Cases[1].Creature)
 	{
 		Buff(Granter, Sentinel);
 		Sentinel->RefreshWalkSpeed();
 
-		TestEqual(TEXT("**a buffed Corrupted Sentinel still cannot move**"),
-			Sentinel->GetCharacterMovement()->MaxWalkSpeed, 0.0f);
+		TestEqual(TEXT("**a buffed Corrupted Sentinel walks at 3 m/s**"),
+			Sentinel->GetCharacterMovement()->MaxWalkSpeed, 250.0f * Expected);
+		TestTrue(TEXT("still slower than the slowest class's 3.5 m/s"),
+			Sentinel->GetCharacterMovement()->MaxWalkSpeed < 350.0f);
 	}
 
 	return true;

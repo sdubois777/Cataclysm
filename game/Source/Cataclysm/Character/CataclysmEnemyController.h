@@ -790,6 +790,14 @@ public:
 	int32 AttacksOrdered = 0;
 
 	/**
+	 * How many walks it has ordered, through `MoveTo`, whether or not the walk could be made. Read by tests: a world built
+	 * for a test has no navigation system, so a walk's status there is never "moving" (measured in window cs-w1,
+	 * 2026-11-27), and this is what says the brain ordered one. The walking Corrupted Sentinel's test reads it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|AI")
+	int32 MovesOrdered = 0;
+
+	/**
 	 * Which entry of the pawn's EnemyAbilities it would use against a target at
 	 * the given distance, or -1 for none of them.
 	 *

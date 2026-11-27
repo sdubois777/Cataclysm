@@ -390,7 +390,7 @@ public:
 	 * A STYLE ONE. Two of the three characters this controller drives should
 	 * not wander. A summoned imp exists to fight what its summoner is fighting,
 	 * and one that strolled off between fights would be a bug rather than a
-	 * feature. A Corrupted Sentinel is designed stationary. Making the base
+	 * feature. A Corrupted Sentinel walks only toward a player it has noticed. Making the base
 	 * inert means adding roaming changed the behaviour of exactly the one
 	 * character that asked for it, and every existing test that asserts a
 	 * monster with nothing in sight is Idle still passes unedited.
@@ -447,6 +447,17 @@ public:
 	 * above uses and for the same reason.
 	 */
 	virtual bool TakesNoHostileAction() const { return false; }
+
+	/**
+	 * Whether this character can shoot at `Target` from where it stands: nothing solid between them. The brain uses no
+	 * ability and makes no attack on a target it has no clear shot at, and closes on it instead.
+	 *
+	 * TRUE FOR EVERY CHARACTER BUT ONE THAT SAYS OTHERWISE, so nothing that fought before 2026-11-27 fights differently.
+	 * The Corrupted Sentinel says otherwise since the owner's ruling that it walks ("Walk everywhere", 2026-11-27): it
+	 * walks toward the player, stops when it has a clear shot within its bolt's range, and walks again when it loses one.
+	 * HERE RATHER THAN ON THE ENEMY, for the reason `TakesNoHostileAction` gives.
+	 */
+	virtual bool HasAClearShotAt(const AActor* Target) const { return true; }
 
 	/**
 	 * True when this character is nobody's target: no search finds it, on any side, and no blow lands on it. Issue
