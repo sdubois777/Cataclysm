@@ -9,6 +9,33 @@ Decisions made outside the Google Drive documents, newest first.
 `CataclysmTestSaves`), the save tests in `game/Source/Cataclysm/Tests/`, `game/Tests/SaveFixtures/`, 23 files in
 `tools/tests/`, `docs/Save_System_Design.md` section 5, `docs/README.md` and `game/README.md`.
 
+**Files deleted:** `game/Source/Cataclysm/Save/CataclysmSaveMigration.cpp`,
+`game/Source/Cataclysm/Save/CataclysmSaveMigration.h`, `game/Source/Cataclysm/Tests/CataclysmGemSaveTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmSaveMigrationTests.cpp`, `game/Tests/SaveFixtures/Account_v1.json`,
+`game/Tests/SaveFixtures/Account_v2.json`, `game/Tests/SaveFixtures/Account_v3.json`,
+`game/Tests/SaveFixtures/Account_v4.json`, `game/Tests/SaveFixtures/Account_v5.json`,
+`game/Tests/SaveFixtures/Account_v6.json`, `game/Tests/SaveFixtures/Account_v7.json`,
+`game/Tests/SaveFixtures/Character_v1.json`, `game/Tests/SaveFixtures/Character_v10.json`,
+`game/Tests/SaveFixtures/Character_v11.json`, `game/Tests/SaveFixtures/Character_v12.json`,
+`game/Tests/SaveFixtures/Character_v13.json`, `game/Tests/SaveFixtures/Character_v14.json`,
+`game/Tests/SaveFixtures/Character_v15.json`, `game/Tests/SaveFixtures/Character_v16.json`,
+`game/Tests/SaveFixtures/Character_v17.json`, `game/Tests/SaveFixtures/Character_v2.json`,
+`game/Tests/SaveFixtures/Character_v3.json`, `game/Tests/SaveFixtures/Character_v4.json`,
+`game/Tests/SaveFixtures/Character_v5.json`, `game/Tests/SaveFixtures/Character_v6.json`,
+`game/Tests/SaveFixtures/Character_v7.json`, `game/Tests/SaveFixtures/Character_v8.json`,
+`game/Tests/SaveFixtures/Character_v9.json`, `game/Tests/SaveFixtures/Example_v1.json`,
+`game/Tests/SaveFixtures/Example_v2.json`, `game/Tests/SaveFixtures/Example_v3.json`,
+`game/Tests/SaveFixtures/Run_v1.json`, `game/Tests/SaveFixtures/Run_v10.json`, `game/Tests/SaveFixtures/Run_v11.json`,
+`game/Tests/SaveFixtures/Run_v12.json`, `game/Tests/SaveFixtures/Run_v13.json`, `game/Tests/SaveFixtures/Run_v14.json`,
+`game/Tests/SaveFixtures/Run_v15.json`, `game/Tests/SaveFixtures/Run_v16.json`, `game/Tests/SaveFixtures/Run_v17.json`,
+`game/Tests/SaveFixtures/Run_v18.json`, `game/Tests/SaveFixtures/Run_v19.json`, `game/Tests/SaveFixtures/Run_v2.json`,
+`game/Tests/SaveFixtures/Run_v20.json`, `game/Tests/SaveFixtures/Run_v21.json`, `game/Tests/SaveFixtures/Run_v3.json`,
+`game/Tests/SaveFixtures/Run_v4.json`, `game/Tests/SaveFixtures/Run_v5.json`, `game/Tests/SaveFixtures/Run_v6.json`,
+`game/Tests/SaveFixtures/Run_v7.json`, `game/Tests/SaveFixtures/Run_v8.json`, `game/Tests/SaveFixtures/Run_v9.json`,
+`tools/tests/test_gems_are_saved_at_the_new_record_versions.py`,
+`tools/tests/test_passive_nodes_are_named_for_a_frozen_class.py`,
+`tools/tests/test_save_migrations_are_single_steps.py`.
+
 ### The ruling
 
 **The owner, 2026-11-27, their chosen option verbatim: "Remove; old saves reset".** Asked by the coordinating session
@@ -57,10 +84,12 @@ and a future save change needs no upgrade step. Current versions, unchanged: run
   migration file.
 - **Fixtures:** the 45 older-version files and the example record's 3 deleted; `Account_v8.json`, `Character_v18.json`
   and `Run_v22.json` kept; the README rewritten.
-- **Python:** 53 test functions deleted across 20 files, three files deleted whole
+- **Python: 62 test functions deleted**, 53 by name across 20 files and 9 in three files deleted whole
   (`test_save_migrations_are_single_steps.py`, `test_passive_nodes_are_named_for_a_frozen_class.py`, whose frozen
   class list existed only for the version 3 step, and `test_gems_are_saved_at_the_new_record_versions.py`), and four
-  tests trimmed to their current-record checks.
+  tests trimmed to their current-record checks. `test_the_decisions_log_names_real_files.py` reads a new
+  `**Files deleted:**` block (the one above), so the older entries that cite these files stay as written, and fails
+  if a file listed there exists again.
 
 ### Registered for the window
 
