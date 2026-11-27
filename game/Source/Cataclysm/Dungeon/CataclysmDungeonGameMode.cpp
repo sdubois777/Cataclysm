@@ -26821,6 +26821,16 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 				   FloorNumber, Removed);
 		}
 	}
+	// BUT THE BONE COLOSSUS IS GONE WHEN THE FLOOR CHANGES, A HORDE DUNGEON'S NEXT FLOOR INCLUDED, though nothing else on
+	// the kept arena is cleared. Until 2026-11-27 one was carried down a Horde dungeon's floors; the Abomination stays
+	// through a kept arena's waves by its own rule. See `UCataclysmBoneGiants::EndTheColossi`.
+	else if (bReplacingAFloor && bKeptTheArena)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			UCataclysmBoneGiants::EndTheColossi(*World);
+		}
+	}
 
 	// WARZONE'S ALLIED SOLDIERS LAST THE FLOOR, so they are removed here, before `BringFollowersTo` below carries the
 	// player's followers to the new entrance -- a Horde arena's next wave included. Ruled 2026-10-01.

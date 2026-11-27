@@ -93,7 +93,10 @@ float UCataclysmDetonation::AreaMultiplierFor(const ACataclysmMinion* Minion)
 
 bool UCataclysmDetonation::IsALivingBomb(const ACataclysmMinion* Minion)
 {
-	return IsValid(Minion) && !Minion->bIsMachine
+	// NO VOW GIANT, as `MayDetonate` exempts them: the Abomination and the Bone Colossus never go off, so a Living
+	// Bomb's contact reach must not be theirs. Until 2026-11-27 it was, and a Colossus beside a Living Bombs vow walked
+	// to contact and never struck (the owner's play test: "just sitting at the front getting attacked").
+	return IsValid(Minion) && !Minion->bIsMachine && !UCataclysmBoneGiants::IsAGiant(Minion)
 		&& SummonerStat(Minion->Summoner.Get(), DetonateOnContactStat, Minion->TypeTags) > 0.0f;
 }
 

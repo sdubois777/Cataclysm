@@ -2,6 +2,210 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmEnemyRarity.h` and `.cpp`: `UCataclysmEnemyRarity::BodyScaleForHealthMultiple`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmBoneGiants.h` and `.cpp`: `ColossusStartsAtStep`; `StepColossusOf` draws
+  the Colossus on the enemies' ladder; `RemainsLanded` draws it at its size as it rises, and its rise line says its size
+  and where it stands. `ColossusLargestScale` is removed.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`: `GoToFloor` ends the Colossus on a kept Horde arena.
+  `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`: `CapsuleGrowthCm`, split out of
+  `BodyGrowthCm`.
+- Tests: `Cataclysm.EnemyRarity.ABodyWithARungsHealthIsDrawnAtThatRungsSize` (new) in
+  `game/Source/Cataclysm/Tests/CataclysmEnemyRarityTests.cpp`;
+  `Cataclysm.Remains.TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder` (new) and one line of
+  `Cataclysm.Remains.TheBoneColossusRisesOnTheFirstRemainsIsFedWithinSixMetresAndShrinksWhenHurt` in
+  `game/Source/Cataclysm/Tests/CataclysmRemainsTests.cpp`; `tools/tests/test_the_bone_colossus_is_drawn_on_the_enemies_ladder.py`
+  (new).
+
+### SAID FIRST
+
+- **WINDOW bc-w1 PASSED IN UNREAL ON `ab09edba1`, AND NOTHING HAS BEEN SEEN IN PLAY.** The owner is asked to look at a Colossus
+  rising, being hurt and being fed, and at a Horde dungeon's next floor.
+- **Two faults of this branch's own tests were found in the window and fixed before the passing run:** four `TestEqual`
+  calls compared a `double` scale with `float` figures and did not compile (C2666), and the Horde floor test's
+  creature was refused by the arena's geometry at 3 m and now spawns whatever stands there.
+- **No fault was found in whether the Colossus is present.** The owner's log says it rose, stayed alive and stayed with
+  the player; what it does not say is what it looked like. See below.
+
+### The owner's words, verbatim
+
+"it should start larger, and grow with the same scale as enemies. Also, i'm in a dungeon right now and there isn't one
+with me" (2026-11-27, play-testing The First Rite's option 2).
+
+### Why the owner did not see it: the log of 2026-11-27, read-only
+
+- **It rose**: `16.23.35:994 ... BONE COLOSSUS: CataclysmPlayerCharacter_0's Colossus rose on the remains of Wraith,
+  20976 health`, seven seconds into dungeon 5's first floor, where a Wraith a Wisp's blast killed fell; the player
+  stood at X=6478 Y=4550. The log gives no minion's position, which is why its rise line now does.
+- **It stayed alive**: no DIED line and no release names it, no second Colossus rose on that floor, and every Fervour
+  line to the end of the log holds "1 BarrowGuard 20". That count is of minions standing
+  (`UCataclysmSkillTemplate::ReservedFervourByKindText`), and nothing else in this log summons a Barrow Guard.
+- **It stayed with the player**: it is `CataclysmMinion_8` (the eight Wisps blasting at the same moment are 0 to 7), and
+  at `16.27.57:483` the player's own area attack hit it with five other minions, `HIT OUT: attack on CataclysmMinion_8`,
+  with the player at X=-747 Y=4539: 72 metres from where the player stood when it rose. The minion numbers are read
+  from their order; that `CataclysmMinion_8` is the Colossus is an inference, not a logged fact. `ACataclysmEnemyController::FollowCommander` walks a
+  minion with nothing to fight back to its commander, and the Barrow Guard type walks at 4.4 m/s.
+- **It looked like every other minion.** Every minion is drawn as the engine's placeholder cone. It rose at scale 1.0,
+  a normal minion's, among seven Wisps and four Skeletal Mages, and being fed barely moved it: the six feeds at
+  `16.23.36` added 15 health to 20976, so its cube-root size grew by 0.02%.
+
+### A Colossus carried down a Horde dungeon's floors, and now ended there
+
+In dungeon 1 (from `15.59.27`), floors 2 to 6 show "1 BarrowGuard 20" throughout and no Colossus rose on them, so one
+Colossus was carried down five floors; a new one rose on floor 7. In dungeon 8 a new one rose on every floor.
+**Dungeon 1 is a Horde dungeon and dungeon 8 an Elite one.** A Horde dungeon's floors are waves into one arena it keeps
+(`bKeptTheArena`), and `ACataclysmDungeonGameMode::GoToFloor` clears nothing on a kept arena, so `ClearTheFloor`, the
+only caller of `UCataclysmBoneGiants::EndTheFloor`, never ran; its last floor was carved afresh and cleared, which is
+why floor 7 raised a new one. The header says the Colossus is "Gone when the floor changes", and the coordinating
+session ruled (2026-11-27) that this holds here too.
+
+- `GoToFloor` now calls `UCataclysmBoneGiants::EndTheColossi` when it keeps the arena: every Colossus ends, and nothing
+  else does. **The Abomination is not ended there**: its own rule, in the same header, is that it "stays through a
+  kept Horde arena's waves". The floor's tally and the player's other followers stay as a kept arena keeps them.
+- Tested by `Cataclysm.Remains.AHordeDungeonsNextFloorEndsTheBoneColossusAndKeepsTheRest`, with the player's Imp carried
+  as the control, and the next remains raising a new Colossus on floor 2.
+
+### The size
+
+The enemies' rule is a ladder in `game/Data/EnemyRarities.csv`: each rarity step multiplies health by 1.85 (its
+`HealthPerScore` over Common's) and drawn size by 1.2 (`BodyScale`). So size is the health multiple to the power
+ln 1.2 / ln 1.85, about 0.296, at every step.
+
+- **`BodyScaleForHealthMultiple`** reads that table and interpolates between steps in log-log space, which reproduces
+  every step exactly and follows the same power between them. Below Common it carries the first pair's power down;
+  above the last step it holds the Cataclysm Boss's 2.49.
+- **THE STARTING STEP IS A JUDGEMENT: Legendary.** The enemy rule gives 1.0 to a Common's health, so "start larger" needs
+  a step. An Elite's 1.2 is hard to pick out among cones that are all one size; a Legendary's 1.44 is not, and leaves
+  room to grow. `ColossusStartsAtStep` is one constant.
+- **Its multiple** is that step's (3.42) times its health over the health it rose with, so hurt to half it is drawn as
+  an enemy with 1.71 times a Common's health (1.17), and fed it grows on the same ladder.
+- **The clamps:** the 3.0 ceiling is gone, replaced by the table's last step. The 0.6 floor stays: the rule carried
+  below Common reaches nought as health does, and a Colossus at one health must still be seen.
+- Its blow still follows its health against the health it rose with, as before.
+- **Its reach grows with its body** (the coordinating session, 2026-11-27): a minion's reach is measured centre to
+  centre, so a Colossus drawn larger beside a wide creature could touch it and be out of reach. Its reach is the reach
+  it rose with plus its capsule's growth, `ACataclysmEnemyCharacter::CapsuleGrowthCm` (split out of `BodyGrowthCm` so
+  growth keeps one definition), so its reach from its body's edge is what it was at a normal minion's size: at 1.44,
+  13.2 cm further from its centre; hurt below a normal minion's size, shorter. How it chooses and lands an attack is not
+  changed; the empire-tree session's `fix/minions-that-do-not-attack` holds why minions dealt no damage.
+
+### What a feed adds
+
+Feeding added 10% of the fed creature's maximum health, which on these floors was a few health against a Colossus of
+20,000: the six feeds at `16.23.36` added 15. Asked, **the owner chose the recommended option (2026-11-27, relayed by
+the coordinating session): each remains fed adds 2% of the health the Colossus ROSE with, times the dead creature's
+rarity health multiple from `game/Data/EnemyRarities.csv`**, the multiples the size rule reads: a Common's +2%, an
+Elite's +3.7%, and so on up the steps. It adds to maximum and current health, as before.
+
+- `ColossusFedStartHealthPercent` (2) replaces `ColossusFedHealthSharePercent` (10); `UCataclysmBoneGiants::FedHealthFor`
+  computes it, and the FED log line now gives the rung, the share and the health it rose with.
+- **A JUDGEMENT:** remains with no rung, a minion's (`RarityStep` -1), feed as a Common's.
+- The vow's sentence, "it grows with each creature's remains", still reads true, so no text changed.
+- Tested by `Cataclysm.Remains.TheBoneColossusIsFedTwoPercentOfItsStartHealthTimesTheRungsMultiple`: a Common's 2%, an
+  Elite's 2% times its multiple; CONTROL: 10% of the creature no longer holds. The existing Colossus test's feed line
+  was moved to the new figure.
+
+**Starting at Legendary (1.44) was approved by the coordinating session as a judgement.**
+
+### Window bc-w1, on `ab09edba1`
+
+- Merged with development at `79d3da751` (#2957, the Living Bombs reach). `CataclysmRemainsTests.cpp` kept both sides;
+  `tools/check_resolved_cpp.py --changed`: 5 files read, 0 with complaints.
+- Build: "Succeeded - 4 actions, 1 file compiled".
+- `Cataclysm.Remains.` alone: "20 tests performed, 20 succeeded, 0 failed". `Cataclysm.EnemyRarity.` alone: "7 tests
+  performed, 7 succeeded, 0 failed". Neither left a save behind.
+- The whole suite: "6105 tests performed, 6105 succeeded, 0 failed", the 6101 on development and this branch's 4; 62
+  skipped part of what they check; "Test saves: 893 written and deleted, 0 left behind".
+- Python beside it: "9672 passed, 10 skipped"; JUnit 9,682 tests, 0 failures. ruff: all checks passed.
+- C++ proof, prefix `Cataclysm.Remains.`, two breaks together: the Colossus's size read without its starting
+  multiple (`ColossusStartsAtStep < 0 ? StartMultiple * Mass : Mass`), and the kept-arena branch in `GoToFloor`
+  made unreachable (`&& FloorNumber < 0`). PROVED: with them in, "20 tests performed, 18 succeeded, 2 failed:
+  AHordeDungeonsNextFloorEndsTheBoneColossusAndKeepsTheRest, TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder",
+  the two predicted; restored, "20 tests performed, 20 succeeded, 0 failed".
+
+---
+
+## 2026-11-27 — Under Living Bombs a minion touching an enemy is in reach, measured body to body, and the Bone Colossus and the Abomination keep their own reach
+
+**Said first:**
+
+- **The owner's play test, 2026-11-27, a level-100 Necromancer holding the First Rite's Bone Colossus and the Second
+  Rite's Living Bombs:** "none of my minions are doing damage. They're just sitting there till they explode or die";
+  Skeletal Mages "just run into an enemies face and sit there"; the Colossus is "just sitting at the front getting
+  attacked, not doing any damage".
+- **The cause, from the code and the owner's log:** Living Bombs (`minions_detonate_on_contact`, added by the Death
+  finish bundle, #2943) cuts every non-machine minion's attack reach to `UCataclysmDetonation::ContactAllowanceCm`,
+  50 cm. `ACataclysmEnemyController::IsInReach` compared that with the distance between the two CENTRES, while
+  `UCataclysmDetonation::DetonateOnContact` measures between the two BODIES. A minion whose body and its target's are
+  together wider than about 52 cm walked in, touched the enemy and was never in reach: it never swung and never went
+  off, until Marrow Lance set it off or it died. The owner's log has over 1,000 blasts by Wisps, small enough to get
+  that close, most of them contact detonations, and none on contact by a Skeletal Mage or a Husk, which went off only
+  when Marrow Lance set them off. And the cut applied to the Bone Colossus, which never detonates.
+- **Not a change to the blow itself.** `ACataclysmMinion::AttackTarget` was never reached. #2945's ailment rule, the
+  test rework (#2953, #2954) and the weapon grips (#2952) do not enter into it. Without Living Bombs, minions were not
+  affected.
+
+### What changed
+
+- **`ACataclysmEnemyController::ReachAgainstCm`**: a minion that is a living bomb has its contact reach plus both
+  bodies' radii (`UCataclysmTargeting::BodyRadiusOf`), the measure `DetonateOnContact` uses. **Ruled by the
+  coordinating session on 2026-11-27 as an exception to the ruling of 2026-10-27** that a minion's "within its reach"
+  is centre to centre: every other minion keeps the centre-to-centre measure. The header says so.
+- **`UCataclysmDetonation::IsALivingBomb`**: no vow giant (`UCataclysmBoneGiants::IsAGiant`), as `MayDetonate`
+  already exempts them, so the Abomination and the Bone Colossus keep their own reach. Accepted by the coordinating
+  session on 2026-11-27. `CataclysmBoneGiants.cpp` is not changed.
+- **`ACataclysmMinion::AttackTarget`**: every minion blow writes a Display line, "MINION BLOW: <type> (<name>) struck
+  <target>: sent X, landed Y, Z to health[, evaded][, refused by immunity]". A creature's "HIT OUT" line does not name
+  its attacker, so the owner's log could not say whether a minion swung.
+- **A test**, `Cataclysm.Remains.UnderLivingBombsAMinionTouchingAnEnemyIsInReachAndTheColossusKeepsItsOwnReach`: both
+  Rites held, a real Colossus raised on remains and real Skeletal Mages. It asks the controller's own `IsInReach`. The
+  existing Living Bombs test called `AttackTarget` directly, on an Imp 60 cm from its enemy, closer than two bodies can
+  stand, which is why it passed.
+
+**Not changed, passed to the gold session's size work:** a minion's reach does not grow with its body, so a Colossus
+grown large may stand touching a wide enemy and still be out of its 200 cm centre-to-centre reach.
+
+### Measured before the window
+
+Built under the lock as minions-repro ("Succeeded - 84 actions, 77 files compiled"), the new test alone:
+**"1 tests performed, 1 succeeded, 0 failed"** on its second run. The first run failed one check, "and strikes the
+enemy" after the mage's detonation: the test had spawned the Skeletal Mages by hand, with no blast radius recorded, as
+the skill that raises a minion records one (`RecordExplosionRadius`). It is a fault in the test's set-up, corrected
+before the second run; the Necromancer detonation tests' Imp helper records 3 m the same way. The second run logged
+"MINION BLAST: SkeletalMage ... on 1 enemy: sent 2882.2 each" and "MINION BLOW: BarrowGuard (CataclysmMinion_0) struck
+CataclysmEnemyCharacter_3: sent 960.8, landed 100.0, 100.0 to health", the Colossus's body 30.0 cm and reach 200.0 cm.
+
+### Registered for window mn-w1
+
+- **The base is window s12's whole-suite engine log** (`s12_suite_engine_05a9d49b.log`, #2928 slice 12), whose tree is
+  development `06d32a873`'s but for this log: 6100 performed, 62 skipped halves, 893 test saves written and deleted, 0
+  left behind. The branch's tree declares 6050 tests, the base's 6049; the run's gap of 51 above the declared count
+  stays.
+- **The whole suite: 6101 performed, all succeeding**, 62 skipped halves, 0 test saves left behind; the number written
+  is not predicted. The Python suite beside it.
+- **No group alone**: the new test joins `Cataclysm.Remains.`, which is not new.
+- **Two C++ guard proofs**, in one `prove_cpp_guard` call each, both against the new test:
+  - **MNR**: `ReachAgainstCm`'s `return Designed + UCataclysmTargeting::BodyRadiusOf(Minion) +
+    UCataclysmTargeting::BodyRadiusOf(Target);` becomes `return Designed;`, the reach as it was. Must fail the test, on
+    "A SKELETAL MAGE 10 CM FROM AN ENEMY'S BODY IS IN REACH".
+  - **MNG**: `IsALivingBomb` without `&& !UCataclysmBoneGiants::IsAGiant(Minion)`. Must fail the test, on "THE COLOSSUS
+    IS NO LIVING BOMB", "and keeps its own reach" and the Colossus's "in reach".
+
+### The window, mn-w1 (tested head `481a639c0`)
+
+- **Whole Unreal suite: "6101 tests performed, 6101 succeeded, 0 failed"**, 62 skipped halves, test saves "893 written
+  and deleted, 0 left behind", as registered. Python beside it: "9665 passed, 10 skipped". ruff: "All checks passed!".
+- **MNR PROVED**: with the break in, the test failed on "A SKELETAL MAGE 10 CM FROM AN ENEMY'S BODY IS IN REACH", as
+  registered, and passed restored.
+- **MNG PROVED**: with the break in, the test failed on "THE COLOSSUS IS NO LIVING BOMB" and "and keeps its own reach"
+  (50 where 200 was expected), and passed restored. **It did not fail the Colossus's "in reach", which was registered
+  too: that prediction was wrong.** With MNR's body-to-body measure in place, a Colossus wrongly given the 50 cm contact
+  reach still has 50 plus both bodies' radii, about 110 cm, which covers an enemy 10 cm from its body.
+
+---
+
 ## 2026-11-27 — A weapon is held by its grip: the Greatsword, the Sword and the Dagger were held by the tip of the blade, and each weapon mesh now names where the hand holds it
 
 **Affects:**

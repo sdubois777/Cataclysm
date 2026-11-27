@@ -157,6 +157,61 @@ float UCataclysmEnemyRarity::BodyScaleForStep(
 	return Found;
 }
 
+float UCataclysmEnemyRarity::BodyScaleForHealthMultiple(
+	const UDataTable* EnemyRarityTable, float HealthMultiple)
+{
+	if (!EnemyRarityTable || HealthMultiple <= 0.0f)
+	{
+		return 1.0f;
+	}
+
+	// EACH STEP AS A POINT: its health multiple of Common's, and its size. Common is found by its step, as
+	// ScalingFromCommon below finds it, and a row with no size or no health is left out.
+	float CommonHealth = 0.0f;
+	TArray<TPair<int32, FVector2D>> Points;
+	EnemyRarityTable->ForeachRow<FCataclysmEnemyRarityRow>(
+		TEXT("UCataclysmEnemyRarity::BodyScaleForHealthMultiple"),
+		[&](const FName&, const FCataclysmEnemyRarityRow& Row)
+		{
+			if (Row.Step == 0)
+			{
+				CommonHealth = Row.HealthPerScore;
+			}
+			if (Row.BodyScale > 0.0f && Row.HealthPerScore > 0.0f)
+			{
+				Points.Add({Row.Step, FVector2D(Row.HealthPerScore, Row.BodyScale)});
+			}
+		});
+	if (CommonHealth <= 0.0f || Points.Num() < 2)
+	{
+		return 1.0f;
+	}
+	Points.Sort([](const TPair<int32, FVector2D>& A, const TPair<int32, FVector2D>& B) { return A.Key < B.Key; });
+	for (TPair<int32, FVector2D>& Point : Points)
+	{
+		Point.Value.X /= CommonHealth;
+	}
+
+	// THE POWER BETWEEN TWO POINTS, AND A SIZE ALONG IT: log-log interpolation, so a geometric ladder is followed exactly.
+	const auto SizeAlong = [HealthMultiple](const FVector2D& Low, const FVector2D& High)
+	{
+		const float Power = FMath::Loge(High.Y / Low.Y) / FMath::Loge(High.X / Low.X);
+		return Low.Y * FMath::Pow(HealthMultiple / Low.X, Power);
+	};
+	if (HealthMultiple <= Points[0].Value.X)
+	{
+		return SizeAlong(Points[0].Value, Points[1].Value);
+	}
+	for (int32 Which = 1; Which < Points.Num(); ++Which)
+	{
+		if (HealthMultiple <= Points[Which].Value.X)
+		{
+			return SizeAlong(Points[Which - 1].Value, Points[Which].Value);
+		}
+	}
+	return Points.Last().Value.Y;
+}
+
 bool UCataclysmEnemyRarity::ScalingFromCommon(
 	const UDataTable* EnemyRarityTable, int32 Step,
 	float& OutHealth, float& OutDamage, float& OutArmour)
