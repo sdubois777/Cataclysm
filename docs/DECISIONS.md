@@ -164,7 +164,30 @@ only by a retired node:
   were Any Fuel's condition and Kindred Fires and Borrowed Time, so nothing in the game reads it now. It is not a stat
   and it has callers in five files and Python checks of its own, so it was left for a change of its own.
 
-**Not built or run when this was written.** The run table follows when the window runs.
+### The run (window sc-w1, 2026-11-27)
+
+| Step | Head | What it printed |
+| :-- | :-- | :-- |
+| Compile alone | `2c9012a20` | Failed: 11 errors, all `ReworkAllowance` undeclared in the new rows test, which did not name its namespace |
+| Compile alone | `38efdceb` | "Build: Succeeded - 5 actions, 1 file compiled: Module.Cataclysm.45.cpp" |
+| DataTables | `38efdceb` | `DT_PassiveEffects` and `DT_PassiveNodes` rebuilt, committed as `0e8bfd2da` |
+| `Cataclysm.SoulCollectorRework.` alone | `0e8bfd2da` | "17 tests performed, 17 succeeded, 0 failed"; saves 0 written, 0 left behind |
+| Whole suite | `0e8bfd2da` | "6109 tests performed, 6108 succeeded, 1 failed: TheSixNodesRowsAreTheirSentences"; saves 893 written and deleted, 0 left behind. 6109 was the registered prediction (6105 + 23 - 19) |
+| `Cataclysm.FervourOnEvents.` | `21873f778` | "7 tests performed, 7 succeeded, 0 failed", after that test was told Tear Loose's base is the maximum |
+| Python of record | `0e8bfd2da` | "9670 passed, 10 skipped"; JUnit 9,680 tests, 0 failures, 0 errors. ruff: all checks passed |
+| Python reading the test sources | `21873f778` | "1456 passed, 6 skipped" (135 files) |
+
+**The whole suite's one failure was the test's and not the game's.** `Cataclysm.FervourOnEvents.TheSixNodesRowsAreTheirSentences`
+expected every action row it reads to pay a flat amount; Tear Loose now restores 1% of maximum health, so its row's base
+is `maximum`, as `PassiveEffects.csv` says. The test now states each row's base. The whole suite was not run again after
+that change; the group was.
+
+**C++ guard proof, PROVED, registered before the run**, three breaks in one call on `Cataclysm.SoulCollectorRework.`:
+Gathered Souls' row reach ignored (every `nearby_death` row at 3 metres), the decay counted per step rather than across
+steps, and Death Made Flesh's switch read as off at 1. With them in: "17 tests performed, 13 succeeded, 4 failed:
+DeathMadeFleshTakesAwayTheFervoursDamageAndGivesDefence, GatheredSoulsCountsADeathWithinSixMetresAndNotSeven,
+GravePatienceHealsForEachFiveFervourDecayed, UnquietSoulsStrikesForEachFiveFervourDecayed", the four predicted.
+Restored: "17 tests performed, 17 succeeded, 0 failed".
 
 ---
 
