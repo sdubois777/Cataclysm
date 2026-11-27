@@ -120,6 +120,7 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Player/CataclysmPowerScore.h"
 #include "AbilitySystem/CataclysmSilence.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * What the dungeon modifiers do on a floor. Issue #41.
@@ -22620,6 +22621,7 @@ bool FCataclysmBloodGatesLastFloorTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);
@@ -23861,6 +23863,7 @@ bool FCataclysmPortalLastFloorTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);
@@ -44223,6 +44226,7 @@ bool FCataclysmTithesLastFloorTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);
@@ -44823,6 +44827,7 @@ bool FCataclysmPactLastFloorTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);
@@ -54117,6 +54122,7 @@ bool FCataclysmRuleOfChaosLastFloorTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);
@@ -55342,6 +55348,7 @@ bool FCataclysmThoseInTheDarkLastFloorTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten6; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);
@@ -56018,6 +56025,7 @@ namespace CataclysmDungeonModifierEffectsTest
 			return nullptr;
 		}
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten7; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(1);
 		Run->AdvanceDay();
 		Mode->SetEmpireRunForTests(Run);
@@ -60544,6 +60552,7 @@ bool FCataclysmAscendantCoreTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten8; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);
@@ -60629,6 +60638,7 @@ bool FCataclysmAscendantCoreOnlyLastTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten9; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);
@@ -61280,6 +61290,7 @@ bool FCataclysmEdictsAfterTheCoreTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten10; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	Mode->SetEmpireRunForTests(Run);

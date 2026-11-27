@@ -302,6 +302,12 @@ struct CATACLYSMEMPIRE_API FCataclysmBuiltCataclysmsForTests
 	explicit FCataclysmBuiltCataclysmsForTests(const TArray<ECataclysmType>& InInstead);
 	~FCataclysmBuiltCataclysmsForTests();
 
+	/**
+	 * Whether a test holds one now. `CataclysmTestRun::FBuiltAsWritten` (`Tests/CataclysmTestRun.h`) keeps the list an
+	 * outer test already holds rather than replacing it with its own. Issue #2928.
+	 */
+	static bool IsHeld();
+
 	FCataclysmBuiltCataclysmsForTests(const FCataclysmBuiltCataclysmsForTests&) = delete;
 	FCataclysmBuiltCataclysmsForTests& operator=(const FCataclysmBuiltCataclysmsForTests&) = delete;
 

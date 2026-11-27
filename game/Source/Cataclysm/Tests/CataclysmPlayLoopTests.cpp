@@ -11,6 +11,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Player/CataclysmPlayLoopLog.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * THE PLAY LOOP'S LINES, built from what they are given (`FCataclysmPlayLoopLog`). Issue #2733 slice 4. The two tests
@@ -24,6 +25,7 @@ namespace CataclysmPlayLoopTextTest
 	UCataclysmEmpireRun* AnOpenedRun()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 4242, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Run->FireOpeningSurge();
 		return Run;

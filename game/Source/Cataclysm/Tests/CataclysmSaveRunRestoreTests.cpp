@@ -15,6 +15,7 @@
 #include "Save/CataclysmSaveRecords.h"
 #include "Save/CataclysmSaveStorage.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 namespace CataclysmSaveRunRestoreTest
 {
@@ -28,6 +29,7 @@ namespace CataclysmSaveRunRestoreTest
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 		Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Both, Rung, Tier);
 		for (int32 Day = 0; Day < Days; ++Day)
 		{

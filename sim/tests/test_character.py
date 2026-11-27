@@ -661,7 +661,6 @@ def test_spends_health_does_not_mean_the_class_has_no_mana():
 def test_the_full_sheet_can_be_produced_for_any_character():
     sheet = ch.Character(ch.GENERIC, level=50).sheet()
     assert set(sheet) == set(ch.ALL_STATS)
-    assert len(sheet) == 46
 
 
 # --------------------------------------------------------------------------

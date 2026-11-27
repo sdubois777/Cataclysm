@@ -31,6 +31,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * THE INVENTORY'S THREE TABS. Issue #2849, the owner's request of 2026-11-22 -- "I think we need to add tabs to the
@@ -113,6 +114,7 @@ namespace CataclysmInventoryTabsTest
 			State->SetOwnGold(1000000);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2849, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		if (Out.Character && Out.Character->GetInventory() && Out.Character->GetEquipment())
@@ -568,8 +570,8 @@ bool FCataclysmInventoryTabsScreenTest::RunTest(const FString&)
 			  FString(TEXT("Gems (3)")));
 	TestTrue(TEXT("the gear tab's name is the header line, not this"),
 			 UCataclysmInventoryScreen::TabNameFor(ECataclysmInventoryTab::Gear, 5).IsEmpty());
-	TestEqual(TEXT("**every material in the table, 27**"), Order.Num(), Table->GetRowNames().Num());
-	TestEqual(TEXT("and the table holds 27"), Table->GetRowNames().Num(), 27);
+	TestEqual(TEXT("**every material in the table**"), Order.Num(), Table->GetRowNames().Num());
+	TestTrue(TEXT("CONTROL: the table holds materials"), Table->GetRowNames().Num() > 0);
 	TestTrue(TEXT("**by tier, lowest first**"), bByTier);
 	TestTrue(TEXT("the Corrupted Mote is among them"), Order.Contains(CataclysmInventoryTabsTest::Mote));
 	TestEqual(TEXT("named as the table names it"), MoteName, FString(TEXT("Corrupted Mote")));

@@ -26,6 +26,7 @@
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * A death in a dungeon of the empire says what it cost. Issue #41, ruled by the coordinating session on 2026-11-02.
@@ -88,6 +89,7 @@ namespace CataclysmDeathCostTest
 		Out.Mode->StartPlay();
 
 		Out.Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(1, ECataclysmSurgeMode::Static, 0);
 		Out.Run->AdvanceDay();
 		Out.Run->Dungeons.Empty();
@@ -208,6 +210,7 @@ bool FCataclysmDeathCostLineTest::RunTest(const FString& Parameters)
 
 	UCataclysmEmpireRun* NotBegun = NewObject<UCataclysmEmpireRun>();
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	const FString A = NameOfCity(*Run, 0);
 	const FString B = NameOfCity(*Run, 1);
@@ -281,6 +284,7 @@ bool FCataclysmDeathCostNameTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDeathCostTest;
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->Dungeons.Empty();
 	const FString A = NameOfCity(*Run, 0);
@@ -512,6 +516,7 @@ bool FCataclysmDeathCostScreenTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDeathCostTest;
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->LastHitDay = 10;
 	Run->LastHitCityId = 0;
@@ -693,6 +698,7 @@ bool FCataclysmDeathCostSaveTest::RunTest(const FString& Parameters)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 		Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(4242, ECataclysmSurgeMode::Both, 2, 4);
 		for (int32 Day = 0; Day < 10; ++Day)
 		{

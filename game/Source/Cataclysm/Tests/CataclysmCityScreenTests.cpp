@@ -21,6 +21,7 @@
 #include "Save/CataclysmSavePartition.h"
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for the city screen, issue #42.
@@ -48,6 +49,7 @@ namespace CataclysmCityScreenTest
 	UCataclysmEmpireRun* MakeRun(int32 LethalityRung = 0)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 4242, ECataclysmSurgeMode::Static,
 				   LethalityRung);
 		return Run;

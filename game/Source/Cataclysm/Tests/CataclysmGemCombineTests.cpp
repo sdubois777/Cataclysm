@@ -22,6 +22,7 @@
 #include "Save/CataclysmSavePartition.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Package.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * COMBINING GEMS AT THE FORGE: TWO OF A KIND AND RARITY MAKE ONE OF THE NEXT RARITY, WITH NO CAP AND NO COST.
@@ -80,6 +81,7 @@ namespace CataclysmGemCombineTest
 			State->SetOwnGold(1000000);
 		}
 		Out.Run = NewObject<UCataclysmEmpireRun>(Out.Instance);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Out.Run->Begin(/* InSeed */ 2846, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Out.Instance->EmpireRun = Out.Run;
 		if (Out.Character && Out.Character->GetInventory() && Out.Character->GetEquipment())

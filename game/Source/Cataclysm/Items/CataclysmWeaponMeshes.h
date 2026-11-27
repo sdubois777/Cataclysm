@@ -75,4 +75,24 @@ public:
 	 * and the player character logs it as one.
 	 */
 	static bool HasRowFor(const UDataTable* Table, FName Base);
+
+	/**
+	 * Where a base's mesh sits on the hand socket: the hand component's relative
+	 * transform, which puts the row's grip point on the socket and draws the mesh
+	 * at `Scale`. A base with no row is held at its origin.
+	 *
+	 * THE OWNER, 2026-11-27: "he's holding the greatsword by the tip.. instead of
+	 * the handle". The grip point and turn are data (`FCataclysmWeaponMeshRow`'s
+	 * GripX to GripRoll), so a correction costs no rebuild.
+	 *
+	 * @param Scale  the scale `MeshFor` gave, so the two always agree
+	 */
+	static FTransform GripFor(const UDataTable* Table, FName Base, float Scale);
+
+	/**
+	 * The arithmetic `GripFor` does, apart from the table: rotate by
+	 * `GripRotation`, scale by `Scale`, then move so the mesh point `GripPoint`
+	 * lands on the socket's origin.
+	 */
+	static FTransform GripFrom(const FVector& GripPoint, const FRotator& GripRotation, float Scale);
 };

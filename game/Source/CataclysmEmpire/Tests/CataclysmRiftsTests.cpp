@@ -9,6 +9,7 @@
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Demonic's Infernal Rifts on the empire side: issue #51, slice B2.
@@ -29,6 +30,7 @@ namespace CataclysmRiftsTest
 	UCataclysmEmpireRun* MakeEmptyRun(int32 Seed = 1)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();
@@ -314,6 +316,7 @@ bool FCataclysmRiftsEightModifiersTest::RunTest(const FString& Parameters)
 		AddRows(Run->ModifierPool, ECataclysmType::Void, TEXT("Void"), 14);
 		AddRows(Run->ModifierPool, ECataclysmType::Famine, TEXT("Famine"), 14);
 		AddRows(Run->ModifierPool, ECataclysmType::Celestial, TEXT("Celestial"), 14);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(4, ECataclysmSurgeMode::Static, 0, Tier);
 		TestTrue(TEXT("seed 4 faces Demonic"), Run->ActiveCataclysms.Contains(ECataclysmType::Demonic));
 
@@ -411,6 +414,7 @@ bool FCataclysmRiftsDemonicGuideTest::RunTest(const FString& Parameters)
 		GuideRow.Cataclysm = ECataclysmType::Demonic;
 		GuideRow.Danger = 10.0f;
 		Run->ModifierPool.Add(GuideRow);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(4, ECataclysmSurgeMode::Static, 0, Tier);
 		TestTrue(TEXT("seed 4 faces Demonic"), Run->ActiveCataclysms.Contains(ECataclysmType::Demonic));
 
@@ -472,6 +476,7 @@ bool FCataclysmRiftsModifierStreamTest::RunTest(const FString& Parameters)
 	{
 		AddRows(Run->ModifierPool, ECataclysmType::Demonic, TEXT("Demonic"), 14);
 		AddRows(Run->ModifierPool, ECataclysmType::Death, TEXT("Death"), 14);
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(4);
 		Run->ActiveCataclysms = { ECataclysmType::Demonic, ECataclysmType::Death };
 	}
@@ -690,6 +695,7 @@ bool FCataclysmRiftsDeathSurgeTest::RunTest(const FString& Parameters)
 	// ON THE DAY OF THE RUN'S FIRST SURGE, so any least-interval brake would refuse it. `EndTheDungeonForADeath` decides
 	// it was a Rift; `Cataclysm.DeathCost.` holds that half.
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	const int32 Fired = Run->Surges->SurgesFired;

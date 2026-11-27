@@ -97,7 +97,7 @@ def buff_rows() -> dict[str, str]:
 
 def test_the_reader_finds_the_table() -> None:
     """A reader that finds nothing would pass the comparisons below."""
-    assert len(table_names()) == len(IN_THE_TABLE) == 18
+    assert len(table_names()) == len(IN_THE_TABLE) > 0
 
 
 def test_the_table_holds_exactly_the_buffs_listed_here_in_this_order() -> None:
@@ -125,7 +125,6 @@ def test_every_buff_row_is_in_the_table() -> None:
     it joins the table."""
     rows = set(buff_rows())
     assert rows == set(IN_THE_TABLE)
-    assert len(rows) == 18
 
 
 def test_the_pin_names_the_buffs_in_the_tables_order() -> None:

@@ -53,6 +53,7 @@ from __future__ import annotations
 import inspect
 
 import _pytest.assertion.util as assertion_util
+import pytest
 
 #: Below this many characters pytest's own diff is cheap and more useful (it
 #: shows the whole text with the phrase marked), so it is left alone. At this
@@ -114,3 +115,56 @@ def a_failing_not_in_over_a_large_text_explains_itself(term: str, text: str, ver
 
 if _pytests_own_notin_text is not None:
     assertion_util._notin_text = a_failing_not_in_over_a_large_text_explains_itself
+
+
+# --- A second job, for issue #2928: a simulation a test builds faces Cataclysms the test can name ----------------
+#
+# WHY. A simulation's Cataclysms are drawn from its seed by `cataclysm_order_for` (`sim/cataclysm_sim/engine.py`),
+# which puts `TuningConfig.BUILT_CATACLYSMS` first. When the built list changes, every test that builds a simulation
+# from a fixed seed without naming its Cataclysms meets a different one. On 2026-11-26 War left the built list, and
+# the #2928 survey found 79 such test functions in 21 files, besides helpers and fixtures; the game's tests carry the
+# same fix (`game/Source/CataclysmEmpire/Tests/CataclysmTestRun.h`).
+#
+# WHAT. While a test runs, the draw holds `BUILT_ON_2026_11_26`, the list the tests were made to name, whenever the
+# test left `BUILT_CATACLYSMS` at the config's own default. A test that sets its own built list keeps it: the default
+# is recognised by identity, so a test's own tuple, even one with the same names, is never replaced. A test whose
+# subject is the draw itself marks itself `real_built_list` and meets the config's real list.
+#
+# TODAY NOTHING MOVES: the config's built list is the list held. Each place the draw is reached goes through
+# `engine.cataclysm_order_for`, which this replaces on the module, so `Simulation` and a direct call of
+# `engine.active_cataclysms_for` see the same held list.
+
+BUILT_ON_2026_11_26 = ("Demonic", "Death")
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "real_built_list: the test's subject is the Cataclysm draw itself, so it meets the config's real built "
+        "list rather than the named list every other test holds (issue #2928)")
+
+
+@pytest.fixture(autouse=True)
+def the_built_list_as_written(request, monkeypatch):
+    """Holds `BUILT_ON_2026_11_26` in the simulation's draw for this test; see the comment above."""
+    if request.node.get_closest_marker("real_built_list"):
+        return
+    try:
+        import dataclasses
+
+        from cataclysm_sim import engine
+        from cataclysm_sim.config import TuningConfig
+    except ImportError:
+        return
+    default = TuningConfig.__dataclass_fields__["BUILT_CATACLYSMS"].default
+    real = engine.cataclysm_order_for
+
+    def held(cfg, seed):
+        if cfg.BUILT_CATACLYSMS is default:
+            cfg = dataclasses.replace(cfg, BUILT_CATACLYSMS=held.built_list)
+        return real(cfg, seed)
+
+    # ON THE FUNCTION, so a test reaches the held list through `engine.cataclysm_order_for.built_list` and never has
+    # to import this file: `import conftest` can find `sim/tests/conftest.py` first, depending on the import path.
+    held.built_list = BUILT_ON_2026_11_26
+    monkeypatch.setattr(engine, "cataclysm_order_for", held)

@@ -452,7 +452,10 @@ void ACataclysmPlayerCharacter::DrawWeaponsInHands(const UCataclysmEquipmentComp
 			UCataclysmWeaponMeshes::MeshFor(Table, Worn->Base, Scale);
 
 		Hand.Value->SetStaticMesh(WeaponMesh);
-		Hand.Value->SetRelativeScale3D(FVector(Scale));
+		// HELD BY ITS GRIP, AT ITS SCALE. The owner, 2026-11-27: "he's holding the greatsword by the tip.. instead of
+		// the handle". The row says which point of the mesh is its grip; `GripFor` puts that point on the socket. Set
+		// every time a mesh is drawn, so a weapon held one way cannot leave its turn on the next.
+		Hand.Value->SetRelativeTransform(UCataclysmWeaponMeshes::GripFor(Table, Worn->Base, Scale));
 	}
 }
 

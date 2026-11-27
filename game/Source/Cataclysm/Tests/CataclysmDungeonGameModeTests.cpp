@@ -37,6 +37,7 @@
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/Class.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for the game mode that puts a player on a generated dungeon floor.
@@ -2496,6 +2497,7 @@ bool FCataclysmDungeonModeHordeLastWaveIsClearedTest::RunTest(const FString& Par
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/*Seed=*/5150);
 	Run->AdvanceDay();
 
