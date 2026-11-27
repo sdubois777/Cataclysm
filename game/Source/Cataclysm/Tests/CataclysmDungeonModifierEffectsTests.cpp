@@ -28924,8 +28924,13 @@ bool FCataclysmEchoesHordeAggroTest::RunTest(const FString& Parameters)
 		{
 			return true;
 		}
+		// ITS CLOCK'S FIRST BEAT: elsewhere the beat it notices on, which starts the clock at nought; in the Horde,
+		// having noticed from afar, the first beat within, which already counts. So the Horde has no extra beat here.
 		StandThePlayerFrom(Player, First, First, Out.NoticeCm - 100.0f);
-		Beat(Mode, 1);
+		if (!bHorde)
+		{
+			Beat(Mode, 1);
+		}
 		Beat(Mode, BeatsFor(Effects::EchoesGiveUpAfterSeconds) - 1);
 		Out.bStandingABeatShort = Stands();
 		Beat(Mode, 1);

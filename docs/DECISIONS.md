@@ -61,14 +61,30 @@ its distance with `NoticeRadiusCm` directly. **Only Echoes of the Past did both.
 - **Three C++ guard proofs**, in one `prove_cpp_guard` call each, against the new test:
   - **EHS**: `RaiseTheEchoes`' `SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, Dead.Rung)` becomes
     `SpawnPlacedCreature(Placement, 1.0f, Dead.Rung)`, the spawn as it was. Must fail "A HORDE FLOOR'S ECHO IS RAISED
-    WITH THE FLOOR'S MULTIPLIER" and "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE
-    AWAY", and nothing else.
+    WITH THE FLOOR'S MULTIPLIER", "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE
+    AWAY" and "and at ten it is gone", and nothing else.
   - **EHN**: `if (ApartCm > Echo->NoticesFromCm())` becomes `if (ApartCm > Echo->NoticeRadiusCm)`, the notice as it
-    was. Must fail "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY", and nothing
-    else.
+    was. Must fail "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY" and "and at
+    ten it is gone", and nothing else.
+  - **Why EHS and EHN also fail "and at ten it is gone"**: with either break the Horde echo notices only once the
+    player is within its own distance, and that beat starts its clock at nought, while the test gives the Horde no
+    noticing beat there; so at ten seconds it is a beat short of giving up.
   - **EHC**: `else if (DungeonSubType != ECataclysmDungeonSubType::Horde || ApartCm <= OwnNoticeCm)` becomes `else`,
     the clock as it was. Must fail "AND IS STILL STANDING WHEN IT REACHES ITS KIND'S NOTICE DISTANCE", "its clock
     starts there" and "and at ten it is gone" (a gone echo is not walked in further), and nothing else.
+
+### Window eh-w1, stopped before the proofs: the new test's own fault
+
+At head `f5c02d004` the whole suite performed **"6106 tests performed, 6105 succeeded, 1 failed"**, the new test, on
+one check: "its clock starts there: a beat short of ten seconds within it, it still stands". Every other check of it
+passed, the control included. 62 skipped halves and "895 written and deleted, 0 left behind", as registered. Python
+beside it "9672 passed, 10 skipped"; ruff "All checks passed!". No proof was run.
+
+**The fault was in the test, not the game.** In the Horde the echo has already noticed from afar, so the first beat
+within its own distance already counts on its clock; elsewhere that beat is the one it notices on, which starts the
+clock at nought. The test gave both the same extra beat, so the Horde's echo had reached ten seconds one beat early.
+The test now gives the Horde no extra beat. The game is unchanged. EHS's and EHN's registrations above were corrected
+with it, before any proof was run. The next window registers the same: 6106, all succeeding.
 
 ---
 
