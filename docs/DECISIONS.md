@@ -23,6 +23,11 @@ session asked, the same day, for the whole tree drawn at once at the file's posi
 any drawn shapes and labels from the builder, pan and zoom, and each node drawn as a mark in the class screen's style,
 keeping everything the screen does.
 
+**The target, set by the owner the same day.** A picture of the whole-tree view, drawn by a Python script from the
+generated tables with the screen's sizes and fit (`.claude/windows/empire_tree_preview.png` on the branch's worktree; not
+a screenshot of the game), was shown to the owner, who said, verbatim: "Yes! That looks beautiful". The screen is to
+match that picture.
+
 ### Why S3 no longer holds
 
 S3 rested on a measurement: every node was a 150 by 44 box holding its name, and the whole tree allowed a box only
