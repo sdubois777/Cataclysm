@@ -509,7 +509,11 @@ public:
 	 *     minion or a gadget -- whose reach is a range set against enemies and not
 	 *     against the player, and whose "within its reach" is ruled to be the
 	 *     brain's own centre-to-centre measure (`ACataclysmMinion::
-	 *     HostilesWithinReach`, ruled 2026-10-27), which this keeps true;
+	 *     HostilesWithinReach`, ruled 2026-10-27), which this keeps true --
+	 *     EXCEPT a minion that is a living bomb (Living Bombs, the Second Rite),
+	 *     whose reach is contact: that is measured body to body, as
+	 *     `UCataclysmDetonation::DetonateOnContact` measures it, by adding both
+	 *     bodies' radii (2026-11-27, the owner's play test);
 	 *   - a creature whose reach is a RANGE rather than a contact reach
 	 *     (`ACataclysmEnemyCharacter::AttackReachIsAContactReach` false: the
 	 *     Gatekeeper, the Succubus, the Corrupted Sentinel, a Corrupted Stalker
