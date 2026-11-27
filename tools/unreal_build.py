@@ -174,6 +174,9 @@ FOUND_PATH = re.compile(r"LogAutomationCommandLine: Display: \t(\S+)")
 #: `TEST_RESULT` reads the short `Name`; the requested list names tests by their full path. Issue #2679.
 COMPLETED_PATH = re.compile(r"Test Completed\. Result=\{\w+\}\s+Name=\{[^}]+\}\s+Path=\{([^}]+)\}")
 
+#: The same line with its result and short name too, for counting each group of a several-group run. Issue #2928.
+COMPLETED_RESULT_PATH = re.compile(r"Test Completed\. Result=\{(\w+)\}\s+Name=\{([^}]+)\}\s+Path=\{([^}]+)\}")
+
 #: The token a test writes when it could not check part of what it is named for.
 #:
 #: FIFTEEN TESTS TAKE A SHORTER PATH WHEN THE PARAGON ART IS ABSENT, checking
@@ -1117,6 +1120,55 @@ def performed_from_completed_lines(text: str) -> int | None:
     return expected
 
 
+def split_prefixes(prefix: str) -> list[str]:
+    """The groups a `--prefix` names: the engine's `Automation RunTests` takes several filters joined with "+", and
+    proofs have run that way since the Death window's proof F. Empty pieces (a stray "+") are dropped."""
+    return [piece for piece in prefix.split("+") if piece]
+
+
+@dataclasses.dataclass(frozen=True)
+class GroupResult:
+    """One group's share of a several-group run, read from the run's "Test Completed" lines. Issue #2928 slice 6.
+
+    THE GROUP IS A STRING PREFIX MATCHED WITHOUT REGARD TO CASE, as the engine's own filter is (CLAUDE.md: `Cataclysm.
+    Skills` also selects `Cataclysm.SkillShape`), so a prefix ending in a dot names one group. A test whose path two
+    prefixes match is counted in both, and `summary` cannot tell that from two tests: name groups with their dots.
+    """
+
+    __test__ = False
+
+    prefix: str
+    succeeded: tuple[str, ...]
+    failed: tuple[str, ...]
+
+    @property
+    def performed(self) -> int:
+        return len(self.succeeded) + len(self.failed)
+
+    @property
+    def summary(self) -> str:
+        line = (f"Group {self.prefix}: {self.performed} tests performed, {len(self.succeeded)} succeeded, "
+                f"{len(self.failed)} failed")
+        if self.failed:
+            line += ": " + ", ".join(self.failed)
+        return line
+
+
+def group_results(text: str, prefixes: Sequence[str]) -> list[GroupResult]:
+    """Each prefix's results in the log `text`, in the order given, a prefix no test matched included with nought.
+
+    WHY ONE EDITOR START FOR SEVERAL GROUPS. A window's "new groups alone" step started one editor per group, about 18 s
+    each (the survey on issue #2928, section 3). Run with the groups joined by "+", the step starts one editor and
+    reads each group's count from these lines, which `main` prints after the `Tests:` line.
+    """
+    found: dict[str, tuple[list[str], list[str]]] = {prefix: ([], []) for prefix in prefixes}
+    for result, name, path in COMPLETED_RESULT_PATH.findall(text):
+        for prefix in prefixes:
+            if path.lower().startswith(prefix.lower()):
+                found[prefix][0 if result == "Success" else 1].append(name)
+    return [GroupResult(prefix, tuple(found[prefix][0]), tuple(found[prefix][1])) for prefix in prefixes]
+
+
 def test_saves_line(text: str) -> str:
     """The run's "Test saves: N written and deleted, M left behind" line, or a line saying the log has none.
 
@@ -1612,7 +1664,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
              "prove_cpp_guard run saved, then you rebuild (issue #1917).")
     parser.add_argument(
         "--prefix", default="Cataclysm",
-        help="only run tests whose name starts with this (default: Cataclysm)")
+        help="only run tests whose name starts with this (default: Cataclysm). Several groups may be joined "
+             "with '+' in one editor start, each ending in a dot; a 'Group' line then gives each one's count")
     parser.add_argument(
         "--target", default=DEFAULT_TARGET,
         help=f"the build target (default: {DEFAULT_TARGET})")
@@ -1780,6 +1833,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     # WHAT THE TESTS' SAVE SLOTS CAME TO, beside the result. Read again from the log the run left, as
     # `run_automation_tests` read it. Printed since #2658; part of the exit code since #2673 (`saves_failure`).
     log_text = TEST_LOG.read_text(encoding="utf-8", errors="replace") if TEST_LOG.is_file() else ""
+    # AND EACH GROUP'S COUNT WHEN THE PREFIX NAMES SEVERAL, one line each, so one editor start can stand for a window's
+    # groups run alone. Issue #2928 slice 6.
+    prefixes = split_prefixes(arguments.prefix)
+    if len(prefixes) > 1:
+        for group in group_results(log_text, prefixes):
+            print(group.summary)
     saves_line = test_saves_line(log_text)
     print(saves_line)
     # WHETHER THE TEST EDITOR STARTED THE ENGINE'S MCP SERVER, which `MCP_SERVER_OFF` keeps off. Issue #2745.
