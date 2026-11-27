@@ -1963,3 +1963,77 @@ def test_restore_proof_says_which_file_it_could_not_write_back_and_keeps_the_rec
     printed = capsys.readouterr().out
     assert "FILES LEFT BROKEN" in printed and "Thing.cpp" in printed
     assert recovery.exists(), "kept, so the same command can be run again"
+
+
+# ---------------------------------------------------------------------------
+# Several groups in one editor start (issue #2928 slice 6)
+# ---------------------------------------------------------------------------
+
+SEVERAL_GROUPS_LOG = """\
+LogAutomationController: Display: Test Completed. Result={Success} Name={AlphaOne} Path={Cataclysm.Roster.AlphaOne}
+LogAutomationController: Error: Test Completed. Result={Fail} Name={AlphaTwo} Path={Cataclysm.Roster.AlphaTwo}
+LogAutomationController: Display: Test Completed. Result={Success} Name={Longer} Path={Cataclysm.RosterExtra.Longer}
+LogAutomationController: Display: Test Completed. Result={Success} Name={Drawn} Path={cataclysm.cataclysmdraw.Drawn}
+LogAutomationController: Display: Automation Test Queue Empty 4 tests performed.
+"""
+
+
+def test_a_prefix_joined_with_plus_names_each_group_and_drops_empty_pieces() -> None:
+    assert unreal_build.split_prefixes("Cataclysm.Roster.+Cataclysm.CataclysmDraw.") == [
+        "Cataclysm.Roster.", "Cataclysm.CataclysmDraw."]
+    assert unreal_build.split_prefixes("Cataclysm.Roster.") == ["Cataclysm.Roster."]
+    assert unreal_build.split_prefixes("A.++B.+") == ["A.", "B."]
+
+
+def test_each_group_is_counted_from_its_completed_lines_without_regard_to_case() -> None:
+    """Issue #2928 slice 6. Each group's count and failures, read as the engine's filter reads a prefix: a string
+    prefix without regard to case. CONTROL: a group with a trailing dot does not take a longer group's tests, and a
+    group no test matched reads nought rather than being left out."""
+    groups = unreal_build.group_results(
+        SEVERAL_GROUPS_LOG, ["Cataclysm.Roster.", "Cataclysm.CataclysmDraw.", "Cataclysm.Nowhere."])
+    roster, draw, nowhere = groups
+    assert (roster.performed, roster.succeeded, roster.failed) == (2, ("AlphaOne",), ("AlphaTwo",))
+    assert roster.summary == "Group Cataclysm.Roster.: 2 tests performed, 1 succeeded, 1 failed: AlphaTwo"
+    assert (draw.performed, draw.succeeded) == (1, ("Drawn",)), "matched without regard to case, as the engine does"
+    assert draw.summary == "Group Cataclysm.CataclysmDraw.: 1 tests performed, 1 succeeded, 0 failed"
+    assert nowhere.performed == 0 and nowhere.summary.startswith("Group Cataclysm.Nowhere.: 0 tests performed")
+
+
+def test_control_a_prefix_without_its_dot_takes_the_longer_group_too() -> None:
+    """Why the groups are named with their dots: `Cataclysm.Roster` also matches `Cataclysm.RosterExtra`."""
+    (roster,) = unreal_build.group_results(SEVERAL_GROUPS_LOG, ["Cataclysm.Roster"])
+    assert roster.performed == 3
+
+
+def test_the_tests_command_prints_a_group_line_for_each_prefix_joined_with_plus(
+        monkeypatch, capsys, a_test_log_outside_the_repository) -> None:
+    """One editor start for a window's groups run alone prints each group's count after the `Tests:` line. CONTROL:
+    a single prefix prints no group line, as before."""
+    import unreal_build as module
+
+    log = a_test_log_outside_the_repository
+    monkeypatch.setattr(module, "build", lambda *args, **kwargs: outcome(BUILD_THAT_DID_NOTHING))
+    asked = []
+
+    def run(prefix, *args, **kwargs):
+        asked.append(prefix)
+        log.write_text(SEVERAL_GROUPS_LOG, encoding="utf-8")
+        return module.parse_test_log(SEVERAL_GROUPS_LOG)
+
+    monkeypatch.setattr(module, "run_automation_tests", run)
+    monkeypatch.setattr(module, "declared_tests", lambda: ())
+    monkeypatch.setattr(module, "current_commit", lambda: "0" * 40)
+
+    module.main(["tests", "--prefix", "Cataclysm.Roster.+Cataclysm.CataclysmDraw."])
+    printed = capsys.readouterr().out.splitlines()
+    assert asked == ["Cataclysm.Roster.+Cataclysm.CataclysmDraw."], "one run, the prefixes passed as one filter"
+    tests_at = next(index for index, line in enumerate(printed) if line.startswith("Tests:"))
+    groups = [line for line in printed if line.startswith("Group ")]
+    assert groups == [
+        "Group Cataclysm.Roster.: 2 tests performed, 1 succeeded, 1 failed: AlphaTwo",
+        "Group Cataclysm.CataclysmDraw.: 1 tests performed, 1 succeeded, 0 failed",
+    ]
+    assert printed.index(groups[0]) > tests_at
+
+    module.main(["tests", "--prefix", "Cataclysm.Roster."])
+    assert not [line for line in capsys.readouterr().out.splitlines() if line.startswith("Group ")]
