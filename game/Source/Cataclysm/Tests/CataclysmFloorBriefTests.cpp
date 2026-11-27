@@ -17,6 +17,7 @@
 #include "Empire/CataclysmRoster.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * A dungeon deciding what its floors hold. Issue #41.
@@ -1886,6 +1887,7 @@ bool FCataclysmFloorBriefEnteringCarriesThePoolTest::RunTest(const FString& Para
 		return false;
 	}
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static,
 			   /* LethalityRung */ 0, /* DifficultyTier */ 4);
 	Run->AdvanceDay();
@@ -1974,6 +1976,7 @@ bool FCataclysmFloorBriefRealDungeonTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 3, ECataclysmSurgeMode::Static,
 			   /* LethalityRung */ 0, /* DifficultyTier */ 4);
 	Run->AdvanceDay();
@@ -2375,6 +2378,7 @@ bool FCataclysmFloorBriefTwisterPoolTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
 	Run->AdvanceDay();
 	if (!TestTrue(TEXT("the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))
@@ -2718,6 +2722,7 @@ bool FCataclysmFloorBriefEnteringCarriesTheBossesTest::RunTest(const FString& Pa
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
 	Run->ModifierPool = UCataclysmDungeonModifierTable::LoadPool();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 4);
 	Run->AdvanceDay();
 	if (!TestTrue(TEXT("set-up: the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))

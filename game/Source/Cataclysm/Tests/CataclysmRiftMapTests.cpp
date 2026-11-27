@@ -9,6 +9,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Interface/CataclysmEmpireMapLayout.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The capital map shows each Rift and the days until it next sends a dungeon: issue #51 slice B2. A city holding a Rift
@@ -22,6 +23,7 @@ namespace CataclysmRiftMapTest
 	UCataclysmEmpireRun* MakeEmptyRun()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(1, ECataclysmSurgeMode::Static);
 		Run->AdvanceDay();
 		Run->Dungeons.Empty();

@@ -7,6 +7,7 @@
 #include "Empire/CataclysmCityUpgrade.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Raising a bought city upgrade to tier 2 and tier 3. Issue #1265, the coordinating session's rulings of 2026-11-22:
@@ -24,6 +25,7 @@ namespace CataclysmCityUpgradeRaiseTest
 	UCataclysmEmpireRun* MakeClearedRun()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 1265, ECataclysmSurgeMode::Static, /* LethalityRung */ 0);
 		Run->Dungeons.Empty();
 		Run->Clock->Timers.Empty();

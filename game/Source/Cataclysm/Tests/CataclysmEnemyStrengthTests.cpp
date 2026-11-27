@@ -34,6 +34,7 @@
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "UObject/UnrealType.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for the strength a creature on a dungeon floor is built with. Issue #1569.
@@ -469,6 +470,7 @@ bool FCataclysmEnemyStrengthABulwarksWalk::RunTest(const FString& Parameters)
 
 	// A TIER 1 RUN, whose first surge lands on the Outposts, the only front line there is at the start.
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 1, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 1);
 	Run->AdvanceDay();
 	if (!TestTrue(TEXT("set-up: the first surge put a dungeon on the map"), Run->Dungeons.Num() > 0))

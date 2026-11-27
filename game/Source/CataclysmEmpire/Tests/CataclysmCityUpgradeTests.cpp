@@ -6,6 +6,7 @@
 
 #include "Empire/CataclysmCityUpgrade.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for city upgrades: the slots, what a purchase refuses, and what the
@@ -32,6 +33,7 @@ namespace CataclysmCityUpgradeTest
 	UCataclysmEmpireRun* MakeRun(int32 LethalityRung = 0)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 12345, ECataclysmSurgeMode::Static,
 				   LethalityRung);
 		return Run;

@@ -8,6 +8,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmRoster.h"
 #include "Empire/CataclysmSurge.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for the empire's day loop, issue #1084.
@@ -36,6 +37,7 @@ namespace CataclysmEmpireRunTest
 								 int32 LethalityRung = 0)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, Mode, LethalityRung);
 		return Run;
 	}
@@ -1109,6 +1111,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunPartialDayTest,
 bool FCataclysmEmpireRunPartialDayTest::RunTest(const FString& Parameters)
 {
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* InSeed */ 606, ECataclysmSurgeMode::Static);
 
 	const int32 Started = Run->Day();
@@ -1187,6 +1190,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunSiegeBitesDailyTest,
 
 bool FCataclysmEmpireRunSiegeBitesDailyTest::RunTest(const FString& Parameters)
 {
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWrittenWholeTest; // Issue #2928: this test reads the draw itself, so it holds the named list throughout.
 	using namespace CataclysmEmpireRunTest;
 
 	// THE CATACLYSM PINNED TO DEMONIC, whose Quest dungeons are Rifts and not Sieges, so every Siege here bites at the
@@ -1209,6 +1213,7 @@ bool FCataclysmEmpireRunSiegeBitesDailyTest::RunTest(const FString& Parameters)
 	const auto MakePinnedRun = [OrderSeed](int32 Seed)
 	{
 		UCataclysmEmpireRun* Pinned = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 		Pinned->BeginForCharacter(Seed, OrderSeed);
 		return Pinned;
 	};
@@ -3432,6 +3437,7 @@ bool FCataclysmEmpireRunCountsProgressTest::RunTest(const FString& Parameters)
 		// AND A SECOND `Begin` IS A FRESH CAMPAIGN. Carrying one run's quest
 		// objectives into the next would hand slice 6's win condition a head
 		// start that no player earned.
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static);
 
 		TestEqual(TEXT("beginning again forgets the dungeons cleared"),
@@ -8486,6 +8492,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireRunDaysOwedTest,
 bool FCataclysmEmpireRunDaysOwedTest::RunTest(const FString& Parameters)
 {
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* InSeed */ 606, ECataclysmSurgeMode::Static);
 	Run->AdvanceDay();
 	if (!TestTrue(TEXT("set-up: the first surge put a dungeon on the map"), Run->DungeonCount() > 0))
@@ -8534,6 +8541,7 @@ bool FCataclysmEmpireRunDaysOwedTest::RunTest(const FString& Parameters)
 
 	// A FRESH RUN OWES NOTHING, whatever the last one owed.
 	Run->OwedDays = 5;
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten6; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* InSeed */ 606, ECataclysmSurgeMode::Static);
 	TestEqual(TEXT("Begin starts a run owing nothing"), Run->DaysOwed(), 0);
 
@@ -8569,6 +8577,7 @@ namespace CataclysmEarnedBossTest
 	UCataclysmEmpireRun* MakeTierRun(int32 Seed, int32 DifficultyTier)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten7; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static, /* LethalityRung */ 0,
 				   DifficultyTier);
 		return Run;
@@ -9022,6 +9031,7 @@ namespace CataclysmBossClearedWinsTest
 	UCataclysmEmpireRun* MakeRunWithItsBossOpen(int32 Seed)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten8; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(Seed, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 1);
 		Run->AdvanceDays(2);
 
@@ -9157,6 +9167,7 @@ bool FCataclysmBossClearedWinsBeginTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten9; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(/* Seed */ 10, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, /* DifficultyTier */ 2);
 	const bool bWonAfterBegin = Run->bWon;
 	const int32 WonDayAfterBegin = Run->WonDay;
@@ -9218,6 +9229,7 @@ namespace CataclysmEmpirePointsRunTest
 	UCataclysmEmpireRun* MakeRun()
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten10; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(1);
 		return Run;
 	}

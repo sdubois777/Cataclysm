@@ -2019,8 +2019,9 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// same again for a hit that is damage over time. Issue #1026. No
 			// class line names either and none should: no affix grants them, no
 			// class differs on them, and passive nodes are their only source,
-			// which is the rule `Cataclysm.Attributes.CharacterSheetIsComplete`
-			// uses to decide a stat is off the character sheet. Their base of
+			// which is the rule that keeps a stat off the character sheet (written
+			// out in `Cataclysm.Attributes.CharacterSheetIsComplete` until issue
+			// #2928 removed its counts). Their base of
 			// 100 comes from `EngineSuppliedBases` below.
 			//
 			// BOTH ATTRIBUTES STAY AT 100 FOR EVERY CHARACTER TODAY, because all
@@ -2176,8 +2177,8 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 			// `test_every_stat_is_one_the_game_supplies` exists to refuse.
 			//
 			// HERE RATHER THAN ON THE `Default` CLASS LINE, though five stats of
-			// exactly this shape sit there. `Cataclysm.Attributes.CharacterSheetIsComplete`
-			// gives the rule: a stat is off the character sheet when no affix grants
+			// exactly this shape sit there. The character sheet's rule (written out in
+			// `Cataclysm.Attributes.CharacterSheetIsComplete` until issue #2928): a stat is off the character sheet when no affix grants
 			// it, nothing scales it, it has no baseline of its own and one passive
 			// node is its only source. The five on that line all fail that rule --
 			// affixes grant them and the Ritualist starts at 110 area of effect --

@@ -7,6 +7,7 @@
 #include "Empire/CataclysmCityUpgrade.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmEmpireRun.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The cleanse, the last city upgrade: "Cleanse every player city of half of the dungeons on them excluding Quest and
@@ -24,6 +25,7 @@ namespace CataclysmCityCleanseTest
 	UCataclysmEmpireRun* MakeClearedRun(int32 DifficultyTier = 3)
 	{
 		UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+		const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 		Run->Begin(/* InSeed */ 2838, ECataclysmSurgeMode::Static, /* LethalityRung */ 0, DifficultyTier);
 		Run->Dungeons.Empty();
 		Run->Clock->Timers.Empty();

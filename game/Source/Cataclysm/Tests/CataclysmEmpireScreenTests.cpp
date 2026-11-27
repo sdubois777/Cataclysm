@@ -16,6 +16,7 @@
 #include "Interface/CataclysmEmpireMapWidget.h"
 #include "Player/CataclysmGameInstance.h"
 #include "Tests/CataclysmTestSkip.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * Tests for the empire overview, issue #1087.
@@ -717,6 +718,7 @@ bool FCataclysmEmpireGameInstanceTest::RunTest(const FString& Parameters)
 	// has its opening wave standing (issue #2733; until then, a surge due).
 	TestNull(TEXT("a fresh game instance holds no run"), Instance->EmpireRun.Get());
 
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* First = Instance->BeginEmpireRun(7);
 
 	if (!TestNotNull(TEXT("a run can be started"), First))
@@ -734,6 +736,7 @@ bool FCataclysmEmpireGameInstanceTest::RunTest(const FString& Parameters)
 
 	// THE SAME SEED GIVES THE SAME EMPIRE, which is what makes a bug worth
 	// reporting: a person can say which seed it happened on.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten2; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Same = Instance->BeginEmpireRun(7);
 	Same->AdvanceDays(300);
 
@@ -742,6 +745,7 @@ bool FCataclysmEmpireGameInstanceTest::RunTest(const FString& Parameters)
 
 	// AND STARTING ONE THROWS THE LAST AWAY. A second run begins on day 0
 	// rather than continuing where the first had reached.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten3; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Other = Instance->BeginEmpireRun(8);
 	TestEqual(TEXT("a run started after another begins on day 0"),
 			  Other->Day(), 0);
@@ -753,6 +757,7 @@ bool FCataclysmEmpireGameInstanceTest::RunTest(const FString& Parameters)
 				 Other->Map->Render(), AfterThreeHundred);
 
 	// THE LETHALITY MODE AND THE ESCALATION REACH THE SCHEDULE.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten4; // Issue #2928: the Cataclysms this run faces are named.
 	UCataclysmEmpireRun* Heretic = Instance->BeginEmpireRun(
 		1, ECataclysmSurgeMode::Accelerating, /*Heretic*/ 2);
 
@@ -811,6 +816,7 @@ bool FCataclysmEmpireWidgetRunTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and no city is drawn"), Screen->CityCount(), 0);
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten5; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(3);
 
 	Screen->SetRunForTests(Run);
@@ -875,6 +881,7 @@ bool FCataclysmEmpireProgressLineTest::RunTest(const FString& Parameters)
 			  UCataclysmEmpireMapLayout::ProgressLine(NotStarted), FString());
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten6; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 
 	// THE CATACLYSM CLAUSE ON THE END of every line below is issue #1324 slice
@@ -944,6 +951,7 @@ bool FCataclysmEmpireQuestWordsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no run says nothing"), UCataclysmEmpireMapLayout::StandingPart(nullptr), FString());
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten7; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 	if (!TestNotNull(TEXT("set-up: the run has a map"), Run->Map.Get()))
 	{
@@ -1018,6 +1026,7 @@ bool FCataclysmEmpireCityDetailKindTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no run says nothing"), UCataclysmEmpireMapLayout::CityDetailDungeonLine(nullptr, 1), FString());
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten8; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 	if (!TestNotNull(TEXT("set-up: the run has a map"), Run->Map.Get())
 		|| !TestNotNull(TEXT("set-up: and a clock"), Run->Clock.Get()))
@@ -1091,6 +1100,7 @@ bool FCataclysmEmpireLastHitLineTest::RunTest(const FString& Parameters)
 			  UCataclysmEmpireMapLayout::LastHitLine(NotStarted), FString());
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten9; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 
 	// THE OPENING WAVE IS TAKEN OFF, both lists, so the only timers that run
@@ -1198,6 +1208,7 @@ bool FCataclysmEmpireLastHitLineTest::RunTest(const FString& Parameters)
 							  *SecondName));
 
 	// A NEW RUN HAS NO LAST HIT. `Begin` clears the three fields.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten10; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 	TestEqual(TEXT("a run begun again says nothing"),
 			  UCataclysmEmpireMapLayout::LastHitLine(Run), FString());
@@ -1229,6 +1240,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireFallMoveLineTest,
 bool FCataclysmEmpireFallMoveLineTest::RunTest(const FString& Parameters)
 {
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten11; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 
 	// THE OPENING WAVE IS TAKEN OFF, both lists, as in the test above.
@@ -1376,6 +1388,7 @@ bool FCataclysmEmpireFallMoveLineTest::RunTest(const FString& Parameters)
 							  *Run->Map->Find(HitId)->Name));
 
 	// A NEW RUN HAS NO LAST MOVE. `Begin` clears the three fields.
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten12; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 	TestEqual(TEXT("a run begun again says nothing"),
 			  UCataclysmEmpireMapLayout::LastHitLine(Run), FString());
@@ -1400,6 +1413,7 @@ bool FCataclysmEmpireDaysOwedLineTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no run says nothing"), UCataclysmEmpireMapLayout::DaysOwedLine(nullptr), FString());
 
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten13; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 	TestEqual(TEXT("a run owing nothing says nothing"), UCataclysmEmpireMapLayout::DaysOwedLine(Run), FString());
 

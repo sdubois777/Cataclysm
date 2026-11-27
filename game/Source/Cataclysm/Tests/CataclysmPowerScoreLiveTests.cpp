@@ -24,6 +24,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "Player/CataclysmPowerScore.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * THE PLAYER'S OWN POWER SCORE, read from the character. Issue #2824, slice a, the coordinating session's rulings of
@@ -394,6 +395,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPowerScoreLiveDungeonTest,
 bool FCataclysmPowerScoreLiveDungeonTest::RunTest(const FString&)
 {
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(7);
 	if (!TestNotNull(TEXT("set-up: the run has a map"), Run->Map.Get())
 		|| !TestNotNull(TEXT("set-up: and a clock"), Run->Clock.Get())

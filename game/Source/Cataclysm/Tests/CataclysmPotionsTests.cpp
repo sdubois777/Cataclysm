@@ -19,6 +19,7 @@
 #include "Misc/ScopeExit.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "Tests/CataclysmTestRun.h"
 
 /**
  * The four potion slots. Issue #806.
@@ -343,6 +344,7 @@ CATACLYSM_POTIONS_TEST(FCataclysmPotionDungeonEntryTest,
 
 	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
 	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	const CataclysmTestRun::FBuiltAsWritten BuiltAsWritten1; // Issue #2928: the Cataclysms this run faces are named.
 	Run->Begin(1);
 	Run->AdvanceDay();
 	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
