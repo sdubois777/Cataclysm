@@ -1335,6 +1335,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("decay_given_back_on_kill_seconds"),
 		TEXT("fervour_claimed_within_seconds"),
 		TEXT("follower_kills_count_as_yours"),
+		// And the Soul Collector's Death Made Flesh, issue #2951 (2026-11-27): the switch that takes the Fervour held out
+		// of the character's damage. Read by UCataclysmAbilitySystemComponent::CurrentConditions. No attribute, no base.
+		TEXT("fervour_held_adds_no_damage"),
 		// And the Soul Collector's Passed On, the Death trees' slice C4c1: the radius a passive node's overkill explosion
 		// reaches. Read by UCataclysmAbilitySystemComponent::ActOnEvent. No attribute and no base.
 		TEXT("overkill_explosion_radius_metres"),

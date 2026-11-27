@@ -6196,6 +6196,39 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and 3 with it, so FervourOnce really reads it"), Held, 3.0f, 0.01f);
 	}
 
+	/**
+	 * `siphon_drain_weapon_percent` scaled by the Fervour held: Hungering Siphon's shape, 0.5% of weapon damage a second
+	 * for every 5 Fervour (issue #2951). THE CONTROL IS THE SAME HOLDER AT NO FERVOUR, which deals nothing.
+	 */
+	void ProbeScaledSiphonDrain(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UAbilitySystemComponent* System = Holder ? Holder->GetAbilitySystemComponent() : nullptr;
+		if (!System || !RavagerReworkCreatureNear(Test, World))
+		{
+			return;
+		}
+		Holder->SetAttackDamage(100.0f);
+		SiphonLines(Holder, {SiphonSixMetres(),
+							 TPair<FName, FCataclysmStatModifier>(
+								 FName(FCataclysmSiphon::DrainStat),
+								 SiphonRow(0.5f, ECataclysmStatScale::PerPointOfClassResourceHeld, 5.0f))});
+		SiphonStep(World, Holder);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+		const float Empty = FCataclysmSiphon::DrainOnce(Holder);
+		System->SetNumericAttributeBase(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 100.0f);
+		const float Holding = FCataclysmSiphon::DrainOnce(Holder);
+		Test.TestEqual(TEXT("siphon_drain_weapon_percent by the Fervour held: control, nothing at none"), Empty, 0.0f,
+					   0.001f);
+		Test.TestTrue(TEXT("and damage at 100, so it is asked with the holder's state"), Holding > 0.0f);
+	}
+
 	/** `siphon_radius_metres` scaled by the Fervour held: Pall of Souls' shape, 100% more radius at 50 Fervour. */
 	void ProbeScaledSiphonRadius(FAutomationTestBase& Test)
 	{
@@ -6590,6 +6623,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("siphon_radius_metres"),       &ProbeScaledSiphonRadius},
 			{TEXT("siphon_life_percent"),        &ProbeScaledSiphonLife},
 			{TEXT("siphon_fervour_per_second"),  &ProbeScaledSiphonFervour},
+			// THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951, 2026-11-27): Hungering Siphon's drain by the Fervour held.
+			{TEXT("siphon_drain_weapon_percent"), &ProbeScaledSiphonDrain},
 			// THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Flurry of the Dead's extra strikes by the Fervour held.
 			{TEXT("hits_strike_again"), [](FAutomationTestBase& Test) { ProbeHitsStrikeAgain(Test, true); }},
 		};
@@ -13777,6 +13812,27 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `fervour_held_adds_no_damage`, read by `UCataclysmAbilitySystemComponent::CurrentConditions` into the condition
+	 * `fervour_held_adds_damage`: the Soul Collector's Death Made Flesh, issue #2951. ONE FIGHTER; THE CONTROL IS THE SAME
+	 * FIGHTER BEFORE THE STAT IS GRANTED, whose conditions say the Fervour held adds damage. Granted, they say it does not.
+	 */
+	void ProbeFervourHeldAddsNoDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		Test.TestTrue(TEXT("control: with no fervour_held_adds_no_damage the Fervour held adds damage"),
+					  Fighter.AbilitySystem->CurrentConditions().bFervourHeldAddsDamage);
+		GrantFlats(Fighter.Actor, {{FName(UCataclysmFervour::FervourHeldAddsNoDamageStat), 1.0f}});
+		Test.TestFalse(TEXT("with it, it does not, so CurrentConditions really reads it"),
+					   Fighter.AbilitySystem->CurrentConditions().bFervourHeldAddsDamage);
+	}
+
+	/**
 	 * `follower_kills_count_as_yours`, read by `UCataclysmFervour::CreditAFollowersKill`: the Soul Collector's Death's
 	 * Toll, the Death trees' slice C4b2 (2026-11-25). ONE FIGHTER paying 1 Fervour a kill, and an actor it owns, which
 	 * `UCataclysmCommand::CommanderOf` reads as its follower, killing a third. THE CONTROL IS THE SAME FIGHTER BEFORE THE
@@ -16266,6 +16322,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("decay_given_back_on_kill_seconds"), &ProbeDecayGivenBackOnKillSeconds},
 			{TEXT("fervour_claimed_within_seconds"), &ProbeFervourClaimedWithinSeconds},
 			{TEXT("follower_kills_count_as_yours"), &ProbeFollowerKillsCountAsYours},
+			{TEXT("fervour_held_adds_no_damage"), &ProbeFervourHeldAddsNoDamage},
 			// THE DEATH TREES' SLICE C4c1 (2026-11-25): Passed On's radius.
 			{TEXT("overkill_explosion_radius_metres"), &ProbeOverkillExplosionRadiusMetres},
 			// THE DEATH TREES' SEVEN STATS WITH NO ATTRIBUTE, probed since window death3-w3 found them unprobed.

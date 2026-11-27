@@ -1799,11 +1799,16 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		//
 		// THE TEAM TEST IS `IsAnEnemysDeath` AT THE TOP OF THIS FILE, since
 		// 2026-09-17, because Fed by the Fallen below asks the same question.
+		//
+		// OUT TO THE FARTHEST A ROW MAY ASK, CARRYING HOW FAR. Issue #2951: Gathered Souls reaches 6 metres and every
+		// earlier row 3. `UCataclysmAbilitySystemComponent::EventThresholdCrossed` holds each row to its own radius.
+		static_assert(NearbyDeathRadiusCm == UCataclysmAbilitySystemComponent::NearbyDeathDefaultMetres * 100.0f,
+					  "a nearby_death row stating no radius reaches the 3 metres every such row reached before");
+		const float DeathMetres = FVector::Dist(GetActorLocation(), Notice.Location) / 100.0f;
 		if (IsAnEnemysDeath(this, Notice) && !Notice.bWhileTheKillersRowsActed
-			&& FVector::Dist(GetActorLocation(), Notice.Location)
-				<= NearbyDeathRadiusCm)
+			&& DeathMetres <= UCataclysmAbilitySystemComponent::NearbyDeathFarthestMetres)
 		{
-			Acting->ActOnEvent(FName(TEXT("nearby_death")));
+			Acting->ActOnEvent(FName(TEXT("nearby_death")), nullptr, DeathMetres);
 		}
 
 		// AND FED BY THE FALLEN, ON THE SAME KIND OF DEATH. Issue #1515.

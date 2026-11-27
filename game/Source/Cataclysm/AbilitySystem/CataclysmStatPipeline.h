@@ -2239,6 +2239,17 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	MinionHasYourMostMaximumHealth
 		UMETA(DisplayName = "Minion Has Your Most Maximum Health"),
+
+	/**
+	 * The Fervour the character holds adds to its damage: true unless the character holds the Soul Collector's Death
+	 * Made Flesh, "The Fervour you hold no longer adds to your damage" (issue #2951, the keystone rework of 2026-11-27,
+	 * the tree's one conversion). The starting node's two damage rows state it, so the keystone takes away those rows
+	 * and no other: "removed" would zero the whole stat, gear's attack damage with it. Read from
+	 * `bFervourHeldAddsDamage`, which `UCataclysmAbilitySystemComponent::CurrentConditions` fills from the stat
+	 * `UCataclysmFervour::FervourHeldAddsNoDamageStat`. IT TAKES NO VALUE: it names a state.
+	 */
+	FervourHeldAddsDamage
+		UMETA(DisplayName = "Fervour Held Adds Damage"),
 };
 
 /**
@@ -3536,6 +3547,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bAskingMinionHasTheMostMaximumHealth = false;
+
+	/**
+	 * Whether the Fervour held adds to the character's damage: false while it holds Death Made Flesh. Issue #2951. See
+	 * `FervourHeldAddsDamage`. TRUE BY DEFAULT, so a lookup nobody filled keeps the starting node's damage, which is what
+	 * every character but one holding the keystone has.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bFervourHeldAddsDamage = true;
 
 	/**
 	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known

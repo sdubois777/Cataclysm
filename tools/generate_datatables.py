@@ -6373,6 +6373,12 @@ CONDITIONS = {
     # health, which the summoner's lookup is handed for that minion's blow, its
     # explosion, the damage it takes and its live health. Names a state.
     "minion_has_your_most_maximum_health": None,
+    # AND THE SOUL COLLECTOR'S DEATH MADE FLESH, "The Fervour you hold no longer
+    # adds to your damage" (issue #2951, 2026-11-27): the Fervour held adds to the
+    # character's damage, which is false while the keystone's stat
+    # `fervour_held_adds_no_damage` is held. The starting node's two damage rows
+    # state it. Names a state.
+    "fervour_held_adds_damage": None,
     # "Killing an Elite or stronger creature gives you its modifiers for 20
     # seconds" is `wearing_enemy_modifier`: the Soul Collector's Wearer of the
     # Dead, the Death trees' slice C4d3 (2026-11-25), as ruled. The value is the
@@ -6736,9 +6742,13 @@ SCALES = {
     # row's OWN stacks, granted by its Action Event, lasting its Stack
     # Seconds and capped by its Scale Max Steps. Issue #1833, ruled
     # 2026-09-23 under the owner's delegation: each row is its own stack.
-    # A step of exactly one: a stack is a whole thing and the rows say "per
-    # stack".
-    "own_stacks": (1.0, 1.0, "one stack"),
+    # A step of one for "per stack", AND MORE SINCE 2026-11-27, a whole number
+    # of stacks: the Soul Collector's Borrowed Time, "for every 2 kills in your
+    # current chain", is a step of 2, and Reaper's Rhythm, "While your current
+    # chain of kills has 5 or more kills", a step of 5 capped at 5 stacks, which
+    # is nothing below 5 and one step at 5 (issue #2951).
+    # `UCataclysmStatPipeline::StackedValue` counts whole steps of any size.
+    "own_stacks": (1.0, 10.0, "a whole number of stacks"),
 
     # "Each consecutive melee hit on the same enemy increases damage by 5%-10%
     # up to 8 stacks" is `consecutive_hits` with a step of 1: the row's own
@@ -6990,7 +7000,11 @@ BASE_PLUS_RANGE_ENCHANTMENTS: dict[str, float] = {
 #: trap. `MAX_SCALE_OFFSET` below is the class point budget and is not
 #: narrowed for it; an offset above the 20 traps the scale is bounded at
 #: counts nothing.
-SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent", "traps_active"})
+#:
+#: AND `class_resource_held`, SINCE 2026-11-27: the Soul Collector's Heavy Urn,
+#: "0.5% more damage for each Fervour you hold above 50" (issue #2951), is an
+#: offset of 50. `UCataclysmStatPipeline::ValidateModifier` allows the same three.
+SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent", "traps_active", "class_resource_held"})
 
 #: The largest offset a row may state: the 230 point budget. Issue #1686.
 MAX_SCALE_OFFSET = 230
@@ -7159,13 +7173,14 @@ def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
         return 0.0
     value = number(written, "Chance Percent", index)
     # AND TWICE ANSWERED'S ACTION, the Death trees' slice C6b4 (2026-11-25), as
-    # ruled. Nothing else reads a chance.
-    if action not in (CLASS_RESOURCE_POOL, NEXT_HIT_CRITICAL_TWICE_ACTION):
+    # ruled; AND THE STRIKE ON THE STRONGEST NEAR, for the Soul Collector's
+    # Gleaning (issue #2951, 2026-11-27). Nothing else reads a chance.
+    if action not in (CLASS_RESOURCE_POOL, NEXT_HIT_CRITICAL_TWICE_ACTION, STRIKE_STRONGEST_NEAR_ACTION):
         raise DataError(
             f"Passive Effects row {index}: {node} states a Chance Percent of "
             f"{written!r} on {'the action ' + repr(action) if action else 'a stat row'}. "
-            f"A chance is read by a {CLASS_RESOURCE_POOL!r} row and the action "
-            f"{NEXT_HIT_CRITICAL_TWICE_ACTION!r} only.")
+            f"A chance is read by a {CLASS_RESOURCE_POOL!r} row and the actions "
+            f"{NEXT_HIT_CRITICAL_TWICE_ACTION!r} and {STRIKE_STRONGEST_NEAR_ACTION!r} only.")
     if not 0.0 < value <= 100.0:
         raise DataError(
             f"Passive Effects row {index}: {node} has a Chance Percent of "
@@ -8938,6 +8953,14 @@ MAX_TEMPORARY_ABSORB_PERCENT = 100.0
 ACTION_ONLY_EVENTS = (
     "critical_strike",
     "nearby_death",
+    # EACH 5 FERVOUR A DECAY TAKES, raised by
+    # `UCataclysmAbilitySystemComponent::NoteFervourDecayed`: the Soul
+    # Collector's Unquiet Souls and Grave Patience (issue #2951, 2026-11-27).
+    "fervour_decayed",
+    # THE FERVOUR RISING TO AN OPENED THRESHOLD, raised by
+    # `UCataclysmAbilitySystemComponent::RaiseFervourThresholdsReached`, each
+    # threshold at most once every 5 seconds: Tolling Count (issue #2951).
+    "fervour_threshold_reached",
     "skill_use",
     # EVERY PAID USE, THE BASIC ATTACK INCLUDED, raised after `skill_use` with
     # the skill in hand. Ruled 2026-10-06, for "Your melee attacks have a
@@ -11585,6 +11608,19 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"Enchantment Effects row {index}: {name} wants "
                     f"{event_value:g} Fervour spent at once. It is 0, any "
                     f"spend, up to {MAX_FERVOUR_SPENT_AT_ONCE:g}.")
+    elif action_event == NEARBY_DEATH_EVENT:
+        # OR HOW NEAR THE DEATH MUST BE, in metres: empty or nought is the 3
+        # metres every row stood at before rows could say. The Soul Collector's
+        # Gathered Souls reaches 6, the Siphon's radius (issue #2951, ruled
+        # 2026-11-27). `UCataclysmAbilitySystemComponent::EventThresholdCrossed`
+        # reads it against the distance the event carries.
+        if event_value_text:
+            event_value = number(event_value_text, "Event Value", index)
+            if not 0 <= event_value <= MAX_NEARBY_DEATH_METRES:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} reaches a death "
+                    f"{event_value:g} metres away. It is 0, the 3 metres every "
+                    f"such row reached before, up to {MAX_NEARBY_DEATH_METRES:g}.")
     elif action == SMITE_NEARBY_BY_HIT_ACTION:
         # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
         # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`.
@@ -12705,6 +12741,11 @@ STATS_WITH_AN_ASKER = frozenset({
     "siphon_radius_metres",
     "siphon_life_percent",
     "siphon_fervour_per_second",
+    # AND DRAIN'S DAMAGE, SINCE THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951,
+    # 2026-11-27): Hungering Siphon scales it by the Fervour held. Asked through
+    # `StatForSkill` by `FCataclysmSiphon::DrainOnce`; `ProbeScaledSiphonDrain`
+    # measures it.
+    "siphon_drain_weapon_percent",
     # THE DEATH LINE'S FINISHING SLICE E (2026-11-26): Flurry of the Dead's extra
     # strikes, 1 for every 10 Fervour held. `UCataclysmShadowImages::StrikeAgain`
     # asks it through `StatForSkill` after each landed hit; `ProbeHitsStrikeAgain`
@@ -14917,6 +14958,13 @@ KILL_CLOCK = "seconds_after_kill"
 #: The event a spend of Fervour raises, the clock it stamps, and the most an
 #: Event Value on it may ask to be spent at once. The Death trees' slice C3a.
 SPENT_EVENT = "fervour_spent"
+
+#: "When an enemy dies near you", and how far a row may ask it to reach: the
+#: Soul Collector's Gathered Souls, 6 metres (issue #2951, 2026-11-27).
+#: `UCataclysmAbilitySystemComponent::NearbyDeathFarthestMetres` holds the same
+#: figure and the player character raises the event no farther.
+NEARBY_DEATH_EVENT = "nearby_death"
+MAX_NEARBY_DEATH_METRES = 6.0
 SPENT_CLOCK = "seconds_after_fervour_spent"
 MAX_FERVOUR_SPENT_AT_ONCE = 1000.0
 
@@ -16531,7 +16579,11 @@ MAX_FERVOUR_HOLD_EXTENDED_SECONDS = 10.0
 STRIKE_STRONGEST_NEAR_ACTION = "strike_strongest_near"
 DASH_TO_STRONGEST_AND_STRIKE_ACTION = "dash_to_strongest_and_strike"
 STRONGEST_NEAR_ACTIONS = (STRIKE_STRONGEST_NEAR_ACTION, DASH_TO_STRONGEST_AND_STRIKE_ACTION)
-STRONGEST_NEAR_EVENTS = ("kill",)
+#: AND `fervour_decayed`, SINCE 2026-11-27: the Soul Collector's Unquiet
+#: Souls, "Every 5 Fervour you lose to decay strikes the strongest enemy within
+#: 10 metres" (issue #2951). The strike is the wearer's own, aimed from where it
+#: stands; it needs no character from its event.
+STRONGEST_NEAR_EVENTS = ("kill", "fervour_decayed")
 
 NEXT_HIT_CRITICAL_TWICE_ACTION = "next_hit_critical_twice"
 NEXT_HIT_CRITICAL_TWICE_EVENTS = ("dodge",)

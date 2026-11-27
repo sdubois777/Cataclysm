@@ -1731,6 +1731,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.FervourThresholdsReached =
 		FervourThresholdsReachedFor(UCataclysmStatPipeline::FervourHeldCounted(State), State.ClassPointsSpent);
 
+	// AND WHETHER THE FERVOUR HELD ADDS DAMAGE: not while the Soul Collector holds Death Made Flesh, issue #2951. With no
+	// reading, as the thresholds' stats are, because the conditions are being filled and the stat names no condition.
+	State.bFervourHeldAddsDamage = StatWithNoReading(FName(UCataclysmFervour::FervourHeldAddsNoDamageStat)) <= 0.0f;
+
 	return State;
 }
 
@@ -4922,6 +4926,17 @@ void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
 		return Entry.Key < Now - FervourDecayedKeptSeconds;
 	});
 	FervourDecayed.Emplace(Now, Amount);
+
+	// AND ONE EVENT FOR EACH 5 TAKEN, counted across the steps that took them: Unquiet Souls and Grave Patience, issue
+	// #2951. The small allowance keeps four steps of 1.25 from summing to just under 5.
+	FervourDecayedTowardAnEvent += Amount;
+	while (FervourDecayedTowardAnEvent >= FervourDecayedPerEvent - KINDA_SMALL_NUMBER)
+	{
+		FervourDecayedTowardAnEvent = FMath::Max(0.0f, FervourDecayedTowardAnEvent - FervourDecayedPerEvent);
+		// THE NAME WRITTEN OUT, as every raise spells its event: `tools/tests/test_pool_action_names_match_the_engine.py`
+		// reads the calls as text. `FervourDecayedEvent` holds the same name for the tests.
+		ActOnEvent(FName(TEXT("fervour_decayed")), nullptr, FervourDecayedPerEvent);
+	}
 }
 
 float UCataclysmAbilitySystemComponent::TakeFervourDecayedWithin(float Seconds)
@@ -5066,12 +5081,52 @@ void UCataclysmAbilitySystemComponent::NoteFervourThresholdsHeld(float Held)
 	}
 }
 
+int32 UCataclysmAbilitySystemComponent::RaiseFervourThresholdsReached()
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0;
+	}
+	// WHAT IS REACHED NOW, EXACTLY AS EVERY ROW READS IT: the conditions' own answer, opened by points spent and reached
+	// by the Fervour counted as held. A lookup with no answer counts as none reached.
+	const int32 Reached = FMath::Max(0, CurrentConditions().FervourThresholdsReached);
+	const int32 Before = FervourThresholdsReachedAtLastStep;
+	FervourThresholdsReachedAtLastStep = Reached;
+	if (Before < 0)
+	{
+		return 0;
+	}
+	if (FervourThresholdRaisedAtSeconds.Num() < CataclysmFervourThresholds::Count())
+	{
+		FervourThresholdRaisedAtSeconds.Init(-1.0f, CataclysmFervourThresholds::Count());
+	}
+	const float Now = World->GetTimeSeconds();
+	int32 Raised = 0;
+	for (int32 Index = 0; Index < CataclysmFervourThresholds::Count(); ++Index)
+	{
+		const int32 Bit = 1 << Index;
+		const bool bRoseToIt = (Reached & Bit) && !(Before & Bit);
+		const float Last = FervourThresholdRaisedAtSeconds[Index];
+		if (!bRoseToIt || (Last >= 0.0f && Now - Last < FervourThresholdReachedEverySeconds))
+		{
+			continue;
+		}
+		FervourThresholdRaisedAtSeconds[Index] = Now;
+		++Raised;
+		// THE NAME WRITTEN OUT, as every raise spells its event. `FervourThresholdReachedEvent` holds the same name.
+		ActOnEvent(FName(TEXT("fervour_threshold_reached")));
+	}
+	return Raised;
+}
+
 float UCataclysmAbilitySystemComponent::FervourThresholdStep(float StepSeconds)
 {
 	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
 	if (HasAttributeSetForAttribute(Pool))
 	{
 		NoteFervourThresholdsHeld(GetNumericAttribute(Pool));
+		RaiseFervourThresholdsReached();
 	}
 
 	// THE FOURTH VOW'S RATE: each step, that share of the step's seconds off every running cooldown once more, through
@@ -6486,6 +6541,13 @@ bool UCataclysmAbilitySystemComponent::EventThresholdCrossed(
 	if (Action.Event == FName(TEXT("fervour_spent")))
 	{
 		return Action.EventValue <= 0.0f || EventAmount >= Action.EventValue;
+	}
+	// "AN ENEMY THAT DIES WITHIN 6 METRES OF YOU": a row on `nearby_death` reaches its Event Value in metres, and 3 with
+	// none, which is where every such row stood before rows could say. The event carries the death's distance. Gathered
+	// Souls, the Soul Collector keystone rework (issue #2951, 2026-11-27).
+	if (Action.Event == FName(TEXT("nearby_death")))
+	{
+		return EventAmount <= (Action.EventValue > 0.0f ? Action.EventValue : NearbyDeathDefaultMetres);
 	}
 	if (Action.Event != HealthFallsBelowEvent)
 	{
@@ -9159,7 +9221,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
 			AActor* Struck = (bLanded && Self && Action.Percent > 0.0f && !UCataclysmSkillEffects::IsDead(Self))
 				? MarkedOrStrongestNear(StrongestNearReachCm) : nullptr;
-			if (Struck && Struck != EventTarget && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			// AND ON A ROLL OF ITS CHANCE, WHEN THE ROW STATES ONE: the Soul Collector's Gleaning, "Each kill has a 5% chance
+			// per point to strike the strongest enemy within 10 metres" (issue #2951). A row stating none strikes every time.
+			if (Struck && Struck != EventTarget && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action)
+				&& ChancePercentComesUp(Action.ChancePercent))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				NoteTriggerFired(Action);
@@ -10153,6 +10218,8 @@ void UCataclysmAbilitySystemComponent::NoteExecuteMade(FName TriggerKey, float T
 const TCHAR* UCataclysmAbilitySystemComponent::CullPercentPerSoulStrikeStackStat =
 	TEXT("cull_percent_per_soul_strike_stack");
 const TCHAR* UCataclysmAbilitySystemComponent::SoulPickedUpEvent = TEXT("soul_picked_up");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourDecayedEvent = TEXT("fervour_decayed");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourThresholdReachedEvent = TEXT("fervour_threshold_reached");
 
 int32 UCataclysmAbilitySystemComponent::SoulStrikeStacksHeld() const
 {

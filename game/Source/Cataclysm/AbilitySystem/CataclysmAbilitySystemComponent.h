@@ -1090,6 +1090,44 @@ public:
 	static const TCHAR* SoulPickedUpEvent;
 
 	/**
+	 * How near an enemy's death must be for `nearby_death`, in metres: a row's Event Value when it states one, and this
+	 * when it does not. "When an enemy dies near you" was 3 metres before rows could say (issue #1815), and every row
+	 * stating none keeps it. `ACataclysmPlayerCharacter::NearbyDeathRadiusCm` is the same figure and asserts it.
+	 */
+	static constexpr float NearbyDeathDefaultMetres = 3.0f;
+
+	/**
+	 * The farthest a row's Event Value may put `nearby_death`, and so the farthest the player character raises it: the
+	 * Soul Collector's Gathered Souls, "Each enemy that dies within 6 metres of you", the Siphon's own radius (issue
+	 * #2951, ruled 2026-11-27). `tools/generate_datatables.py` holds the same bound. The event carries the death's
+	 * distance in metres as its amount, and `EventThresholdCrossed` lets each row through only within its own radius.
+	 */
+	static constexpr float NearbyDeathFarthestMetres = 6.0f;
+
+	/**
+	 * The event raised once for each `FervourDecayedPerEvent` Fervour a decay takes: the Soul Collector's Unquiet Souls,
+	 * "Every 5 Fervour you lose to decay strikes ...", and Grave Patience, "Every 5 Fervour you lose to decay restores
+	 * ..." (issue #2951, the keystone rework of 2026-11-27). Raised by `NoteFervourDecayed`, which both decays call, with
+	 * no tags, no character and the 5 as its amount. `tools/generate_datatables.py` holds the same name.
+	 */
+	static const TCHAR* FervourDecayedEvent;
+
+	/** How much Fervour a decay takes for each `FervourDecayedEvent`: the sentences' "every 5". */
+	static constexpr float FervourDecayedPerEvent = 5.0f;
+
+	/**
+	 * The event raised when the Fervour rises to a threshold the character has opened: the Soul Collector's Tolling
+	 * Count, "Each time your Fervour rises to a threshold you have opened, you release a blast ..." (issue #2951, the
+	 * keystone rework of 2026-11-27). Raised by `FervourThresholdStep`, with no tags and no character, once for each
+	 * threshold newly reached since the last step, and for one threshold at most once every
+	 * `FervourThresholdReachedEverySeconds`. `tools/generate_datatables.py` holds the same name.
+	 */
+	static const TCHAR* FervourThresholdReachedEvent;
+
+	/** The fewest seconds between two `FervourThresholdReachedEvent`s for one threshold: "once every 5 seconds". */
+	static constexpr float FervourThresholdReachedEverySeconds = 5.0f;
+
+	/**
 	 * The stacks of Soul Strike this character holds now: the most own stacks held, by `OwnStacksHeld`, under the key of
 	 * any worn row that grants its own stacks on `SoulPickedUpEvent`. Ruled 2026-10-19 (C1): the six-piece's rows' own
 	 * stack keys, found by the event that grants them and not by the six-piece's name, so a row of another name on the
@@ -4972,6 +5010,14 @@ public:
 	float FervourThresholdStep(float StepSeconds);
 
 	/**
+	 * Raise `FervourThresholdReachedEvent` for each Fervour threshold reached now and not at the last call, each at most
+	 * once every `FervourThresholdReachedEverySeconds`, and remember what is reached now. `FervourThresholdStep` calls it
+	 * every regeneration step; the first call records and raises nothing. Tolling Count, issue #2951. Returns how many
+	 * it raised.
+	 */
+	int32 RaiseFervourThresholdsReached();
+
+	/**
 	 * A stat evaluated from this character's recorded line with NO READING of its state: no skill tags and default
 	 * conditions, as `AttributePlusWhatWasNotFolded` evaluates what the refresh folded. For a stat asked while the
 	 * conditions themselves are being filled, which could not ask them without asking itself. Nought with no line.
@@ -5061,6 +5107,8 @@ public:
 	 * Record Fervour a decay just took, with the time: the Death decay after a kill and the Ravager's decay out of
 	 * contact both call this. Reclaimed gives back what was taken shortly before a kill (`TakeFervourDecayedWithin`).
 	 * The Death trees' slice C4b2 (2026-11-25), as ruled: both decays count. Nothing for an amount of nought or less.
+	 * AND IT RAISES `FervourDecayedEvent` once for each whole `FervourDecayedPerEvent` taken, counting across steps,
+	 * so a decay of 1.25 a step raises it on every fourth (issue #2951).
 	 */
 	void NoteFervourDecayed(float Amount);
 
@@ -6530,7 +6578,9 @@ protected:
 	/**
 	 * Whether `health_falls_below` crossed this row's threshold: the share
 	 * before, carried as the event's amount, at or above it, and the share now
-	 * below it. True for every other event.
+	 * below it. For `fervour_spent`, whether at least the Event Value was spent;
+	 * for `nearby_death`, whether the death, carried as the amount in metres,
+	 * was within the row's radius. True for every other event.
 	 */
 	bool EventThresholdCrossed(const FCataclysmPoolAction& Action, float EventAmount) const;
 
@@ -7113,6 +7163,13 @@ protected:
 	/** What the decays took, and when, in world seconds. See `NoteFervourDecayed`. The Death trees' slice C4b2. */
 	TArray<TPair<float, float>> FervourDecayed;
 
+	/**
+	 * Fervour decayed since `FervourDecayedEvent` was last raised, below `FervourDecayedPerEvent`. Issue #2951. It is
+	 * not cleared by a kill: "every 5 Fervour you lose to decay" counts the losses, and what one pause leaves over is
+	 * counted with the next.
+	 */
+	float FervourDecayedTowardAnEvent = 0.0f;
+
 	/** How long a record of decay is kept with no kill to read it, so the list cannot grow without end. */
 	static constexpr float FervourDecayedKeptSeconds = 30.0f;
 
@@ -7124,6 +7181,16 @@ protected:
 	 * negative, or no entry yet, means never. Long Shadow reads it. See `NoteFervourThresholdsHeld`.
 	 */
 	TArray<float> FervourThresholdLastHeldAtSeconds;
+
+	/**
+	 * The thresholds reached at the last `FervourThresholdStep`, as `FCataclysmStatConditions::FervourThresholdsReached`
+	 * gives them, so the step can tell which were reached since. Negative until the first step, which records and
+	 * raises nothing, so a character loaded with a full bar does not count as rising to it. Issue #2951.
+	 */
+	int32 FervourThresholdsReachedAtLastStep = -1;
+
+	/** When each threshold last raised `FervourThresholdReachedEvent`, in world seconds; negative means never. */
+	TArray<float> FervourThresholdRaisedAtSeconds;
 
 	/**
 	 * Until when, in world seconds, the decay after the last kill is held off. Negative means never held, which is a

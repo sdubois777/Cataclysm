@@ -67,6 +67,7 @@ const TCHAR* UCataclysmFervour::OverflowAttackSpeedSecondsStat = TEXT("fervour_o
 const TCHAR* UCataclysmFervour::KillChainSecondsStat = TEXT("kill_chain_seconds");
 const TCHAR* UCataclysmFervour::DecayGivenBackOnKillSecondsStat = TEXT("decay_given_back_on_kill_seconds");
 const TCHAR* UCataclysmFervour::ClaimedWithinSecondsStat = TEXT("fervour_claimed_within_seconds");
+const TCHAR* UCataclysmFervour::FervourHeldAddsNoDamageStat = TEXT("fervour_held_adds_no_damage");
 const TCHAR* UCataclysmFervour::FollowerKillsCountAsYoursStat = TEXT("follower_kills_count_as_yours");
 const TCHAR* UCataclysmFervour::PerCriticalStrikeStat = TEXT("fervour_per_critical_strike");
 const TCHAR* UCataclysmFervour::BossTicksPayAKillEverySecondsStat = TEXT("boss_ticks_pay_a_kill_every_seconds");

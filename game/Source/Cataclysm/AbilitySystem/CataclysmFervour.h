@@ -906,6 +906,14 @@ public:
 	static const TCHAR* FollowerKillsCountAsYoursStat;
 
 	/**
+	 * The switch that takes the Fervour held out of the character's damage: the Soul Collector's Death Made Flesh, "The
+	 * Fervour you hold no longer adds to your damage" (issue #2951, the keystone rework of 2026-11-27). Read once per
+	 * conditions fill into `FCataclysmStatConditions::bFervourHeldAddsDamage`, which the starting node's two damage rows
+	 * ask through the condition `fervour_held_adds_damage`. No attribute and no base.
+	 */
+	static const TCHAR* FervourHeldAddsNoDamageStat;
+
+	/**
 	 * Reclaimed: give back, as a kill's payment and unscaled, what the decays took in the stat's seconds before now.
 	 * Called by the player's kill handler for a kill credited to the character, and for a follower's kill Death's Toll
 	 * makes its own, before the kill is paid. Answers what arrived. Nothing when nothing decayed in that time, which is

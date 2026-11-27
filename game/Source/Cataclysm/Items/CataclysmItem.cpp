@@ -916,6 +916,30 @@ namespace
 	 * every such name, so only a hand-edited CSV can reach this, and granting
 	 * nothing is the answer that errs in neither direction.
 	 */
+	/**
+	 * Whether a row's condition is judged where its stack is granted rather than where its stat is read: an event
+	 * condition, which `UCataclysmStatPipeline::IsJudgedAtItsEvent` names, and the rarity of the creature a kill slew,
+	 * for a stack a kill grants.
+	 *
+	 * THE KILL'S RARITY IS THE VICTIM'S, AND ONLY THE GRANT KNOWS THE VICTIM. The Soul Collector's Trophy of the Strong,
+	 * "Killing an Elite or stronger creature gives you 20% more damage for 10 seconds" (issue #2951, the keystone rework
+	 * of 2026-11-27). On the stat the condition would be read against whatever enemy is struck next, so a Common kill
+	 * would grant the bonus and an Elite would collect it. `UCataclysmAbilitySystemComponent::PoolActionAllowed` judges a
+	 * grant's condition against the event's other character, the creature slain for `kill`. No stack row carried a
+	 * rarity condition before this, so no row's meaning changed.
+	 */
+	bool IsJudgedWhereItsStackIsGranted(ECataclysmStatCondition Condition, const FCataclysmEnchantmentEffectRow& Effect)
+	{
+		if (UCataclysmStatPipeline::IsJudgedAtItsEvent(Condition))
+		{
+			return true;
+		}
+		return (Condition == ECataclysmStatCondition::TargetRarityAtLeast
+				|| Condition == ECataclysmStatCondition::TargetRarityIs)
+			&& Effect.Scale.Equals(TEXT("own_stacks"), ESearchCase::IgnoreCase)
+			&& Effect.ActionEvent.Equals(TEXT("kill"), ESearchCase::IgnoreCase);
+	}
+
 	bool EnchantmentModifierFor(const FCataclysmEnchantmentEffectRow& Effect,
 								float Roll, FCataclysmStatModifier& Out)
 	{
@@ -972,8 +996,9 @@ namespace
 			Out.ConditionValue = UCataclysmItemModifiers::RolledConditionValue(Effect, Roll);
 			// AN EVENT CONDITION IS THE GRANT'S, NOT THE STAT'S: Avenging Dead's "when a hit takes more than 5%", the
 			// Death trees' slice C6d2 (2026-11-25). The fact it reads exists only while the event is raised, so on the
-			// stat it would refuse at every read. The grant below takes it.
-			if (UCataclysmStatPipeline::IsJudgedAtItsEvent(Out.Condition))
+			// stat it would refuse at every read. The grant below takes it. SO IS A KILL STACK'S RARITY, which is the
+			// slain creature's (issue #2951): see `IsJudgedWhereItsStackIsGranted`.
+			if (IsJudgedWhereItsStackIsGranted(Out.Condition, Effect))
 			{
 				Out.Condition = ECataclysmStatCondition::Always;
 				Out.ConditionValue = 0.0f;
@@ -1190,7 +1215,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				// `PoolActionAllowed` judges it as the event is raised; the stat above was given none.
 				ECataclysmStatCondition AtTheEvent = ECataclysmStatCondition::Always;
 				if (!Effect->Condition.IsEmpty() && UCataclysmStatPipeline::ConditionNamed(Effect->Condition, AtTheEvent)
-					&& UCataclysmStatPipeline::IsJudgedAtItsEvent(AtTheEvent))
+					&& IsJudgedWhereItsStackIsGranted(AtTheEvent, *Effect))
 				{
 					Stack.Condition = AtTheEvent;
 					Stack.ConditionValue = Effect->ConditionValue;
