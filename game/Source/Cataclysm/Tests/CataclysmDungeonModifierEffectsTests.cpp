@@ -1454,6 +1454,13 @@ namespace CataclysmDungeonModifierEffectsTest
 		// it was 3". Pinned here rather than in that one test, because a drawn rung is
 		// a coin toss under every assertion in this group.
 		Mode->ImpRarityStep = 0;
+
+		// AND EVERY WRAITH, FOR THE SAME REASON, since 2026-11-26 (#2943): what rises is a Wraith, not a creature of
+		// the slain one's kind, so it draws a Wraith's rung (`WraithRarityStep`, -1 by default) and the Imp's pin
+		// above no longer reaches it. MEASURED 2026-11-27 in window cs-w1: the same test failed three runs of three,
+		// "Expected 'the wraith rose a rung' to be 4, but it was 3" in the whole suite and "to be 5, but it was 4"
+		// alone, a wraith drawn at Herald and then at Boss, which no floor rule can raise.
+		Mode->WraithRarityStep = 0;
 		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
 		{
 			return nullptr;
