@@ -155,9 +155,10 @@ bool FCataclysmSentinelCarriesItsDesignedProfile::RunTest(const FString&)
 	TestEqual(TEXT("it shoots on its designed interval"),
 		Sentinel->SecondsBetweenAttacks(),
 		Sentinel_t::DesignedAttackIntervalSeconds);
-	TestEqual(TEXT("it notices as far as it can shoot, which no other creature "
-				   "needs"),
-		Sentinel->SightRadiusCm(), Sentinel_t::SiegeBoltRangeCm);
+	// TWO METRES BEYOND WHAT IT CAN SHOOT, the Succubus's margin, since it began to walk (2026-11-27); it noticed only
+	// as far as it shoots while it could not walk.
+	TestEqual(TEXT("it notices two metres beyond what it can shoot"),
+		Sentinel->SightRadiusCm(), Sentinel_t::SiegeBoltRangeCm + 200.0f);
 
 	// **IT DOES NOT ROAM, AND EVERY OTHER CREATURE DOES.** It walks only toward a
 	// player it has noticed (the owner's "Walk everywhere", 2026-11-27).
@@ -910,9 +911,13 @@ bool FCataclysmSentinelDoesNotFireWalkingTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("CONTROL: walking, it is moving"), static_cast<int32>(Brain->GetMoveStatus()),
-			  static_cast<int32>(EPathFollowingStatus::Moving));
+	// WHAT THE BRAIN DID, NOT A WALK'S STATUS: a world built for a test has no navigation system, so a walk's status is
+	// never "moving" there (window cs-w1 measured 0, idle). The brain's own record is read instead, as the coordinating
+	// session ruled: a walk ordered and no ability begun.
+	const int32 MovesWhileWalking = Brain->MovesOrdered;
+	TestTrue(TEXT("CONTROL: walking, it has ordered a walk"), MovesWhileWalking > 0);
 	TestEqual(TEXT("and has begun no ability"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+	TestNull(TEXT("and fired nothing"), Sentinel->LastShotFired.Get());
 
 	Target->SetActorLocation(FVector(1000.0f, 0.0f, 0.0f));
 	if (!TestEqual(TEXT("set-up: in range with a clear shot, it begins a wind-up"), SentinelThinks(Brain),
@@ -920,7 +925,8 @@ bool FCataclysmSentinelDoesNotFireWalkingTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestNotEqual(TEXT("and winding up, it is not moving"), static_cast<int32>(Brain->GetMoveStatus()),
+	TestEqual(TEXT("and winding up, it ordered no further walk"), Brain->MovesOrdered, MovesWhileWalking);
+	TestNotEqual(TEXT("and stood still: no walk is in progress"), static_cast<int32>(Brain->GetMoveStatus()),
 				 static_cast<int32>(EPathFollowingStatus::Moving));
 	return true;
 }

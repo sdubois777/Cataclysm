@@ -250,6 +250,8 @@ FPathFollowingRequestResult ACataclysmEnemyController::MoveTo(const FAIMoveReque
 		Crowd->SuspendCrowdSteering(IsDrivenByACrowdAgent(MoveRequest.GetGoalActor()));
 	}
 
+	// COUNTED BEFORE IT IS MADE, so a walk a world with no navigation could not make is still one the brain ordered.
+	++MovesOrdered;
 	return Super::MoveTo(MoveRequest, OutPath);
 }
 
