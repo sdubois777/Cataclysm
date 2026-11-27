@@ -53,6 +53,10 @@ from cataclysm_sim.engine import (Simulation, active_cataclysms_for,
                                   cataclysm_order_for)
 from cataclysm_sim.modifiers import pool_for
 
+# THE DRAW IS THIS FILE'S SUBJECT, so it meets the config's real built list, not the one the root conftest.py holds
+# for every other test (issue #2928).
+pytestmark = pytest.mark.real_built_list
+
 ROSTER = TuningConfig().CATACLYSM_ROSTER
 BUILT = TuningConfig().BUILT_CATACLYSMS
 TIERS = range(1, len(ROSTER) + 1)
