@@ -2705,8 +2705,9 @@ public:
 	class ACataclysmEnemyCharacter* HeavenlyCoreNow() const;
 
 	/**
-	 * Whether `Creature` is one that never moves: a Corrupted Sentinel, or a floor source -- the Heavenly Core, a
-	 * beacon, a bloom, a sarcophagus and the rest of `ACataclysmFloorSourceCharacter`'s kinds. Issue #2334.
+	 * Whether `Creature` is one that never moves: a floor source -- the Heavenly Core, a beacon, a bloom, a sarcophagus
+	 * and the rest of `ACataclysmFloorSourceCharacter`'s kinds -- or a creature designed not to walk, which none is
+	 * today. Issue #2334. The Corrupted Sentinel was on this list until it began to walk (2026-11-27).
 	 *
 	 * A PLAYER CANNOT LEAD ONE ANYWHERE, so a floor rule that makes a creature unkillable where it stands makes one of
 	 * these unkillable for good, and a floor whose stairs need it dead cannot be finished. The two rules that could,

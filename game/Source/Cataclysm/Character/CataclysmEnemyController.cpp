@@ -830,6 +830,30 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 	bHasRoamTarget = false;
 	RoamPauseUntil = 0.0f;
 
+	// NO CLEAR SHOT, NO SHOT: IT CLOSES ON ITS TARGET INSTEAD, whatever the distance, and uses no ability. Only a
+	// character that says it needs one asks (`HasAClearShotAt`), the Corrupted Sentinel since the owner's "Walk
+	// everywhere" (2026-11-27); every other answers true and goes on below unchanged. Aimed at the target itself
+	// rather than short of it, so a Sentinel in range behind a wall walks round it until it can see the player.
+	if (!Driven->HasAClearShotAt(Target))
+	{
+		if (UCataclysmSkillEffects::IsPinned(Driven))
+		{
+			StopMovement();
+			FaceTarget(Driven, Target);
+			LastAction = ECataclysmBrainAction::Pinned;
+			return LastAction;
+		}
+		FaceTravelDirection(Driven);
+		FAIMoveRequest Request = MakeChaseMoveRequest(Target, /*ReachCm=*/0.0f);
+		if (MoveTo(Request) == EPathFollowingRequestResult::Failed)
+		{
+			Request.SetUsePathfinding(false);
+			MoveTo(Request);
+		}
+		LastAction = ECataclysmBrainAction::Chasing;
+		return LastAction;
+	}
+
 	// THE REACH AGAINST THIS TARGET, which is the designed reach against the player and longer against a wider body.
 	// Issue #2706; see `ReachAgainstCm`. The chase below aims short of it, and `IsInReach` decides with it.
 	const float Reach = ReachAgainstCm(Driven, Target);

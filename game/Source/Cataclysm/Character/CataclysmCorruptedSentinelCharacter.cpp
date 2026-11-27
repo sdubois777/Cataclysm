@@ -173,6 +173,22 @@ float ACataclysmCorruptedSentinelCharacter::DesignedSecondsBetweenAttacks() cons
 	return AttackIntervalSecondsInUse();
 }
 
+bool ACataclysmCorruptedSentinelCharacter::HasAClearShotAt(const AActor* Target) const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !IsValid(Target))
+	{
+		return false;
+	}
+	// MIDDLE TO MIDDLE, ON THE VISIBILITY CHANNEL, BOTH BODIES LEFT OUT: what blocks a bolt blocks the shot. The owner's
+	// "Walk everywhere", 2026-11-27.
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(CataclysmSentinelClearShot), /*bInTraceComplex=*/false, this);
+	Query.AddIgnoredActor(Target);
+	FHitResult Blocked;
+	return !World->LineTraceSingleByChannel(Blocked, GetActorLocation(), Target->GetActorLocation(), ECC_Visibility,
+											Query);
+}
+
 void ACataclysmCorruptedSentinelCharacter::AttackTarget(AActor* /*Target*/)
 {
 	// NOTHING, AND THAT IS THE WHOLE POINT OF THIS OVERRIDE.

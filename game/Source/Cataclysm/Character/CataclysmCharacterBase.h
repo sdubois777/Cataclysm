@@ -449,6 +449,17 @@ public:
 	virtual bool TakesNoHostileAction() const { return false; }
 
 	/**
+	 * Whether this character can shoot at `Target` from where it stands: nothing solid between them. The brain uses no
+	 * ability and makes no attack on a target it has no clear shot at, and closes on it instead.
+	 *
+	 * TRUE FOR EVERY CHARACTER BUT ONE THAT SAYS OTHERWISE, so nothing that fought before 2026-11-27 fights differently.
+	 * The Corrupted Sentinel says otherwise since the owner's ruling that it walks ("Walk everywhere", 2026-11-27): it
+	 * walks toward the player, stops when it has a clear shot within its bolt's range, and walks again when it loses one.
+	 * HERE RATHER THAN ON THE ENEMY, for the reason `TakesNoHostileAction` gives.
+	 */
+	virtual bool HasAClearShotAt(const AActor* Target) const { return true; }
+
+	/**
 	 * True when this character is nobody's target: no search finds it, on any side, and no blow lands on it. Issue
 	 * #2860.
 	 *
