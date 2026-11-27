@@ -16,7 +16,7 @@ Decisions made outside the Google Drive documents, newest first.
   `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`: the same two comments.
 - `sim/cataclysm_sim/enemy_stats.py` (`move_speed` 2.5, a new role) and `game/Data/EnemyArchetypes.csv`, regenerated.
 - `docs/Cataclysm_GDD_v2.md`: the Corrupted Sentinel's section, its role, and the archetype sentence.
-- Tests: three new in `Cataclysm.Sentinel.`; `CataclysmCorruptedSentinelTests.cpp`'s walking speed; the `#2793` follow
+- Tests: four new in `Cataclysm.Sentinel.`; `CataclysmCorruptedSentinelTests.cpp`'s walking speed; the `#2793` follow
   test, the Echoes test, the three "cannot move" tests and the floor sections test's comment; three Python checks.
 
 ### SAID FIRST
@@ -27,10 +27,12 @@ Decisions made outside the Google Drive documents, newest first.
 - **The design already said "the Sentinel does not fire without line of sight"; the game did not check.** Until this
   change the brain fired any ability whose target was in range, walls or not; only the bolt's flight was stopped by
   geometry. The Sentinel now checks.
-- **OPEN, ASKED OF THE COORDINATING SESSION:** a Sentinel notices a player at 14 metres, its bolt's range, so on an
-  ordinary floor it only ever notices a player it can already shoot, and walks only to get round a wall. It closes
-  from beyond its range only on a floor that makes creatures see further (a Horde dungeon does). Raising its notice
-  distance moves the population's keep-out and spacing, which read it.
+- **IT NOTICES AT 16 METRES, NOT 14.** At its range alone it noticed only a player it could already shoot, so on an
+  ordinary floor it would have walked only to get round a wall. The coordinating session ruled 17.5 metres, the
+  Succubus's ratio of notice to range, then **corrected it to 16 metres, the Succubus's 2 metre margin, because 17.5
+  broke the spacing rule**: groups stand `LeastCellsBetweenPacks` cells apart (1600 cm) and must stand further apart
+  than any creature notices, or walking into one pulls the next, and 5 cells would have thinned every floor
+  (the session's own correction, recorded at its request).
 
 ### The owner's words, verbatim
 
@@ -54,6 +56,8 @@ toward the player and plant to fire. That replaced the design's "The Corrupted S
   trace a projectile's flight and `UCataclysmCommand::ThingsCommandedInSightOf` make. Pawns do not block it.
 - **It plays its jog walking and its rooted pose planted**, as a taken Sentinel already did (#2793), at the unmeasured
   rate of 1.0.
+- **It notices a player at 16 metres** (`SentinelNoticeRadiusCm`, 1400 until now), two metres beyond its range, so it
+  walks in to fire on any floor. The sandbox's Sentinel moved from 1500 to 1850 cm, beyond it.
 - **Its mortar and bolt are unchanged.** The Gatekeeper's mortar, "exactly as the Sentinel's", is unaffected: the
   Gatekeeper does not ask for a clear shot (a test holds it).
 
@@ -71,6 +75,13 @@ toward the player and plant to fire. That replaced the design's "The Corrupted S
    ring of plague beacons still does.
 4. **FLOOR SECTIONS** keep their rule that no Sentinel is placed outside a section; the test's comment no longer gives
    "never moves" as its reason.
+5. **THE STALE COMMENTS** that said it never moves are corrected in this branch: `CataclysmCharacterBase.h`,
+   `CataclysmEnemyCharacter.h` and `.cpp`, `CataclysmSuccubusCharacter.h`, `CataclysmFloorBrief.h`,
+   `CataclysmDataRows.h`, `CataclysmGameMode.h` (the Succubus's, the Sentinel's and the Gatekeeper's spawn notes) and
+   `CataclysmFloorPopulationTests.cpp`.
+6. **THE GATEKEEPER CHECK** (`tools/tests/test_gatekeeper_matches_the_model.py`) looked for two constants by names that
+   do not exist, `AbyssalWardenNoticeRadiusCm` and `CorruptedSentinelNoticeRadiusCm`, so it never compared the Warden
+   or the Sentinel. The names are fixed and its claim is now "furthest except the Corrupted Sentinel, which walks in".
 
 ### Unreal tests
 
@@ -78,6 +89,7 @@ New, in `Cataclysm.Sentinel.`:
 - `Cataclysm.Sentinel.ItClosesFromBeyondItsRangeAndPlantsToFire`
 - `Cataclysm.Sentinel.ItDoesNotFireWhileItWalks`
 - `Cataclysm.Sentinel.ItWalksAgainWhenItsLineOfSightBreaksAndTheGatekeepersMortarDoesNotAsk`
+- `Cataclysm.Sentinel.ItNoticesAPlayerAtSixteenMetresAndWalksInToFireButNotAtEighteen`
 
 Renamed, because their names stopped being true:
 - `...MinionFollowSpeed.ATakenSentinelWalksAtItsCommandersPaceAndNobodysStaysRooted` to

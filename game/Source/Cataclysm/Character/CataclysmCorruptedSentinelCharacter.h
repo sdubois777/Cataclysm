@@ -239,15 +239,14 @@ public:
 	/**
 	 * How far away it notices somebody, in centimetres.
 	 *
-	 * **AS FAR AS IT CAN SHOOT, WHICH NO OTHER CREATURE NEEDS.** The Brute, the
-	 * Abyssal Warden, the Hellhound and the Imp all notice at 1000 cm and all of
-	 * them can walk, so a target further off is one they close on. This creature
-	 * cannot close on anything: a notice radius shorter than its range would
-	 * make the difference between the two dead ground it can shoot across and
-	 * refuses to. No enemy has a designed notice radius and issue #383 is that
-	 * gap; this one is derived from the creature rather than copied.
+	 * **TWO METRES BEYOND WHAT IT CAN SHOOT, the Succubus's margin** (it notices at 10 metres and shoots 8). Since the
+	 * owner's "Walk everywhere" of 2026-11-27 it walks toward a player it has noticed, so it has to notice one beyond its
+	 * range to walk in at all; at its range alone it noticed only a player it could already shoot. Ruled by the
+	 * coordinating session that day: 16 metres, not the 17.5 the Succubus's ratio gives, because groups stand
+	 * `FCataclysmFloorPopulator::LeastCellsBetweenPacks` cells apart (1600 cm) and must stand further apart than this
+	 * creature notices, or walking into one group pulls the next. It was 14 metres, its range, while it could not walk.
 	 */
-	static constexpr float SentinelNoticeRadiusCm = 1400.0f;
+	static constexpr float SentinelNoticeRadiusCm = 1600.0f;
 
 	/** How far from where it started it wanders. **Zero: it does not wander.** It walks only toward a player it has
 	 *  noticed (2026-11-27), and with nobody to fight it walks back to where it started. Every other creature roams

@@ -989,4 +989,53 @@ bool FCataclysmSentinelWalksWhenSightBreaksTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSentinelNoticesAtSixteenTest,
+	"Cataclysm.Sentinel.ItNoticesAPlayerAtSixteenMetresAndWalksInToFireButNotAtEighteen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * It notices a player two metres beyond its 14 metre range, the Succubus's margin, so on an ordinary floor it walks in
+ * from 15.9 metres and plants to fire once in range. CONTROL: at 18 metres it notices nobody and walks nowhere. The
+ * coordinating session's ruling of 2026-11-27: 16 metres, which keeps groups further apart than it notices.
+ */
+bool FCataclysmSentinelNoticesAtSixteenTest::RunTest(const FString&)
+{
+	using namespace CataclysmSentinelTest;
+	using namespace CataclysmSentinelWalksTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	ACataclysmCorruptedSentinelCharacter* Sentinel = SpawnSentinel(World, FVector::ZeroVector);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, FVector(1800.0f, 0.0f, 0.0f));
+	ACataclysmEnemyController* Brain = SentinelBrain(Sentinel);
+	if (!TestNotNull(TEXT("set-up: a Sentinel"), Sentinel) || !TestNotNull(TEXT("set-up: a target"), Target)
+		|| !TestNotNull(TEXT("set-up: the Sentinel has a brain"), Brain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it notices at 16 metres on an ordinary floor"), Sentinel->NoticesFromCm(), 1600.0f);
+
+	// CONTROL: EIGHTEEN METRES OFF, IT NOTICES NOBODY.
+	TestNotEqual(TEXT("CONTROL: eighteen metres off, it does not walk toward the player"), SentinelThinks(Brain),
+				 SentinelChasing);
+	TestNull(TEXT("CONTROL: and has no target"), Brain->CurrentTarget.Get());
+
+	// 15.9 METRES OFF: IT NOTICES, AND WALKS IN.
+	Target->SetActorLocation(FVector(1590.0f, 0.0f, 0.0f));
+	TestEqual(TEXT("15.9 metres off, it walks toward the player"), SentinelThinks(Brain), SentinelChasing);
+	TestTrue(TEXT("whom it has noticed"), Brain->CurrentTarget.Get() == Target);
+	TestEqual(TEXT("and has begun no ability yet"), Brain->WindingUpAbility, static_cast<int32>(INDEX_NONE));
+
+	// IN ITS RANGE, IT PLANTS AND FIRES.
+	Target->SetActorLocation(FVector(1300.0f, 0.0f, 0.0f));
+	TestEqual(TEXT("thirteen metres off, it plants and begins to fire"), SentinelThinks(Brain), SentinelWindingUp);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

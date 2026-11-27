@@ -220,14 +220,27 @@ def test_the_capsule_half_height_comes_from_the_mesh():
         f"{mesh_height / 2.0}.")
 
 
-def test_it_notices_as_far_as_it_can_shoot():
-    """A turret whose notice radius is shorter than its range has dead ground it
-    could shoot across and refuses to. Every other creature notices at 1000 cm
-    and closes the difference on foot; this one cannot close anything."""
-    assert constant("SentinelNoticeRadiusCm") >= constant("SiegeBoltRangeCm"), (
-        f"the Corrupted Sentinel notices at {constant('SentinelNoticeRadiusCm')} "
-        f"cm and shoots {constant('SiegeBoltRangeCm')} cm, so the difference is "
-        f"ground it could hit and never will.")
+def test_it_notices_two_metres_beyond_what_it_can_shoot():
+    """The Succubus's margin: it notices at 10 metres and shoots 8. A walker that
+    noticed only as far as it shoots would walk in from nowhere, so it notices a
+    player beyond its range and walks in to plant (the owner's "Walk everywhere",
+    2026-11-27). CONTROL: groups stand further apart than it notices, so walking
+    into one group does not pull the next; the coordinating session chose 16
+    metres over 17.5 for that reason."""
+    notices = constant("SentinelNoticeRadiusCm")
+    shoots = constant("SiegeBoltRangeCm")
+    assert notices == pytest.approx(shoots + 200.0), (
+        f"the Corrupted Sentinel notices at {notices} cm and shoots {shoots} cm; "
+        "the ruled margin is two metres.")
+    population = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon" / "CataclysmFloorPopulation.h").read_text(
+        encoding="utf-8")
+    generator = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon" / "CataclysmFloorGenerator.h").read_text(
+        encoding="utf-8")
+    cells = re.search(r"LeastCellsBetweenPacks\s*=\s*(\d+)\s*;", population)
+    cell = re.search(r"CellSizeCm\s*=\s*([0-9.]+)f\s*;", generator)
+    assert cells and cell, "the population's spacing constants were not found"
+    assert int(cells.group(1)) * float(cell.group(1)) >= notices, (
+        "groups now stand closer together than a Corrupted Sentinel notices.")
 
 
 # --------------------------------------------------------------------------
@@ -550,20 +563,20 @@ def test_the_sandbox_damage_is_the_dummys_times_the_designed_share():
         f"is {expected}.")
 
 
-def test_it_is_spawned_just_beyond_its_own_range():
-    """Far enough that it cannot hit a player who has only just appeared, close
-    enough that finding out what it does is one step rather than a walk. It will
-    not come to you."""
+def test_it_is_spawned_just_beyond_its_own_notice_radius():
+    """Far enough that it is standing about rather than walking at a player who
+    has only just appeared; close enough that a few steps bring it walking in.
+    Since the owner's "Walk everywhere" of 2026-11-27 it comes to you once it has
+    noticed you; until then it stood just beyond its range."""
     distance = property_default("CorruptedSentinelDistanceCm")
-    shoots = constant("SiegeBoltRangeCm")
+    notices = constant("SentinelNoticeRadiusCm")
 
-    assert distance > shoots, (
-        f"the Corrupted Sentinel spawns {distance} cm out and shoots {shoots} "
-        f"cm, so it opens fire the instant the level opens.")
-    assert distance < shoots * 1.5, (
-        f"the Corrupted Sentinel spawns {distance} cm out and shoots only "
-        f"{shoots} cm. It cannot move, so every centimetre beyond its range is "
-        f"ground the player has to cross before the creature does anything.")
+    assert distance > notices, (
+        f"the Corrupted Sentinel spawns {distance} cm out and notices at "
+        f"{notices} cm, so it walks at the player the instant the level opens.")
+    assert distance < notices * 1.25, (
+        f"the Corrupted Sentinel spawns {distance} cm out and notices only at "
+        f"{notices} cm, so the player walks a long way before it does anything.")
 
 
 def test_it_is_spawned_on_a_bearing_of_its_own():

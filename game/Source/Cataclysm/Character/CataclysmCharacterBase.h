@@ -390,7 +390,7 @@ public:
 	 * A STYLE ONE. Two of the three characters this controller drives should
 	 * not wander. A summoned imp exists to fight what its summoner is fighting,
 	 * and one that strolled off between fights would be a bug rather than a
-	 * feature. A Corrupted Sentinel is designed stationary. Making the base
+	 * feature. A Corrupted Sentinel walks only toward a player it has noticed. Making the base
 	 * inert means adding roaming changed the behaviour of exactly the one
 	 * character that asked for it, and every existing test that asserts a
 	 * monster with nothing in sight is Idle still passes unedited.

@@ -1419,8 +1419,8 @@ void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 	// zero here would freeze every creature in place for a frame.
 	//
 	// AND A CREATURE DESIGNED AT ZERO THAT NOBODY COMMANDS STAYS AT ZERO, and is put back to it when a commander had
-	// moved it, so a Sentinel that is nobody's any more roots again rather than walking on at its last commander's
-	// pace. Issue #2793.
+	// moved it, so it roots again rather than walking on at its last commander's pace. Issue #2793. No creature is
+	// designed at zero today: the Corrupted Sentinel was, and walks since the owner's "Walk everywhere" of 2026-11-27.
 	if (Base <= 0.0f)
 	{
 		if (bWasCommanded)
