@@ -88,7 +88,7 @@ and a future save change needs no upgrade step. Current versions, unchanged: run
   (`test_save_migrations_are_single_steps.py`, `test_passive_nodes_are_named_for_a_frozen_class.py`, whose frozen
   class list existed only for the version 3 step, and `test_gems_are_saved_at_the_new_record_versions.py`), and four
   tests trimmed to their current-record checks. `test_the_decisions_log_names_real_files.py` reads a new
-  `**Files deleted:**` block (the one above), so the older entries that cite these files stay as written, and fails
+  block of deleted files (the one above), so the older entries that cite these files stay as written, and fails
   if a file listed there exists again.
 
 ### Registered for the window
