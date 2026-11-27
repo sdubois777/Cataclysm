@@ -155,29 +155,36 @@ def test_the_profile_matches_the_archetype(cpp_name, model_value, scale, what):
         f"for {what}. The model is authoritative.")
 
 
-def test_it_cannot_move_at_all_and_it_is_the_only_one():
-    """Zero, and not a small number. It is the whole creature."""
+def test_it_walks_slower_than_every_class_and_does_not_wander():
+    """The owner's "Walk everywhere" of 2026-11-27: it walks toward the player and
+    plants to fire. 2.5 m/s is a judgement stated to the owner, slower than every
+    class, so a player can always walk away from one. CONTROL: every class's base
+    speed in the design's stat lines is above it.
+
+    Until 2026-11-27 this held it at 0, the only creature that could not move."""
     from cataclysm_sim.enemy_stats import ARCHETYPES
 
-    assert sentinel().move_speed == 0.0, (
-        f"the Corrupted Sentinel now moves at {sentinel().move_speed} m/s. Its "
-        f"design is one line -- 'Stationary ranged. Forces the player to stay "
-        f"mobile' -- and a turret that walks is a different creature.")
+    assert sentinel().move_speed == 2.5, (
+        f"the Corrupted Sentinel now walks at {sentinel().move_speed} m/s, not the "
+        "2.5 stated to the owner on 2026-11-27.")
     assert sentinel().chase_speed == 0.0, (
-        "the Corrupted Sentinel now has a chase speed, which for a creature "
-        "with no movement speed is a contradiction.")
+        "the Corrupted Sentinel now has a separate chase speed; it closes on the "
+        "player at the pace it walks.")
 
-    others = [name for name, a in ARCHETYPES.items()
-              if name not in ("Baseline", "Corrupted Sentinel")
-              and a.move_speed == 0.0]
-    assert not others, (
-        f"something other than the Corrupted Sentinel now cannot move: "
-        f"{others}. That is fine, and the comments saying it is the only one "
-        f"need changing.")
+    text = (REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+    rows = re.findall(r"\| Movement Speed \|([^\n]*)\|", text)
+    speeds = [float(cell) for row in rows for cell in row.split("|") if cell.strip()]
+    assert speeds, "the design's class stat tables have no Movement Speed row"
+    assert sentinel().move_speed < min(speeds), (
+        f"the Corrupted Sentinel walks at {sentinel().move_speed} m/s and the "
+        f"slowest class at {min(speeds)}; a player has to be able to walk away.")
+
+    still = [name for name, a in ARCHETYPES.items() if name != "Baseline" and a.move_speed == 0.0]
+    assert not still, f"a creature is designed not to walk again: {still}"
 
     assert constant("SentinelRoamRadiusCm") == 0.0, (
-        "the Corrupted Sentinel has a roam radius, and it cannot walk to "
-        "anywhere it might roam to.")
+        "the Corrupted Sentinel has a roam radius; it walks only toward a player "
+        "it has noticed.")
 
 
 def test_it_has_the_first_energy_shield_of_any_built_creature():

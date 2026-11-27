@@ -1701,22 +1701,21 @@ def test_the_sentinel_ability_table_matches_the_data(sentinel_section,
         assert_row_matches(sentinel_section, ability, "Corrupted Sentinel")
 
 
-def test_the_sentinel_never_moves_which_is_what_its_reach_rests_on(sentinel):
-    """Every argument in its subsection starts here.
-
-    A creature that could walk would not need the longest reach in the game,
-    would not need a mortar to answer cover, and would not have to survive being
-    stood on. If this figure ever stops being zero the subsection has to be
-    re-argued rather than adjusted.
-    """
-    assert sentinel.move_speed == 0.0, (
-        f"the Corrupted Sentinel now moves at {sentinel.move_speed} m/s. Its "
-        "reach, its mortar and its answer to a melee character are all "
-        "arguments from it being unable to move at all. Issue #352.")
+def test_the_sentinel_walks_and_its_section_says_so(sentinel):
+    """THE OWNER'S "Walk everywhere", 2026-11-27, replaced "never moves at any
+    rarity". Its subsection was re-argued then, as this test's earlier form said
+    it would have to be: it walks toward the player at 2.5 m/s and plants to fire.
+    CONTROL: the sentence it replaced is gone from the subsection."""
+    assert sentinel.move_speed == 2.5, (
+        f"the Corrupted Sentinel now moves at {sentinel.move_speed} m/s, not 2.5.")
     assert sentinel.chase_speed == 0.0, (
-        f"the Corrupted Sentinel now has a chase speed of "
-        f"{sentinel.chase_speed} m/s, so it moves once it has noticed the "
-        "player. Same problem.")
+        f"the Corrupted Sentinel now has a chase speed of {sentinel.chase_speed} "
+        "m/s; it closes at the pace it walks.")
+    section = subsection("Corrupted Sentinel")
+    assert "never moves at any rarity" not in section, (
+        "the Corrupted Sentinel's subsection still says it never moves.")
+    assert "Walk everywhere" in section, (
+        "the Corrupted Sentinel's subsection does not quote the owner's ruling.")
 
 
 def test_the_sentinel_reach_is_the_longest_range_any_player_attack_has():
@@ -2991,7 +2990,8 @@ PROSE_RESTATEMENTS: dict[tuple[str, str, str, str], tuple[str, ...]] = {
     ("Corrupted Sentinel", "Corrupted Sentinel", "Siege Bolt", "Range"): (
         "**{n} metres**, which is the longest range",
         "at least {n} metres**",
-        "{n} metres in one second"),
+        "{n} metres in one second",
+        "a clear shot within its bolt's {n} metres"),
     ("Corrupted Sentinel", "Corrupted Sentinel", "Siege Bolt", "Radius"): (
         "Its radius is {n} metres, so the slowest class can step clear of it from 2.28",),
     ("Corrupted Sentinel", "Corrupted Sentinel", "Siege Bolt", "Speed"): (

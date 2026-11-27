@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — Enemy Corrupted Sentinels walk: toward the player at 2.5 m/s, planting to fire once they have a clear shot within their bolt's range
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmCorruptedSentinelCharacter.h` and `.cpp`: `DesignedWalkSpeedCmPerSecond`
+  250 (it was 0); `HasAClearShotAt`, a trace on the visibility channel.
+- `game/Source/Cataclysm/Character/CataclysmCharacterBase.h`: `HasAClearShotAt`, true for every character that does not
+  say otherwise.
+- `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`: `Think` uses no ability and makes no attack on a
+  target it has no clear shot at, and closes on it instead.
+- `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`: `CreatureCannotMove` asks for a floor source or
+  a creature designed not to walk; the rift hunters' and the echoes' comments give reasons true now.
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`: the same two comments.
+- `sim/cataclysm_sim/enemy_stats.py` (`move_speed` 2.5, a new role) and `game/Data/EnemyArchetypes.csv`, regenerated.
+- `docs/Cataclysm_GDD_v2.md`: the Corrupted Sentinel's section, its role, and the archetype sentence.
+- Tests: three new in `Cataclysm.Sentinel.`; `CataclysmCorruptedSentinelTests.cpp`'s walking speed; the `#2793` follow
+  test, the Echoes test, the three "cannot move" tests and the floor sections test's comment; three Python checks.
+
+### SAID FIRST
+
+- **NOT BUILT, NOT RUN IN UNREAL AND NOT SEEN.** The coordinating session schedules the window.
+- **`DT_EnemyArchetypes` must be rebuilt in the editor**: `EnemyArchetypes.csv` changed, so
+  `test_every_csv_still_hashes_to_what_was_recorded` fails in Python until the window's editor step.
+- **The design already said "the Sentinel does not fire without line of sight"; the game did not check.** Until this
+  change the brain fired any ability whose target was in range, walls or not; only the bolt's flight was stopped by
+  geometry. The Sentinel now checks.
+- **OPEN, ASKED OF THE COORDINATING SESSION:** a Sentinel notices a player at 14 metres, its bolt's range, so on an
+  ordinary floor it only ever notices a player it can already shoot, and walks only to get round a wall. It closes
+  from beyond its range only on a floor that makes creatures see further (a Horde dungeon does). Raising its notice
+  distance moves the population's keep-out and spacing, which read it.
+
+### The owner's words, verbatim
+
+"same thing with corrupted sentinels. I thought we decided they should be able to move" (2026-11-27, after a
+Horde-style quest dungeon). Asked to choose, the owner picked **"Walk everywhere"**: enemy Sentinels always walk slowly
+toward the player and plant to fire. That replaced the design's "The Corrupted Sentinel never moves at any rarity" and
+"Stationary ranged. Forces the player to stay mobile".
+
+### What it does
+
+- **It walks at 2.5 m/s**, a judgement the coordinating session stated to the owner: slower than every class (3.5, 4.0
+  and 4.6), so a player can always walk away from one. In the data: `move_speed` in `sim/cataclysm_sim/enemy_stats.py`,
+  which makes `game/Data/EnemyArchetypes.csv`; `tools/tests/test_sentinel_matches_the_model.py` holds the C++ constant
+  to it, as for every creature.
+- **Once it has noticed the player it walks toward them, stops where it has a clear shot within its bolt's range, and
+  fires.** It walks again when the player breaks its line of sight or leaves its range. It never retreats, and it does
+  not wander (`SentinelRoamRadiusCm` stays 0).
+- **It never fires while moving**: the brain stops it before any wind-up begins (`UseAbilitiesOn`), and without a clear
+  shot it begins none.
+- **The clear shot** is a trace from its middle to the target's on the visibility channel, both bodies left out, the
+  trace a projectile's flight and `UCataclysmCommand::ThingsCommandedInSightOf` make. Pawns do not block it.
+- **It plays its jog walking and its rooted pose planted**, as a taken Sentinel already did (#2793), at the unmeasured
+  rate of 1.0.
+- **Its mortar and bolt are unchanged.** The Gatekeeper's mortar, "exactly as the Sentinel's", is unaffected: the
+  Gatekeeper does not ask for a clear shot (a test holds it).
+
+### The coordinating session's rulings, 2026-11-27, on what was built on "it cannot walk"
+
+1. **ECHOES OF THE PAST**: a Sentinel's echo moves in like any walker's, held to 6 metres, as the Lich's and the
+   Succubus's are. The rule is keyed on a designed walk speed above 0, so this followed by itself; the test that used
+   the Sentinel as its echo that cannot walk now shows it walking in. The "cannot walk" branch stays as a guard no
+   creature uses today. **Only comment lines of `StepEchoesOfThePast` changed**, not its notice or give-up clock lines.
+2. **ABYSSAL RIFTS' HUNTERS** keep the Sentinel out: a hunter's job is to close on the player, and at 2.5 m/s a Sentinel
+   catches nobody. The stated reason became "kinds that can close on a player"; no behaviour changed.
+3. **`CreatureCannotMove`** (Shadowy Enemies and Necrotic Ground, #2334) no longer lists the Sentinel: it walks to the
+   player and can be led out of the dark or the fog. It now asks for a floor source or a creature designed not to walk,
+   which no creature but a floor source is. Tested: a ring of Sentinels no longer stops Necrotic Ground's fog, and a
+   ring of plague beacons still does.
+4. **FLOOR SECTIONS** keep their rule that no Sentinel is placed outside a section; the test's comment no longer gives
+   "never moves" as its reason.
+
+### Unreal tests
+
+New, in `Cataclysm.Sentinel.`:
+- `Cataclysm.Sentinel.ItClosesFromBeyondItsRangeAndPlantsToFire`
+- `Cataclysm.Sentinel.ItDoesNotFireWhileItWalks`
+- `Cataclysm.Sentinel.ItWalksAgainWhenItsLineOfSightBreaksAndTheGatekeepersMortarDoesNotAsk`
+
+Renamed, because their names stopped being true:
+- `...MinionFollowSpeed.ATakenSentinelWalksAtItsCommandersPaceAndNobodysStaysRooted` to
+  `...AndNobodysAtItsOwn`;
+- `...DungeonModifierEffects.AnEchoThatCannotWalkStrikesFromItsFullReachAndOneThatWalksMovesIn` to
+  `...ASentinelsEchoNowWalksInToSixMetresAsASuccubussDoes`;
+- `...DungeonModifierEffects.ACorruptedSentinelAndAFloorSourceCannotMoveAndAnImpCan` to
+  `...AFloorSourceCannotMoveAndACorruptedSentinelAndAnImpCan`.
+
+---
+
 ## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
 
 **Affects:**
