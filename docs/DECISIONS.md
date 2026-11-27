@@ -2,7 +2,6 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-<<<<<<< HEAD
 ## 2026-11-27 — The Soul Collector's keystones use Fervour and the dead rather than keep Fervour: eight keystones and eleven small nodes rewritten
 
 **Affects:**
@@ -166,7 +165,9 @@ only by a retired node:
   and it has callers in five files and Python checks of its own, so it was left for a change of its own.
 
 **Not built or run when this was written.** The run table follows when the window runs.
-=======
+
+---
+
 ## 2026-11-27 — The Bone Colossus is drawn at an enemy's size for its health, rising at a Legendary's; it is fed 2% of the health it rose with times the creature's rarity; a Horde dungeon's next floor ends it; and why the owner did not see one with them
 
 **Affects:**
@@ -289,7 +290,6 @@ Elite's +3.7%, and so on up the steps. It adds to maximum and current health, as
   made unreachable (`&& FloorNumber < 0`). PROVED: with them in, "20 tests performed, 18 succeeded, 2 failed:
   AHordeDungeonsNextFloorEndsTheBoneColossusAndKeepsTheRest, TheBoneColossusRisesAtALegendarysSizeAndShrinksOnTheEnemiesLadder",
   the two predicted; restored, "20 tests performed, 20 succeeded, 0 failed".
->>>>>>> origin/development
 
 ---
 
