@@ -23,7 +23,6 @@ WHAT IS CHECKED:
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -155,34 +154,6 @@ def test_the_save_keeps_each_rifts_health_and_age_and_its_hunters() -> None:
 # --------------------------------------------------------------------------
 # 5. The step 19 to 20, the committed file and the chain tests
 # --------------------------------------------------------------------------
-
-def test_the_step_replaces_the_one_rifts_state_and_is_in_the_chain() -> None:
-    records = code(SAVE / "CataclysmSaveRecords.cpp")
-    step = body(records, "bool Migrate_19_to_20(")
-    assert 'RemoveField(TEXT("AbyssalRiftState"));' in step
-    assert 'SetArrayField(TEXT("AbyssalRiftHealthLeft"), Health);' in step
-    assert 'SetArrayField(TEXT("AbyssalRiftSecondsAlive"), Seconds);' in step
-    assert '{ 19, TEXT("Migrate_19_to_20"), &Migrate_19_to_20 },' in flat(records)
-    header = flat(code(SAVE / "CataclysmSaveRecords.h"))
-    run_record = header[header.index("class CATACLYSM_API UCataclysmRunSave "):]
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_record)
-    assert version and int(version.group(1)) >= 20, "the run record does not declare version 20 or later"
-
-
-def test_the_committed_run_file_is_the_previous_one_with_each_rifts_health_and_age() -> None:
-    before = json.loads((FIXTURES / "Run_v19.json").read_text(encoding="utf-8"))
-    after = json.loads((FIXTURES / "Run_v20.json").read_text(encoding="utf-8"))
-    assert after.pop("SchemaVersion") == before.pop("SchemaVersion") + 1 == 20
-    rules_after = after["Floor"]["RuleState"]
-    health = rules_after.pop("AbyssalRiftHealthLeft")
-    seconds = rules_after.pop("AbyssalRiftSecondsAlive")
-    before["Floor"]["RuleState"].pop("AbyssalRiftState")
-    assert after == before, "Run_v20.json differs from Run_v19.json beyond its version and the rifts' two lists"
-    assert len(health) == len(seconds) >= 2, "the file holds no two rifts"
-    assert any(value > 0 for value in health) and any(value == 0 for value in health), (
-        f"Run_v20.json's rifts hold {health}: a standing one and a killed one, not what the step writes")
-    assert any(value > 0 for value in seconds), f"its rifts' seconds are {seconds}, what the step writes"
-    assert "| `Run_v20.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
 
 
 def test_every_chain_test_adds_the_new_steps_write() -> None:

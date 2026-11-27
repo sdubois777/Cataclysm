@@ -21,7 +21,6 @@ WHAT IS CHECKED:
 
 from __future__ import annotations
 
-import json
 import math
 import pathlib
 import re
@@ -146,29 +145,6 @@ def test_the_rule_state_carries_the_fallen_altars_both_ways() -> None:
     assert "Altar->Destroy();" in restored
 
 
-def test_the_step_18_to_19_writes_no_altar_fallen_and_is_in_the_chain() -> None:
-    records = code(SAVE / "CataclysmSaveRecords.cpp")
-    step = body(records, "bool Migrate_18_to_19(")
-    assert 'TryGetObjectField(TEXT("RuleState"), RuleState)' in step
-    assert 'SetArrayField(TEXT("RiftAltarsDestroyed"), TArray<TSharedPtr<FJsonValue>>());' in step
-    assert '{ 18, TEXT("Migrate_18_to_19"), &Migrate_18_to_19 },' in flat(records)
-    header = flat(code(SAVE / "CataclysmSaveRecords.h"))
-    run_record = header[header.index("class CATACLYSM_API UCataclysmRunSave "):]
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_record)
-    assert version and int(version.group(1)) >= 19, "the run record does not declare version 19 or later"
-
-
-def test_the_committed_run_file_is_the_previous_one_with_altars_fallen() -> None:
-    before = json.loads((FIXTURES / "Run_v18.json").read_text(encoding="utf-8"))
-    after = json.loads((FIXTURES / "Run_v19.json").read_text(encoding="utf-8"))
-    assert after.pop("SchemaVersion") == before.pop("SchemaVersion") + 1 == 19
-    fallen = after["Floor"]["RuleState"].pop("RiftAltarsDestroyed")
-    assert "RiftAltarsDestroyed" not in before["Floor"]["RuleState"], "Run_v18.json holds a field version 18 lacked"
-    assert fallen, "Run_v19.json's fallen altars are the empty list the migration writes, so nothing shows it is read"
-    assert after == before, "Run_v19.json differs from Run_v18.json beyond its version and its fallen altars"
-    assert "| `Run_v19.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
-
-
 def test_every_chain_test_adds_the_new_steps_write() -> None:
     missing = [path.name for path in sorted(TESTS.glob("*.cpp"))
                if code(path).count("AddTheRunsVersion18Defaults(")
@@ -176,8 +152,3 @@ def test_every_chain_test_adds_the_new_steps_write() -> None:
     assert not missing, f"these run an older run file through the chain without the step 18 to 19's write: {missing}"
 
 
-def test_only_the_migration_test_reads_the_version_18_run_file() -> None:
-    readers = [path.name for path in sorted(TESTS.glob("*.cpp")) if 'TEXT("Run_v18.json")' in code(path)]
-    assert readers == [ALTAR_TESTS.name], (
-        f"these read Run_v18.json: {readers}. The committed run file is Run_v19.json since the run record went to "
-        "version 19 (issue #51); only the test that migrates Run_v18.json reads it")

@@ -30,7 +30,6 @@ WHAT IS CHECKED:
 from __future__ import annotations
 
 import csv
-import json
 import pathlib
 import re
 
@@ -50,8 +49,6 @@ WIDGET = SOURCE / "Cataclysm" / "Interface" / "CataclysmCityScreenWidget.cpp"
 CHARACTER = SOURCE / "Cataclysm" / "Character" / "CataclysmPlayerCharacter.cpp"
 PICKUP = SOURCE / "Cataclysm" / "Items" / "CataclysmDroppedItem.cpp"
 MODE = SOURCE / "Cataclysm" / "Dungeon" / "CataclysmDungeonGameMode.cpp"
-CREDIT_TESTS = SOURCE / "Cataclysm" / "Tests" / "CataclysmEmpireTreeCreditTests.cpp"
-
 DEBT = ("GoldOwed", "GoldOwedEachDay")
 
 
@@ -91,17 +88,10 @@ def test_sovereign_loans_days_are_its_own_words() -> None:
     assert "Debt repaid from next gold drops" in words["Global Credit"], words["Global Credit"]
 
 
-def chain_of(namespace: str) -> str:
-    """One record's migration namespace, braces matched. EACH STEP IS LOOKED FOR IN ITS OWN RECORD'S CHAIN: the character
-    record has a `Migrate_4_to_5` of its own (2026-11-02) and the run record a `Migrate_10_to_11` (issue #2741 slice
-    5b), so a whole-file search finds another chain's step and passes with this one's missing."""
-    return body(code(RECORDS_CPP), f"namespace {namespace}", "CataclysmSaveRecords.cpp")
-
-
 def test_the_two_records_hold_the_debt_at_their_new_versions() -> None:
-    for name, version, step, previous, namespace in (
-            ("UCataclysmAccountSave", 5, "Migrate_4_to_5", 4, "CataclysmAccountSaveMigration"),
-            ("UCataclysmCharacterSave", 11, "Migrate_10_to_11", 10, "CataclysmCharacterSaveMigration")):
+    # THE STEPS THAT WROTE NOTHING OWED INTO AN OLDER RECORD went with the save migrations on 2026-11-27 (issue #2928
+    # slice 12); what is left is that both records save both figures, and the character's are gathered and restored.
+    for name, version in (("UCataclysmAccountSave", 5), ("UCataclysmCharacterSave", 11)):
         record = record_class(name)
         # AT THIS VERSION OR LATER: slice 8 of #2741 moved both records on again (account 6, character 12).
         found = re.search(r"SchemaVersionNow\s*=\s*(\d+)\s*;", record)
@@ -109,42 +99,11 @@ def test_the_two_records_hold_the_debt_at_their_new_versions() -> None:
         for field in DEBT:
             assert re.search(rf"UPROPERTY\(SaveGame[^)]*\)\s*int64\s+{field}\s*=\s*0\s*;", record), (
                 f"{name} does not save {field}")
-        chain = chain_of(namespace)
-        assert f'{{ {previous}, TEXT("{step}"), &{step} }}' in chain, f"the {name} chain does not list {step}"
-        written = body(chain, f"bool {step}(const TSharedRef<FJsonObject>& Record, FString& OutError)",
-                       "CataclysmSaveRecords.cpp")
-        assert 'TEXT("GoldOwed"), TEXT("GoldOwedEachDay")' in written and "Record->SetNumberField(Key, Held);" in written, (
-            f"{step} does not write both figures out")
-        assert "TryGetNumberField(Key, Held)" in written and "return false;" in written, (
-            f"{step} does not refuse a figure that is not a number")
     assert "Record.GoldOwed = State->GetOwnGoldOwed();" in code(GATHER), "a character's own debt is not gathered"
     assert "Record.GoldOwedEachDay = State->GetOwnGoldOwedEachDay();" in code(GATHER), (
         "a character's own part a day is not gathered")
     assert "State->SetOwnGoldOwed(Record.GoldOwed, Record.GoldOwedEachDay);" in code(APPLY), (
         "a character's own debt is not restored")
-
-
-def test_the_committed_files_are_the_previous_ones_with_the_two_figures() -> None:
-    for old, new, version in (("Account_v4.json", "Account_v5.json", 5), ("Character_v10.json", "Character_v11.json", 11)):
-        before = json.loads((FIXTURES / old).read_text(encoding="utf-8"))
-        after = json.loads((FIXTURES / new).read_text(encoding="utf-8"))
-        assert after["SchemaVersion"] == version
-        figures = {field: after.pop(field, None) for field in DEBT}
-        assert all(isinstance(value, int) and value > 0 for value in figures.values()), (
-            f"{new}'s debt is {figures}: 0 is the default and the migration's value, so it would prove nothing read")
-        rest = dict(after, SchemaVersion=before["SchemaVersion"])
-        assert rest == before, f"{new} differs from {old} beyond its version and its debt"
-    readme = (FIXTURES / "README.md").read_text(encoding="utf-8")
-    assert "| `Account_v5.json` |" in readme and "| `Character_v11.json` |" in readme, (
-        "game/Tests/SaveFixtures/README.md does not list the new files")
-
-
-def test_only_the_migration_test_reads_the_previous_files() -> None:
-    readers = sorted(path.name for path in (SOURCE / "Cataclysm" / "Tests").glob("*.cpp")
-                     if re.search(r'TEXT\("(Account_v4|Character_v10)\.json"\)', code(path)))
-    assert readers == [CREDIT_TESTS.name], (
-        f"{readers} read Account_v4.json or Character_v10.json; since the records went to versions 5 and 11 (issue "
-        "#2741 slice 6e) the committed files are newer ones, and only the test that migrates these reads them")
 
 
 def test_only_a_pickup_pays_a_debt_down_and_the_day_takes_its_part_after_the_income() -> None:

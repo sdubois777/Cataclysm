@@ -31,7 +31,6 @@ WHAT IS NOT: what each rule does to a city. The automation tests check that.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -78,62 +77,6 @@ def run_migrations() -> str:
     start = text.find("namespace CataclysmRunSaveMigration")
     assert start != -1, "CataclysmSaveRecords.cpp no longer has a CataclysmRunSaveMigration namespace"
     return braced(text, start, "CataclysmRunSaveMigration")
-
-
-def bought_days(record: dict) -> list:
-    return [upgrade.get("BoughtDay") for city in record["Cities"] for upgrade in city.get("Upgrades", [])]
-
-
-def test_run_v9_is_run_v8_with_the_counts_and_bought_days_none_of_them_the_default() -> None:
-    """The fixture rule: the new file is the old one at the new version, plus the new keys, none at its default."""
-    before = json.loads((FIXTURES / "Run_v8.json").read_text(encoding="utf-8"))
-    after = json.loads((FIXTURES / "Run_v9.json").read_text(encoding="utf-8"))
-
-    assert before["SchemaVersion"] == 8
-    assert after["SchemaVersion"] == 9
-    for name, default in COUNTS.items():
-        assert name not in before, f"Run_v8.json holds {name}, which version 8 did not have"
-        assert name in after and after[name] != default, (
-            f"Run_v9.json's {name} is {after.get(name)!r}: {default!r} is the default and the migration's value, so a "
-            "file holding it would pass whether the field was read or not")
-    assert all(day is None for day in bought_days(before)), "Run_v8.json's upgrades hold a BoughtDay"
-    days = bought_days(after)
-    assert days and all(isinstance(day, int) and day != 0 for day in days), (
-        f"Run_v9.json's upgrades' bought days are {days}: each must be there, and not 0, the migration's value")
-
-    rest = {key: value for key, value in after.items() if key not in COUNTS}
-    rest["SchemaVersion"] = 8
-    rest = json.loads(json.dumps(rest))
-    for city in rest["Cities"]:
-        for upgrade in city.get("Upgrades", []):
-            upgrade.pop("BoughtDay")
-    assert rest == before, "Run_v9.json differs from Run_v8.json beyond its version, its counts and its bought days"
-
-
-def test_the_run_record_is_at_version_9_and_migrate_8_to_9_writes_nothing_counted() -> None:
-    """Version 9 or later, and a step from 8 that writes the three defaults and a bought day of 0 on every upgrade,
-    in the chain. Not the last since the run record went to version 10 (issue #2725)."""
-    header = code(SAVE / "CataclysmSaveRecords.h")
-    run_class = header.split("class CATACLYSM_API UCataclysmRunSave")[1]
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_class)
-    assert version is not None and int(version.group(1)) >= 9, "the run record is below version 9"
-    for name in COUNTS:
-        assert re.search(rf"\b{name}\s*=", run_class), f"the run record does not carry {name}"
-    assert re.search(r"\bint32\s+BoughtDay\s*=\s*0\s*;", code(EMPIRE / "CataclysmCityUpgrade.h")), (
-        "FCataclysmCityUpgrade does not carry BoughtDay")
-
-    migrations = run_migrations()
-    step = body(migrations, "bool Migrate_8_to_9(", "the run record's migrations")
-    assert re.search(r'SetNumberField\(\s*TEXT\("ClearsSinceLastSurge"\)\s*,\s*0\s*\)', step)
-    assert re.search(r'SetNumberField\(\s*TEXT\("CitiesReclaimed"\)\s*,\s*0\s*\)', step)
-    assert re.search(r'SetBoolField\(\s*TEXT\("bSanctuaryLastStandSpent"\)\s*,\s*false\s*\)', step)
-    upgrades = step[step.find('TEXT("Upgrades")'):]
-    assert re.search(r'SetNumberField\(\s*TEXT\("BoughtDay"\)\s*,\s*0\s*\)', upgrades), (
-        "Migrate_8_to_9 does not write a BoughtDay of 0 into each upgrade of each city")
-
-    chain = body(migrations, "const FCataclysmSaveMigrationStep RunSteps[] =", "the run record's chain")
-    steps = re.findall(r"\{\s*(\d+)\s*,\s*TEXT\(\"(Migrate_\d+_to_\d+)\"\)", chain)
-    assert ("8", "Migrate_8_to_9") in steps, f"the run record's chain has no step from 8: {steps}"
 
 
 def test_the_save_carries_the_counts_and_begin_starts_them_again() -> None:
@@ -196,6 +139,3 @@ def test_a_bought_upgrade_records_the_clocks_day() -> None:
     assert "CompleteCityUpgrade(CityId, Done, Today);" in advance, "a finished build is not stamped with its day"
 
 
-def test_the_fixtures_readme_lists_run_v9() -> None:
-    readme = (FIXTURES / "README.md").read_text(encoding="utf-8")
-    assert "| `Run_v9.json` |" in readme, "game/Tests/SaveFixtures/README.md does not list Run_v9.json"

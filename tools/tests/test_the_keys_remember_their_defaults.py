@@ -24,7 +24,6 @@ WHAT IS NOT. What the keys hold in play: the `Cataclysm.SkillDefaults.` automati
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 import sys
@@ -32,7 +31,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "tests"))
 
-from test_the_play_loop_is_logged_at_each_step import function_body, read_code, squeeze  # noqa: E402
+from test_the_play_loop_is_logged_at_each_step import function_body, read_code  # noqa: E402
 
 SOURCE = ROOT / "game" / "Source" / "Cataclysm"
 RECORDS_H = SOURCE / "Save" / "CataclysmSaveRecords.h"
@@ -54,47 +53,12 @@ def character_record_header() -> str:
     return code[start:end if end != -1 else len(code)]
 
 
-def character_migrations() -> str:
-    """The character record's migration namespace and nothing else: the run record has its own `Migrate_16_to_17`."""
-    code = read_code(RECORDS_CPP)
-    start = code.index("namespace CataclysmCharacterSaveMigration")
-    end = code.index("namespace CataclysmRunSaveMigration")
-    return code[start:end]
-
-
 def test_the_record_holds_the_field_at_version_seventeen() -> None:
     header = character_record_header()
     assert re.search(r"UPROPERTY\(SaveGame[^)]*\)\s*TArray<FCataclysmSkillChoice>\s+RememberedDefaults;", header), (
         "UCataclysmCharacterSave declares no SaveGame RememberedDefaults, so the keys' defaults are not saved")
     version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", header)
     assert version and int(version.group(1)) >= 17, "the character record is below version 17"
-    migrations = character_migrations()
-    step = function_body(migrations, "bool Migrate_16_to_17(")
-    assert 'Into->SetArrayField(TEXT("RememberedDefaults"), Held);' in step, (
-        "the character record's Migrate_16_to_17 does not write RememberedDefaults")
-    assert 'TryGetObjectField(TEXT("ConsumptionBuild"), Build)' in step, (
-        "the character record's Migrate_16_to_17 does not write the held build's RememberedDefaults")
-    assert '{ 16, TEXT("Migrate_16_to_17"), &Migrate_16_to_17 },' in squeeze(migrations), (
-        "the character record's chain does not hold Migrate_16_to_17")
-
-
-def test_the_committed_file_is_version_sixteens_with_one_remembered_default() -> None:
-    old = json.loads((FIXTURES / "Character_v16.json").read_text(encoding="utf-8"))
-    new = json.loads((FIXTURES / "Character_v17.json").read_text(encoding="utf-8"))
-    assert new["SchemaVersion"] == 17
-    assert new["RememberedDefaults"] == [{"Slot": "Special", "SkillRow": "War_Greatsword_Special"}], (
-        "Character_v17.json does not hold the one remembered default the README states; an empty list is the default "
-        "and would not show the field is read")
-    # AND ONE IN THE HELD BUILD, which the double copies (ruled by the coordinating session on 2026-11-24).
-    assert new["ConsumptionBuild"]["RememberedDefaults"] == [{"Slot": "Support", "SkillRow": "War_Greatsword_Support"}], (
-        "Character_v17.json's held build does not hold the one remembered default the README states")
-    build = {key: value for key, value in new["ConsumptionBuild"].items() if key != "RememberedDefaults"}
-    assert build == old["ConsumptionBuild"], "Character_v17.json's held build changed a field the step does not write"
-    rest = {key: value for key, value in new.items()
-            if key not in ("SchemaVersion", "RememberedDefaults", "ConsumptionBuild")}
-    assert rest == {key: value for key, value in old.items() if key not in ("SchemaVersion", "ConsumptionBuild")}, (
-        "Character_v17.json changed a field the step does not write")
-    assert "| `Character_v17.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
 
 
 def test_a_load_puts_the_choices_back_before_its_one_fill() -> None:

@@ -28,7 +28,6 @@ WHAT IS CHECKED:
 from __future__ import annotations
 
 import csv
-import json
 import pathlib
 import re
 import sys
@@ -127,39 +126,6 @@ def test_the_allocation_saves_the_two_fields_and_a_clear_forgets_them() -> None:
         "a clear, which a respec is, leaves the extra option behind (J5)")
 
 
-def test_the_steps_write_no_extra_option_into_each_allocation() -> None:
-    records = code(RECORDS_CPP)
-    helper = flat(body(records, "bool WriteTheExtraOption(", "CataclysmSaveRecords.cpp"))
-    for part in ('FString Node = TEXT("None");', "double Option = 0.0;", 'SetStringField(TEXT("ExtraOptionNode"), Node);',
-                 'SetNumberField(TEXT("ExtraOption"), Option);'):
-        assert part in helper, f"WriteTheExtraOption does not hold {part!r}"
-    assert helper.count("return false;") == 3, "WriteTheExtraOption does not refuse each wrong kind of value"
-
-    account_version = version_of("UCataclysmAccountSave")
-    assert account_version >= 6, "the account record is below version 6"
-    account = body(records, "namespace CataclysmAccountSaveMigration", "CataclysmSaveRecords.cpp")
-    assert '{ 5, TEXT("Migrate_5_to_6"), &Migrate_5_to_6 },' in account
-    assert 'WriteTheExtraOption(Record, TEXT("EmpireTree"), OutError)' in body(
-        account, "bool Migrate_5_to_6(", "the account record's chain")
-
-    # THE CHARACTER RECORD'S STEP IS `Migrate_11_to_12`, SETTLED ONCE THE GEMS WINDOW MERGED: this slice merged first, the
-    # gems window then took the record to 13 and issue #2741 slice 9 to 14. Until then this check left the number out and
-    # asked for the current version or one before it, which stopped holding at 14.
-    character_version = version_of("UCataclysmCharacterSave")
-    character = body(records, "namespace CataclysmCharacterSaveMigration", "CataclysmSaveRecords.cpp")
-    steps = re.findall(r"bool (Migrate_(\d+)_to_(\d+))\(const TSharedRef<FJsonObject>& Record, FString& OutError\)\s*\{"
-                       r"(?:(?!bool Migrate_).)*?WriteTheExtraOption", character, re.DOTALL)
-    assert len(steps) == 1, f"the character record has {len(steps)} steps writing the extra option"
-    name, before, after = steps[0]
-    assert name == "Migrate_11_to_12" and int(after) <= character_version, (name, character_version)
-    step = flat(body(character, f"bool {name}(", "the character record's chain"))
-    for key in ("PassiveAllocation", "PrivateEmpireTree"):
-        assert f'WriteTheExtraOption(Record, TEXT("{key}"), OutError)' in step, f"{name} leaves {key} out"
-    assert 'TEXT("ConsumptionBuild")' in step and 'TEXT("PassiveAllocation"), OutError)' in step, (
-        f"{name} leaves the held build's allocation out")
-    assert f'{{ {before}, TEXT("{name}"), &{name} }},' in character, f"the character chain does not list {name}"
-
-
 def test_no_test_writes_the_character_records_new_number() -> None:
     version = version_of("UCataclysmCharacterSave")
     # ONE TEST AT A TIME, AND ONLY ONE READING A CHARACTER RECORD: the run record is at 12 as well, and its tests state it.
@@ -169,28 +135,6 @@ def test_no_test_writes_the_character_records_new_number() -> None:
                      and re.search(rf"Read->SchemaVersion,\s*{version}\)", test))
     assert not written, (f"{written} write the character record's version, {version}, as a number; gems slice G2 also "
                          "moves it, so read UCataclysmCharacterSave::SchemaVersionNow")
-
-
-def test_the_committed_files_are_the_previous_ones_with_the_two_fields() -> None:
-    for old, new, paths in (("Account_v5.json", "Account_v6.json", [["EmpireTree"]]),
-                            ("Character_v11.json", "Character_v12.json",
-                             [["PassiveAllocation"], ["PrivateEmpireTree"], ["ConsumptionBuild", "PassiveAllocation"]])):
-        before = json.loads((FIXTURES / old).read_text(encoding="utf-8"))
-        after = json.loads((FIXTURES / new).read_text(encoding="utf-8"))
-        assert after["SchemaVersion"] == before["SchemaVersion"] + 1
-        held = []
-        for path in paths:
-            allocation = after
-            for key in path:
-                allocation = allocation[key]
-            held.append((allocation.pop("ExtraOptionNode"), allocation.pop("ExtraOption")))
-        empire = held[0] if new.startswith("Account") else held[1]
-        assert empire[0] != "None" and empire[1] > 0, (
-            f"{new}'s empire tree holds {empire}: None and 0 are the defaults and the migration's, so they prove nothing read")
-        after["SchemaVersion"] = before["SchemaVersion"]
-        assert after == before, f"{new} differs from {old} beyond its version and the extra options"
-    readme = (FIXTURES / "README.md").read_text(encoding="utf-8")
-    assert "| `Account_v6.json` |" in readme and "| `Character_v12.json` |" in readme
 
 
 def test_every_chain_test_adds_what_the_new_steps_write() -> None:

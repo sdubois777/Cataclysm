@@ -1,11 +1,11 @@
 # Save System and Empire Persistence
 
 This is the design for what the game writes to disk, how it is partitioned, and
-how it survives the schema changing. It answers issue #21.
+what happens when the schema changes. It answers issue #21.
 
 **What is built, as of 2026-08-20.** The whole of the writing half: the three
-records, the partition rule, JSON reading and writing, the migration chain,
-committed example save files as its test, the clock and the write triggers,
+records, the partition rule, JSON reading and writing, the version check (the
+migration chain it replaced on 2026-11-27, section 5), the clock and the write triggers,
 and reading a live floor into a record and putting it back. Issues #529, #750
 and #751.
 
@@ -24,7 +24,7 @@ then replaces.
 | 1 and 2, the three records | The record classes exist. **Many of the fields listed had no source when they were written**, because nothing in the game then produced a character level, an attribute allocation, a passive tree, the 19 equipped slots, a stash, an empire graph or a dungeon timer. Several have one now -- the 19 equipped slots since 2026-09-24, as `WornGear` -- and each record says which of its fields are still absent and why |
 | 3, partitioning | Built. `UCataclysmSavePartition` |
 | 4, storage format | Built. `FCataclysmSaveStorage` |
-| 5, versioning and migration | Built. `FCataclysmSaveMigration`, and `game/Tests/SaveFixtures/` |
+| 5, versioning | Built. `FCataclysmSaveVersion`, which reads only the current version (2026-11-27), and `game/Tests/SaveFixtures/` |
 | 6, when a save is written | Built. `UCataclysmSaveWriter` holds the clock and the triggers, `FCataclysmSaveGather` reads a floor and `FCataclysmSaveApply` puts one back. **Reading back** is `FCataclysmSaveLoad`, reached only by the console command `Cataclysm.LoadCharacter`; nothing chooses a run at start-up yet |
 
 ---
@@ -241,10 +241,10 @@ files under `Documents\My Games\Grim Dawn\save`.
 JSON is right here for three reasons specific to this project:
 
 1. **This game will change constantly through development and Early Access**, which
-   issue #21 names as the reason to design migration from the start. A migration
-   written against a readable format can be inspected, diffed and tested by hand.
-   A migration written against binary cannot, and every bug in one produces a
-   corrupt save rather than an error.
+   issue #21 names as the reason to design for change from the start. A readable
+   file can be inspected, diffed and tested by hand; a binary one cannot. (The
+   migration chain that reason was first given for was removed on 2026-11-27,
+   section 5; the reason for a readable file stands.)
 2. **The project already follows Last Epoch's architecture.** #505 adopted its
    offline and online split by name. Following its storage choice too is
    consistent, and its offline saves are the closest working example of exactly
@@ -283,79 +283,66 @@ is free and two characters may share a name.
 
 ---
 
-## 5. Schema versioning and migration
+## 5. Schema versioning: only the current version is read
 
-This is the part issue #21 is most worried about, and it is right to be: a format
-that cannot migrate means discarding player progress at every patch, and the
-design calls empire meta-progression "the primary meta-progression system".
+**The owner's ruling of 2026-11-27, their chosen option verbatim: "Remove; old saves reset".** Issue #2928
+slice 12. The game has not shipped and no player holds an old save, so the 45-step migration chain that
+brought older records forward (account at version 8, character at 18, run at 22), its tests and its 48
+example files were removed. A record whose version is not this build's is refused, and a future change to a
+record needs no upgrade step.
+
+**This section said the opposite until that day.** It opened: "a format that cannot migrate means discarding
+player progress at every patch", and required a chain of single-step migrations, each never reading the game's
+data tables, a backup written before any step ran, and an example save file committed for every historical
+version. That was the rule while the save format was meant to carry players through Early Access; the owner
+chose to reset instead while nothing has shipped. Its history is in git and in `docs/DECISIONS.md`.
 
 ### The rules
 
 1. **Every record carries an integer `SchemaVersion` as its first field.** First,
-   so it can be read without parsing the rest, which is what lets a migration run
-   before the record is interpreted.
+   so it can be read without parsing the rest, which is what lets a record of
+   another version be refused before it is interpreted.
 2. **The version is per record type.** An account record and a character record
-   version independently. Bumping one does not touch the other.
-3. **Migration is a chain of single-step functions**, `Migrate_3_to_4`,
-   `Migrate_4_to_5`, applied in order from the file's version to the current one.
-   Never write a migration that jumps versions; a chain of small steps is testable
-   and a jump is not.
-4. **A migration never reads the game's current data tables.** It transforms one
-   schema into the next using only what is in the record and constants frozen into
-   the migration itself. A migration that reads `game/Data/` breaks the moment
-   that data changes, which is the thing most likely to change.
-5. **A record from a newer version than the build understands is refused, not
-   guessed at.** Report it plainly to the player. Silently loading a newer save
-   loses data.
-6. **Migration writes a backup first**, alongside the original, and only replaces
-   the original once the migrated record has been read back successfully.
+   version independently. Bumping one refuses only the old files of that one.
+3. **Only this build's version is read** (`FCataclysmSaveVersion`). A record from
+   an OLDER build is refused, reported plainly ("written by an older build ... saves
+   from before version N are not kept, and the file is left as it is"), listed on
+   the character select screen as an unreadable save, and left on disk untouched:
+   nothing rewrites or deletes it unless the player deletes it from that screen.
+4. **A record from a NEWER build is refused, not guessed at**, as before. Silently
+   loading a newer save loses data.
+5. **A run of another version refuses its character too.** Beginning a new run
+   would write over the character's `CurrentRunId` and lose the run in that file
+   (ruled for a newer run on 2026-10-30, and the same for an older one).
+6. **Nothing is backed up and nothing is written back on a read.** Backups existed
+   only for migration. Deleting a character still deletes the `_BackupOfVersion<N>`
+   slots an older build's migration left beside it.
 
 ### What a version bump means in practice
 
-**Since 2026-11-01, a field added to a record takes a version**, even one with a
-sensible default. `UPROPERTY(SaveGame)` does leave the default when a field is
-missing, so an older file still loads; but once the game could load a save
-(issue #753), the committed example files became files a player might have, and
-`Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites` requires each
-current one to hold every field its record writes. So a new field means a new
-schema version, a migration step that writes the default into an older file,
-and a new example file at the new version, never an edit to an old one. The
-rule and every step taken under it are in `game/Tests/SaveFixtures/README.md`,
-"The one exception, and when it stops applying". A version bump is also for
-changes that need transformation: renaming a field, changing its type, splitting
-one field into two, or changing the meaning of a value.
-
-**This paragraph said the opposite until 2026-11-24**: "Adding a field with a
-sensible default is not a version bump". That was the rule while nothing could
-load a save. Read on its own, it led issue #2848's dismantling fields to be
-added without a version, which window sd-w1 failed; the coordinating session
-corrected it that day so the two documents agree.
+**A field added to a record takes a version**, even one with a sensible default, as
+it has since 2026-11-01: `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`
+requires each committed example file to hold every field its record writes. So a
+new field means raising the record's `SchemaVersion` and replacing its example file
+with one at the new version. **It also means every save of that record written
+before is refused from then on**; that is the owner's choice, and a change worth
+refusing every old character for is worth saying so in the change.
 
 ### Testing it
 
-Issue #21's third acceptance criterion is a test that loads a save written by a
-previous schema version. The way to make that real rather than decorative:
+**One committed example file per record, at its current version**, in
+`game/Tests/SaveFixtures/` (`Account_v8.json`, `Character_v18.json`, `Run_v22.json`),
+and its `README.md` says what to do when a version is raised. The files are written
+by hand rather than by the code that reads them, because a test that writes a save
+with the current code and reads it back proves only that the code agrees with
+itself.
 
-**Commit example save files, one per historical schema version, as test fixtures.**
-A test loads each and asserts the result matches what the current schema should
-produce. When a version is added, its example file is added and the older ones
-stay. This is the only form of the test that cannot quietly stop testing
-anything — a test that writes a save with the current code and reads it back
-proves only that the code agrees with itself.
-
-Per `CLAUDE.md`, confirm the test fails when it should: change one migration step
-to drop a field and check the test that covers that version fails, using
-`tools/unreal_build.prove_cpp_guard`.
-
-**The files are in `game/Tests/SaveFixtures/`**, and its `README.md` says what
-each one is and what to do when a version is added.
-
-**With every record at version 1 there is no migration to exercise**, so the
-chain is proved on a record that exists only to be old:
-`UCataclysmSaveExampleRecord`, at version 3, with a step that renames a field
-and a step that splits one field into two. Inventing a fake version bump on the
-character record instead would mean committing an example file for a version
-that never existed.
+**The refusal is tested** by `Cataclysm.SaveVersion.AnOlderRecordIsRefusedAndACurrentOneLoads`:
+a character record one version older is refused by the check, by a read from its
+slot (which leaves the file byte for byte as it was, with no backup) and by the
+character list, while the same record at the current version reads whole. And
+`Cataclysm.SaveVersion.ARecordFromANewerBuildIsRefusedRatherThanGuessedAt` and
+`ARecordWithNoUsableVersionIsRefused` hold the other two refusals.
 
 ---
 
@@ -394,9 +381,9 @@ real failure caught by a test: a boss with 137 health left came back with 100.
 
 **Why the mid-blow state is deliberately left out.** It is the data most likely to
 change shape with every patch — a creature's brain, how far into a wind-up it is,
-a projectile's flight — and section 5 requires a migration for any persisted field
-whose shape changes. Persisting combat choreography would mean writing a migration
-every patch for state nobody wants preserved, which is the cost with none of the
+a projectile's flight — and a persisted field whose shape changes takes a version
+bump, which refuses every older save (section 5). Persisting combat choreography would
+mean refusing saves every patch for state nobody wants preserved, which is the cost with none of the
 benefit. Keeping the damage and dropping the choreography removes what the escape
 is worth while leaving the save format stable.
 

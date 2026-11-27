@@ -214,36 +214,16 @@ def test_the_count_is_added_once_a_craft_is_done() -> None:
 def test_both_records_save_the_count() -> None:
     header = flat(code(RECORDS_H))
     assert header.count("double GoldSpentAtTheForge = 0.0;") == 2, "the account and the character records each hold it"
-    records = code(RECORDS_CPP)
-    for space, step, row in (
-            ("namespace CataclysmAccountSaveMigration", "bool Migrate_7_to_8(", '{ 7, TEXT("Migrate_7_to_8"), &Migrate_7_to_8 }'),
-            ("namespace CataclysmCharacterSaveMigration", "bool Migrate_17_to_18(",
-             '{ 17, TEXT("Migrate_17_to_18"), &Migrate_17_to_18 }')):
-        steps = body(records, space)
-        assert row in flat(steps), f"{step} is not a step of {space}"
-        written = flat(body(steps, step))
-        assert 'Record->SetNumberField(TEXT("GoldSpentAtTheForge"), Held);' in written and "return false;" in written
-    old = json.loads((FIXTURES / "Account_v7.json").read_text(encoding="utf-8"))
-    new = json.loads((FIXTURES / "Account_v8.json").read_text(encoding="utf-8"))
-    assert new.pop("SchemaVersion") == 8 and old.pop("SchemaVersion") == 7
-    assert new.pop("GoldSpentAtTheForge") == 62500.25, "the committed account's count is not a figure"
-    assert new == old, "Account_v8.json is not Account_v7.json with the forge count"
+    # THE COMMITTED FILES STATE A FIGURE, not the default. Their comparison with the version before, and the steps
+    # that wrote 0 into it, went with the save migrations on 2026-11-27 (issue #2928 slice 12).
+    account = json.loads((FIXTURES / "Account_v8.json").read_text(encoding="utf-8"))
+    assert account["SchemaVersion"] == 8
+    assert account["GoldSpentAtTheForge"] == 62500.25, "the committed account's count is not a figure"
     assert "| `Account_v8.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
-    old = json.loads((FIXTURES / "Character_v17.json").read_text(encoding="utf-8"))
-    new = json.loads((FIXTURES / "Character_v18.json").read_text(encoding="utf-8"))
-    assert new.pop("SchemaVersion") == 18 and old.pop("SchemaVersion") == 17
-    assert new.pop("GoldSpentAtTheForge") == 41250.75, "the committed character's count is not a figure"
-    assert new == old, "Character_v18.json is not Character_v17.json with the forge count"
+    character = json.loads((FIXTURES / "Character_v18.json").read_text(encoding="utf-8"))
+    assert character["SchemaVersion"] == 18
+    assert character["GoldSpentAtTheForge"] == 41250.75, "the committed character's count is not a figure"
     assert "| `Character_v18.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
-    for older, newer in (("AddTheAccountsVersion7Defaults(", "AddTheAccountsVersion8Defaults("),
-                         ("AddTheCharactersVersion17Defaults(", "AddTheCharactersVersion18Defaults(")):
-        stepping = 0
-        for path in sorted((SOURCE / "Tests").glob("*.cpp")):
-            text = code(path)
-            if older in text:
-                stepping += 1
-                assert text.count(newer) >= text.count(older), f"{path.name} steps through {older} and not {newer}"
-        assert stepping >= 3, f"only {stepping} test files step through {older}"
     gather = flat(code(SOURCE / "Save" / "CataclysmSaveGather.cpp"))
     apply = flat(code(SOURCE / "Save" / "CataclysmSaveApply.cpp"))
     assert "Record.GoldSpentAtTheForge = State->GetOwnGoldSpentAtTheForge();" in gather

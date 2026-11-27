@@ -110,45 +110,6 @@ def test_the_seeds_the_unreal_test_pins_are_what_the_hash_gives():
         assert f", {seed});" in tests, f"{DRAW_TESTS.name} no longer pins {seed}"
 
 
-def test_the_version_7_file_states_a_seed_its_identifier_does_not_give():
-    """A file holding the seed its identifier gives would pass whether the seed was read or worked out again."""
-    record = character_fixtures()[7]
-    seed = record["CataclysmOrderSeed"]
-    assert seed == constant("CommittedCharacterOrderSeed") == 975318642
-    assert seed not in (0, seed_for(record["CharacterId"]))
-
-    def numbers(value):
-        if isinstance(value, dict):
-            for inner in value.values():
-                yield from numbers(inner)
-        elif isinstance(value, list):
-            for inner in value:
-                yield from numbers(inner)
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            yield value
-
-    assert list(numbers(record)).count(seed) == 1, "the seed is another number in the file as well"
-
-
-def test_the_version_7_file_is_the_version_6_file_with_the_seed_and_nothing_else():
-    """`game/Tests/SaveFixtures/README.md`: a new fixture is the last one at the new version plus the new field."""
-    fixtures = character_fixtures()
-    older, newer = dict(fixtures[6]), dict(fixtures[7])
-    del newer["CataclysmOrderSeed"]
-    older["SchemaVersion"] = 7
-    assert newer == older
-    assert "CataclysmOrderSeed" not in fixtures[6]
-
-
-def test_the_migration_step_writes_the_identifiers_seed():
-    text = code(SAVE_RECORDS_CPP)
-    assert '{ 6, TEXT("Migrate_6_to_7"), &Migrate_6_to_7 }' in text
-    step = re.search(r"bool Migrate_6_to_7\(.*?\n\t}", text, re.S)
-    assert step, "Migrate_6_to_7 is not where it was looked for"
-    assert 'TEXT("CataclysmOrderSeed")' in step[0]
-    assert "UCataclysmCharacterSave::CataclysmOrderSeedFor(Identifier)" in step[0]
-
-
 def test_the_games_hash_is_written_with_fnv_1a_constants():
     """Not `GetTypeHash`, which an engine upgrade may change."""
     text = code(SAVE_RECORDS_CPP)

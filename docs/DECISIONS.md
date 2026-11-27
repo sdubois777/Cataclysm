@@ -2,6 +2,81 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — Saves: only the current version is read; the 45 upgrade steps, their tests and the old example files are removed (#2928, slice 12)
+
+**Affects:** `game/Source/Cataclysm/Save/` (`CataclysmSaveVersion.h` and `.cpp` replace `CataclysmSaveMigration.h` and
+`.cpp`; `CataclysmSaveStorage`, `CataclysmSaveLoad`, `CataclysmSaveRecord.h`, `CataclysmSaveRecords`,
+`CataclysmTestSaves`), the save tests in `game/Source/Cataclysm/Tests/`, `game/Tests/SaveFixtures/`, 23 files in
+`tools/tests/`, `docs/Save_System_Design.md` section 5, `docs/README.md` and `game/README.md`.
+
+### The ruling
+
+**The owner, 2026-11-27, their chosen option verbatim: "Remove; old saves reset".** Asked by the coordinating session
+from the survey of issue #2928 (its slice 12: about 90 tests, 48 fixtures and 19,132 lines held up a 45-step migration
+chain). The game has not shipped and no player holds an old save. A save older than the current version is not loaded,
+and a future save change needs no upgrade step. Current versions, unchanged: run 22, character 18, account 8.
+
+### What an older record does now, and why that
+
+**Decided from what the game already did with a NEWER file**, as the coordinating session asked, and stated:
+
+- **The read refuses it.** `FCataclysmSaveVersion::Check` answers `OlderThanThisBuild`; `FCataclysmSaveStorage::FromJson`
+  returns nothing with `VersionRefusedIt` and the message "the record is version N and this build reads version M. It
+  was written by an older build; saves from before version M are not kept, and the file is left as it is". Nothing is
+  written: no backup (backups existed only for migration) and no write-back.
+- **The character select screen lists it as unreadable**: `FCataclysmSaveLoad::SavedCharacters` already marked any slot
+  that will not read `bReadable = false` with the reason, shown as "Unreadable save, <slot>: <reason>", which the player
+  can delete from that screen. Nothing deletes the file otherwise.
+- **A load refuses it** with "the character record in '<slot>' was written by an older build, at version N where this
+  build reads version M; saves from before version M are not kept, and the file is left as it is", the same path as a
+  newer record. **An older run refuses its character too**, as a newer run has since 2026-10-30: a new run begun there
+  would replace the character's run and lose the run in that file. A judgement by the same reasoning.
+- **An account record** that will not read was already logged and not banked into for the session, never replaced;
+  that path is unchanged.
+
+### What changed
+
+- **Game code:** the 45 `Migrate_N_to_N+1` steps and their helpers in `CataclysmSaveRecords.cpp` (1,722 lines to 45),
+  `MigrationSteps`, `FCataclysmSaveMigration`, the backup path in `ReadFromSlot`, `BackupSlotName`, the results
+  `Migrated` and `MigratedButCouldNotBeWrittenBack`, and `FCataclysmTestSaves::NoteABackup`. `BackupInfix` stays, so
+  deleting a character still deletes the `_BackupOfVersion<N>` slots an older build left. Comments that named a
+  removed step say "the upgrade step to version N (removed 2026-11-27)".
+- **Tests deleted: 48 Unreal tests** that loaded an older record or tested the chain, named in the pull request body,
+  with `CataclysmSaveMigrationTests.cpp` and `CataclysmGemSaveTests.cpp` whole and 810 lines of old-fixture defaults in
+  `CataclysmSaveFixtures.h`. **The test commit's message says 41; that is wrong**, and 48 is counted by name against
+  development (52 names gone, of which 4 were renames).
+- **Trimmed to their current-file halves and renamed** (4): `CityCleanseSave.WhetherTheCleanseWasBoughtIsSaved`,
+  `EmpireTreeNineSaves.TheCommittedFilesReadTheirFigures`, `ForgeGoldNodes.TheCommittedRecordsReadTheirForgeCounts`,
+  `SaveRecords.EachRecordTypeHasItsOwnNameAndVersion`; `SaveStorage.ATestsSavesAreDeletedWhenItEnds` loses its backup
+  half under its own name.
+- **New, `CataclysmSaveVersionTests.cpp`, group `Cataclysm.SaveVersion.`, 3 tests:**
+  `AnOlderRecordIsRefusedAndACurrentOneLoads` (new: a character record one version older refused by the check, by a
+  read from its slot, which leaves the file byte for byte and writes no backup, and by the character list; CONTROL the
+  same record at the current version reads whole and lists readable), and
+  `ARecordFromANewerBuildIsRefusedRatherThanGuessedAt` and `ARecordWithNoUsableVersionIsRefused`, ported from the
+  migration file.
+- **Fixtures:** the 45 older-version files and the example record's 3 deleted; `Account_v8.json`, `Character_v18.json`
+  and `Run_v22.json` kept; the README rewritten.
+- **Python:** 53 test functions deleted across 20 files, three files deleted whole
+  (`test_save_migrations_are_single_steps.py`, `test_passive_nodes_are_named_for_a_frozen_class.py`, whose frozen
+  class list existed only for the version 3 step, and `test_gems_are_saved_at_the_new_record_versions.py`), and four
+  tests trimmed to their current-record checks.
+
+### Registered for the window
+
+- **No editor step**: no CSV or asset changes.
+- **Groups alone (new only, the owner's rule of 2026-11-25):** `Cataclysm.SaveVersion.` 3.
+- **The whole suite: 6093**, with Python beside it. The base log is rost-w1's whole suite on 4520d824, "6138 tests
+  performed", whose tree declares the same 6087 tests by name as development 2596d702a (6138 performed, because some
+  tests report more than one result). This branch removes 52 names and adds 7, all simple tests: 6138 - 45. **Test
+  saves 895**, as in that log: read per test from its running total, none of the removed tests wrote one. **Skipped
+  halves 61**, as in that log.
+- **One C++ guard proof, SV1**, that the older-record refusal is tested: in `CataclysmSaveVersion.cpp`,
+  `if (Version < CurrentVersion)` read as `if (false && Version < CurrentVersion)`. Predicted, narrowed to
+  `Cataclysm.SaveVersion.`: 3 performed, 1 failed, `AnOlderRecordIsRefusedAndACurrentOneLoads`; restored, 3 passed.
+
+---
+
 ## 2026-11-26 — War is not built: a character draws Demonic and Death first, and no longer War
 
 **Affects:** `game/Source/CataclysmEmpire/Empire/CataclysmRoster.cpp` (`UCataclysmRoster::Built`) and its header;

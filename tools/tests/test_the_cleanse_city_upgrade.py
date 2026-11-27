@@ -19,7 +19,6 @@ WHAT IS CHECKED:
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -130,13 +129,7 @@ def test_it_halves_the_counted_dungeons_and_what_each_city_holds() -> None:
 # --------------------------------------------------------------------------
 
 def test_the_run_record_step_and_field() -> None:
-    records = code(SAVE / "CataclysmSaveRecords.cpp")
-    # THE RUN RECORD'S OWN STEPS: the character record has a `Migrate_15_to_16` too since issue #2849, and it comes
-    # first in the file.
-    run = body(records, "namespace CataclysmRunSaveMigration")
-    step = body(run, "bool Migrate_15_to_16(")
-    assert 'Record->SetBoolField(TEXT("bCleanseBoughtThisRun"), false);' in step
-    assert '{ 15, TEXT("Migrate_15_to_16"), &Migrate_15_to_16 },' in run
+    # ITS STEP, 15 TO 16, went with the save migrations on 2026-11-27 (issue #2928 slice 12).
     header = flat(code(SAVE / "CataclysmSaveRecords.h"))
     run_record = header[header.index("class CATACLYSM_API UCataclysmRunSave "):]
     # AT LEAST 16, read rather than pinned: a later step moves it on (17 for issue #2840), as every other check of the
@@ -148,18 +141,3 @@ def test_the_run_record_step_and_field() -> None:
     assert "Run.bCleanseBoughtThisRun = Record.bCleanseBoughtThisRun;" in code(SAVE / "CataclysmSaveApply.cpp")
 
 
-def test_the_committed_run_file_is_the_previous_one_with_the_cleanse_bought() -> None:
-    before = json.loads((FIXTURES / "Run_v15.json").read_text(encoding="utf-8"))
-    after = json.loads((FIXTURES / "Run_v16.json").read_text(encoding="utf-8"))
-    assert after.pop("SchemaVersion") == before.pop("SchemaVersion") + 1 == 16
-    assert after.pop("bCleanseBoughtThisRun") is True, "Run_v16.json states the default, so a read proves nothing"
-    assert after == before, "Run_v16.json differs from Run_v15.json beyond its version and the flag"
-    assert "| `Run_v16.json` |" in (FIXTURES / "README.md").read_text(encoding="utf-8")
-
-
-def test_every_chain_test_adds_the_new_steps_write() -> None:
-    missing = [path.name for path in sorted(TESTS.glob("*.cpp"))
-               if code(path).count("AddTheRunsVersion15Defaults(*Expected)")
-               != code(path).count("AddTheRunsVersion16Defaults(*Expected)")]
-    assert not missing, f"these run an older run file through the chain without the step 15 to 16's write: {missing}"
-    assert 'Expected.SetBoolField(TEXT("bCleanseBoughtThisRun"), false);' in code(TESTS / "CataclysmSaveFixtures.h")

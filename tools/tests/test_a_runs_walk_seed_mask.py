@@ -28,7 +28,6 @@ tests check those.
 
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -74,41 +73,6 @@ def run_migrations() -> str:
     return braced(text, start, "CataclysmRunSaveMigration")
 
 
-def test_run_v8_is_run_v7_with_a_mask_that_is_not_the_default() -> None:
-    """The fixture rule: the new file is the old one at the new version, plus the new key, not at its default."""
-    before = json.loads((FIXTURES / "Run_v7.json").read_text(encoding="utf-8"))
-    after = json.loads((FIXTURES / "Run_v8.json").read_text(encoding="utf-8"))
-
-    assert before["SchemaVersion"] == 7
-    assert after["SchemaVersion"] == 8
-    assert "WalkSeedMask" not in before, "Run_v7.json holds WalkSeedMask, which version 7 did not have"
-    assert isinstance(after.get("WalkSeedMask"), int) and after["WalkSeedMask"] != 0, (
-        f"Run_v8.json's WalkSeedMask is {after.get('WalkSeedMask')!r}: 0 is the default and the migration's value, so "
-        "a file holding it would pass whether the field was read or not")
-
-    rest = {key: value for key, value in after.items() if key != "WalkSeedMask"}
-    rest["SchemaVersion"] = 7
-    assert rest == before, "Run_v8.json differs from Run_v7.json beyond its version and its mask"
-
-
-def test_the_run_record_is_at_version_8_and_migrate_7_to_8_writes_a_mask_of_0() -> None:
-    """Version 8 or later, and a step from 7 that writes 0 -- the mask that keeps every version 7 seed -- in the chain."""
-    header = code(SAVE / "CataclysmSaveRecords.h")
-    run_class = header.split("class CATACLYSM_API UCataclysmRunSave")[1]
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", run_class)
-    assert version is not None and int(version.group(1)) >= 8, "the run record is below version 8"
-    assert re.search(r"\bint32\s+WalkSeedMask\s*=\s*0\s*;", run_class), "the run record does not carry WalkSeedMask"
-
-    migrations = run_migrations()
-    step = body(migrations, "bool Migrate_7_to_8(", "the run record's migrations")
-    assert re.search(r'SetNumberField\(\s*TEXT\("WalkSeedMask"\)\s*,\s*0\s*\)', step), (
-        "Migrate_7_to_8 does not write a WalkSeedMask of 0, so a run saved at version 7 would walk other floors")
-
-    chain = body(migrations, "const FCataclysmSaveMigrationStep RunSteps[] =", "the run record's chain")
-    steps = re.findall(r"\{\s*(\d+)\s*,\s*TEXT\(\"(Migrate_\d+_to_\d+)\"\)", chain)
-    assert ("7", "Migrate_7_to_8") in steps, f"the run record's chain has no step from 7: {steps}"
-
-
 def test_the_walk_seed_xors_the_identifier_plus_one_with_the_runs_mask() -> None:
     """`max(1, (DungeonId + 1) ^ RunMask)`: a mask of 0 is the seed before B10, and never below 1."""
     seed = body(code(EMPIRE / "CataclysmSurge.cpp"), "int32 FCataclysmDungeon::WalkSeed(int32 RunMask) const",
@@ -128,6 +92,3 @@ def test_begin_draws_the_mask_and_the_save_carries_it() -> None:
         "the save no longer applies the record's WalkSeedMask to the run")
 
 
-def test_the_fixtures_readme_lists_run_v8() -> None:
-    readme = (FIXTURES / "README.md").read_text(encoding="utf-8")
-    assert "| `Run_v8.json` |" in readme, "game/Tests/SaveFixtures/README.md does not list Run_v8.json"

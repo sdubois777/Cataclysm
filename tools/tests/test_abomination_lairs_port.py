@@ -16,7 +16,6 @@ and shapes.
 """
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -110,27 +109,3 @@ def test_the_boss_is_the_cursed_abomination_at_the_boss_rung() -> None:
     assert "/*GearMore=*/AbominationGearMore" in enemy
 
 
-def test_the_run_record_step_writes_the_count_and_every_chain_test_adds_it() -> None:
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);",
-                        read(RECORDS_H).split("class CATACLYSM_API UCataclysmRunSave")[1])
-    assert version and int(version.group(1)) >= 22, version and version.group(1)
-    before = json.loads(read(FIXTURES / "Run_v21.json"))
-    after = json.loads(read(FIXTURES / "Run_v22.json"))
-    assert after["SchemaVersion"] == 22
-    for d in after["Dungeons"]:
-        assert d.pop("CitiesFallenBefore") == 0
-    after["SchemaVersion"] = 21
-    assert after == before, "Run_v22.json differs from Run_v21.json beyond its version and the one field"
-    assert "| `Run_v22.json` |" in read(FIXTURES / "README.md")
-    chain21 = chain22 = 0
-    for path in SOURCE.rglob("*.cpp"):
-        # THE STEP'S OWN MIGRATION TEST runs `Run_v21.json` through the one step, not the chain.
-        if path.name == "CataclysmAbominationLairsTests.cpp":
-            continue
-        text = read(path)
-        twenty_one = len(re.findall(r"AddTheRunsVersion21Defaults\(", text))
-        twenty_two = len(re.findall(r"AddTheRunsVersion22Defaults\(", text))
-        assert twenty_one == twenty_two, f"{path.name}: {twenty_one} reach 21 and {twenty_two} reach 22"
-        chain21 += twenty_one
-        chain22 += twenty_two
-    assert chain22 == chain21 >= 16, (chain21, chain22)

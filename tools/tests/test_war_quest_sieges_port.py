@@ -21,7 +21,6 @@ cannot see.
 """
 from __future__ import annotations
 
-import json
 import pathlib
 import re
 
@@ -159,39 +158,3 @@ def test_a_fall_to_war_makes_the_next_siege_in_the_same_place_in_both() -> None:
         "the fall's Siege no longer draws from a stream of its own")
 
 
-def test_the_run_record_step_writes_the_two_fields_and_every_chain_test_adds_them() -> None:
-    """The save: version 21, `Run_v21.json` is `Run_v20.json` with only the version and
-    the two fields, and every test that runs an older run file through the whole chain
-    adds what the step writes. CONTROL: the fixture's fallen city carries a figure, not
-    the default, so a load that ignored the field could be seen."""
-    version = re.search(r"static constexpr int32 SchemaVersionNow = (\d+);", read(RECORDS_H).split(
-        "class CATACLYSM_API UCataclysmRunSave")[1])
-    # 21 OR LATER: issue #51 slice B5 took the record to 22 on top of this step.
-    assert version and int(version.group(1)) >= 21, version and version.group(1)
-
-    before = json.loads(read(FIXTURES / "Run_v20.json"))
-    after = json.loads(read(FIXTURES / "Run_v21.json"))
-    assert after["SchemaVersion"] == 21
-    for d in after["Dungeons"]:
-        assert d.pop("ArrivedDay") == -1
-    fell_to = [c.pop("FellTo") for c in after["Cities"]]
-    assert fell_to == ["None" if not c["bFallen"] else "Demonic" for c in before["Cities"]], fell_to
-    assert "Demonic" in fell_to, "CONTROL: the fixture's fallen city carries a figure"
-    after["SchemaVersion"] = 20
-    assert after == before, "Run_v21.json differs from Run_v20.json beyond its version and the two fields"
-    assert "| `Run_v21.json` |" in read(FIXTURES / "README.md")
-
-    chain20 = chain21 = 0
-    for path in TESTS.rglob("*.cpp"):
-        # THE STEP'S OWN MIGRATION TEST runs `Run_v20.json` through the one step, not the chain, so it adds 21 alone.
-        if path.name == "CataclysmWarQuestSiegesTests.cpp":
-            continue
-        text = read(path)
-        twenty = len(re.findall(r"AddTheRunsVersion20Defaults\(", text))
-        twenty_one = len(re.findall(r"AddTheRunsVersion21Defaults\(", text))
-        assert twenty == twenty_one, f"{path.name}: {twenty} chain tests reach 20 and {twenty_one} reach 21"
-        assert "Run_v20.json" not in text or re.search(r"Run_v2[1-9]\.json", text), (
-            f"{path.name} reads Run_v20.json as the committed file")
-        chain20 += twenty
-        chain21 += twenty_one
-    assert chain21 == chain20 >= 15, (chain20, chain21)
