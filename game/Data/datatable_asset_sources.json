@@ -197,7 +197,7 @@
       "asset": "DT_WeaponMeshes",
       "csv": "WeaponMeshes.csv",
       "rows": 14,
-      "csv_sha256": "d74e8821137d0b64fec0838f08dce8ddb87ba641fac15b5189a1bf5dc819febe"
+      "csv_sha256": "0dff306967cd565b5046c039a2cc252a50b21181b4271b78a507ca6bc6f5f9c8"
     },
     {
       "asset": "DT_WeaponSkills",

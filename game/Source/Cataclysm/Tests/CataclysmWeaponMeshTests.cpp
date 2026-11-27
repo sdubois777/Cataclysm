@@ -838,4 +838,132 @@ CATACLYSM_TEST(FCataclysmRightHandEmptiedDrawsOtherTest,
 	return true;
 }
 
+
+// --------------------------------------------------------------------------
+// The grip, 2026-11-27
+// --------------------------------------------------------------------------
+//
+// THE OWNER, PLAY-TESTING: "he's holding the greatsword by the tip.. instead of
+// the handle". The hand socket holds a mesh's origin, and SM_Sword_3 puts its
+// origin at the blade's tip. Each row now names the mesh point the hand holds
+// (GripX to GripZ) and the turn about it (GripPitch to GripRoll), and
+// `UCataclysmWeaponMeshes::GripFor` puts that point on the socket. Automation
+// tests do not render, so these say where the grip lands, not how it looks.
+
+namespace CataclysmWeaponMeshTest
+{
+	/** SM_Sword_3's grip, measured from its vertices: the middle of Z 78 to 88. */
+	const FVector GreatswordGrip(0.0f, 0.0f, 83.0f);
+
+	/** How close to the socket's origin a grip point must land: a tenth of a millimetre. */
+	constexpr float GripTolerance = 0.01f;
+}
+
+CATACLYSM_TEST(FCataclysmWeaponGripArithmeticTest,
+	"Cataclysm.WeaponMesh.AGripPointIsPutOnTheHandSocket")
+{
+	using namespace CataclysmWeaponMeshTest;
+
+	// A MESH HELD BY ITS GRIP AND TURNED: the grip lands on the socket, and the
+	// tip, at the mesh's origin, lands 83 cm times the scale along +Z, the way
+	// the blade of a mesh held at its origin points.
+	const FTransform Corrected =
+		UCataclysmWeaponMeshes::GripFrom(GreatswordGrip, FRotator(0.0f, 0.0f, 180.0f), 1.75f);
+	TestTrue(TEXT("the grip point lands on the socket"),
+		Corrected.TransformPosition(GreatswordGrip).IsNearlyZero(GripTolerance));
+	TestTrue(TEXT("and the tip lands 83 x 1.75 cm along +Z from it"),
+		Corrected.TransformPosition(FVector::ZeroVector).Equals(FVector(0.0f, 0.0f, 83.0f * 1.75f), GripTolerance));
+	TestTrue(TEXT("and the mesh is drawn at its scale"), Corrected.GetScale3D().Equals(FVector(1.75f)));
+
+	// THE CONTROL: the same mesh with no grip is held at its origin, which puts
+	// the grip 145 cm out along +Z -- the tip in the hand, as the owner saw.
+	const FTransform Uncorrected = UCataclysmWeaponMeshes::GripFrom(FVector::ZeroVector, FRotator::ZeroRotator, 1.75f);
+	TestTrue(TEXT("CONTROL: with no grip, the origin is on the socket"),
+		Uncorrected.TransformPosition(FVector::ZeroVector).IsNearlyZero(GripTolerance));
+	TestFalse(TEXT("CONTROL: and the grip point is not"),
+		Uncorrected.TransformPosition(GreatswordGrip).IsNearlyZero(GripTolerance));
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmWeaponGripRowsTest,
+	"Cataclysm.WeaponMesh.TheGreatswordsRowHoldsItByItsGripAndTheAxesByItsOrigin")
+{
+	using namespace CataclysmWeaponMeshTest;
+
+	const UDataTable* Table = UCataclysmWeaponMeshes::LoadTable();
+	if (!TestNotNull(TEXT("DT_WeaponMeshes"), Table))
+	{
+		return false;
+	}
+
+	// THE TABLE THE GAME LOADS, not the arithmetic alone: an asset built before
+	// the grip columns existed reads every grip as nought and fails here.
+	const FTransform Greatsword = UCataclysmWeaponMeshes::GripFor(Table, FName(TwoHandedBase), 1.75f);
+	TestTrue(TEXT("the Greatsword's grip lands on the socket"),
+		Greatsword.TransformPosition(GreatswordGrip).IsNearlyZero(GripTolerance));
+	TestTrue(TEXT("and its blade points along +Z from the hand"),
+		Greatsword.TransformPosition(FVector::ZeroVector).Z > 100.0f);
+
+	// THE CONTROL: the axe was always held the right way, at its origin, unturned.
+	const FTransform Axe = UCataclysmWeaponMeshes::GripFor(Table, TEXT("Weapon_Axe"), 1.0f);
+	TestTrue(TEXT("CONTROL: the Axe is held at its origin"),
+		Axe.TransformPosition(FVector::ZeroVector).IsNearlyZero(GripTolerance));
+	TestTrue(TEXT("CONTROL: and is not turned"), Axe.GetRotation().Equals(FQuat::Identity, 1.e-4f));
+
+	// AND A BASE WITH NO ROW IS HELD AT ITS ORIGIN.
+	TestTrue(TEXT("a helm, with no row, is held at its origin"),
+		UCataclysmWeaponMeshes::GripFor(Table, TEXT("Head_Helm"), 1.0f)
+			.TransformPosition(FVector::ZeroVector).IsNearlyZero(GripTolerance));
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmWeaponGripInTheHandTest,
+	"Cataclysm.WeaponMesh.AnEquippedGreatswordIsHeldByItsGripAndTheNextWeaponIsNotTurned")
+{
+	using namespace CataclysmWeaponMeshTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	if (!TestNotNull(TEXT("a player"), Player))
+	{
+		return false;
+	}
+	if (!WeaponArtIsPresent())
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this, NoArtReason());
+		return true;
+	}
+
+	ECataclysmGearSlot WentTo = ECataclysmGearSlot::Weapon1;
+	if (!TestEqual(TEXT("set-up: the Greatsword is worn"), Wear(Player, TwoHandedBase, WentTo), FName(TwoHandedBase)))
+	{
+		return false;
+	}
+	const UStaticMeshComponent* Right = HandNamed(Player, TEXT("RightHandWeapon"));
+	if (!TestNotNull(TEXT("the right hand component"), Right))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the Greatsword's grip is on the hand socket"),
+		Right->GetRelativeTransform().TransformPosition(GreatswordGrip).IsNearlyZero(GripTolerance));
+
+	// THE CONTROL, AND THE HALF THAT WOULD BREAK SILENTLY: the axe drawn next is
+	// held at its origin, unturned, so the sword's turn did not stay on the hand.
+	if (!TestEqual(TEXT("set-up: the Axe is worn"), Wear(Player, TEXT("Weapon_Axe"), WentTo), FName(TEXT("Weapon_Axe"))))
+	{
+		return false;
+	}
+	TestTrue(TEXT("CONTROL: the Axe is held at its origin"),
+		Right->GetRelativeTransform().GetLocation().IsNearlyZero(GripTolerance));
+	TestTrue(TEXT("CONTROL: and the Greatsword's turn did not stay"),
+		Right->GetRelativeTransform().GetRotation().Equals(FQuat::Identity, 1.e-4f));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
