@@ -267,8 +267,15 @@ stamped 0. Reading identified by the coordinating session and checked in the sou
 whatever its timestamp, and the engine's answer otherwise. The test above checked the camera manager's location, which
 was right all along, and not what is drawn; the new test,
 `Cataclysm.ResumeHold.WhatIsDrawnDuringTheHoldIsTheTopDownCameraAtWorldTimeZero`, asserts on `GetPlayerViewPoint` with
-the world's time at 0, its control the engine's own answer (the pawn's location). Not compiled and not run when this
-paragraph was written.
+the world's time at 0, its control the engine's own answer (the pawn's location). Window camera-w2, 2026-11-28, at
+caafff52a (with development ecfa38bc0 merged in), every figure registered before the run: three compiles succeeded with
+0 warning or error lines; the whole Unreal suite `6158 tests performed, 6158 succeeded, 0 failed`, 63 skipped halves,
+`898 written and deleted, 0 left behind`; Python `9763 passed, 10 skipped` (JUnit tests 9773, failures 0, errors 0),
+`ruff check .` clean; the C++ guard proof (the engine's own condition, a cache time above 0, put back) `PROVED: with the
+break in: 5 tests performed, 4 succeeded, 1 failed: WhatIsDrawnDuringTheHoldIsTheTopDownCameraAtWorldTimeZero |
+restored: 5 tests performed, 5 succeeded, 0 failed`. The test's own line: at world time 0.000, the controller's view
+point 0.0 cm from the top-down camera, pitch -60; the engine's own 0.0 cm from the pawn. The packaged screen is not shown
+by any test.
 
 ---
 
