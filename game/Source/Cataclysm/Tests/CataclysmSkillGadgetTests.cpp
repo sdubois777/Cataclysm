@@ -41,7 +41,7 @@
  * THE PLAYER IS A POSSESSED PLAYER CHARACTER HOLDING A DEMONIC WHIP, given a weapon damage of 100 by hand: Heavy
  * Searing Lash, a 5 m cone; Special Tether, a projectile; Support Coil of Embers, a self buff; Ultimate The Gathering,
  * a 14 m point-blank strike. Two cases hold another weapon: a Demonic Wand, whose Ultimate Anathema is a 12 m
- * point-blank spell, and a War Axe, whose Heavy skill Cleaving Blow has no shape.
+ * point-blank spell, and a War Crossbow, whose Heavy skill Armor Piercing Bolt has no shape.
  *
  * NO ROW IS AUTHORED, SO EVERY STAT IS GRANTED BY HAND, one stat line per call, replacing the last. The slot's flag is
  * a flat 1 on `skill_slot_is_a_gadget` requiring the slot's tag, which is the row the enchantment session is to write.
@@ -1325,7 +1325,8 @@ CATACLYSM_TEST(FCataclysmSkillGadgetShapelessTest,
 {
 	using namespace CataclysmSkillGadgetTest;
 
-	// A PLAYER HOLDING A WAR AXE, whose Heavy skill Cleaving Blow is named and states no shape, and a whip player 60 m
+	// A PLAYER HOLDING A WAR CROSSBOW (a War Axe until the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave the row it used before a shape, Cleaving Blow), whose Heavy skill Armor
+	// Piercing Bolt is named and states no shape, and a whip player 60 m
 	// away for the control. NOT A CELESTIAL SWORD, as the first build had it: its Heavy row has no SkillName, and
 	// `UCataclysmWeaponSkills::SkillsFor` skips a row with none, so that slot holds no skill at all and the rig refuses
 	// it. Ruled 2026-10-16 after window g1 stopped on it.
@@ -1335,7 +1336,7 @@ CATACLYSM_TEST(FCataclysmSkillGadgetShapelessTest,
 		return false;
 	}
 	UWorld* World = Scope.World;
-	FGadgetTestRig Rig(World, FVector::ZeroVector, TEXT("War"), TEXT("Axe"));
+	FGadgetTestRig Rig(World, FVector::ZeroVector, TEXT("War"), TEXT("Crossbow"));
 	FGadgetTestRig Whip(World, FVector(60.0f * M, 0.0f, 0.0f));
 	FCataclysmWeaponSkill Shapeless;
 	FCataclysmWeaponSkill Lash;
@@ -1347,7 +1348,7 @@ CATACLYSM_TEST(FCataclysmSkillGadgetShapelessTest,
 
 	// THE CONTROL: a skill with a shape may be cast by a gadget; this one has none.
 	TestTrue(TEXT("control: a gadget may cast Searing Lash"), ACataclysmMinion::SkillGadgetMayCast(Lash));
-	TestTrue(TEXT("set-up: the War Axe's Heavy row, Cleaving Blow, states no shape"),
+	TestTrue(TEXT("set-up: the War Crossbow's Heavy row, Armor Piercing Bolt, states no shape"),
 		Shapeless.Shape == ECataclysmSkillShape::None);
 	TestFalse(TEXT("and a gadget may not cast it"), ACataclysmMinion::SkillGadgetMayCast(Shapeless));
 

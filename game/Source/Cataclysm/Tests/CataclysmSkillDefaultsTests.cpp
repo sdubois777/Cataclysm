@@ -598,7 +598,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsPlaceholderKeptTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * SD10's control: a War Axe alone, whose five weapon skills are not built. Each of its keys still holds one (a key with
+ * SD10's control: a War Dagger alone, whose five weapon skills are not built (a War Axe until the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave the row it used before a shape). Each of its keys still holds one (a key with
  * something made for it stays empty only when nothing is, O4), and the not-built skills are on keys.
  */
 bool FCataclysmSkillDefaultsPlaceholderKeptTest::RunTest(const FString&)
@@ -609,7 +609,7 @@ bool FCataclysmSkillDefaultsPlaceholderKeptTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 	const FDefaultsCarrier Carrier = SpawnDefaultsCarrier(*this, World);
 	if (!Carrier.IsComplete()
-		|| !WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Axe"), {FName(TEXT("War"))}), ECataclysmGearSlot::Weapon2))
+		|| !WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Dagger"), {FName(TEXT("War"))}), ECataclysmGearSlot::Weapon2))
 	{
 		return false;
 	}
@@ -620,8 +620,8 @@ bool FCataclysmSkillDefaultsPlaceholderKeptTest::RunTest(const FString&)
 	{
 		NotBuiltOnKeys += Skill.Slot != ECataclysmAbilitySlot::BasicAttack && !UCataclysmWeaponSkills::IsBuilt(Skill) ? 1 : 0;
 	}
-	TestTrue(TEXT("every key the War Axe makes a skill for holds one"),
-			 EveryWeaponKeyIs(Rows, TEXT("War_Axe_")));
+	TestTrue(TEXT("every key the War Dagger makes a skill for holds one"),
+			 EveryWeaponKeyIs(Rows, TEXT("War_Dagger_")));
 	TestTrue(TEXT("**and its five not-built skills are on keys**"), NotBuiltOnKeys >= 5);
 	return true;
 }

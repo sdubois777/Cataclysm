@@ -49481,11 +49481,13 @@ bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
 	// until 2026-11-25, when Blood and Iron was built as an Aura (the damage-type auras), which leaves it out.
 	TMap<EWhy, TArray<FString>> War;
 	Pin(TEXT("War: named skills"), Sorted(TEXT("War"), War), 61);
-	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 53);
+	// 33, 9, 13 AND 2 SINCE THE WAR WEAPON SKILLS' WINDOW 1 (issue #2972, 2026-11-28): twenty War rows gained a shape.
+	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 33);
 	Pin(TEXT("War: aura"), CountOf(War, EWhy::Aura), 1);
-	Pin(TEXT("War: movement"), CountOf(War, EWhy::Movement), 3);
+	Pin(TEXT("War: movement"), CountOf(War, EWhy::Movement), 9);
+	Pin(TEXT("War: channelled or held"), CountOf(War, EWhy::ChannelledOrHeld), 2);
 	Pin(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
-	Pin(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 1);
+	Pin(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 13);
 	TestTrue(TEXT("Blood and Iron is an aura"), Holds(War, EWhy::Aura, TEXT("Blood and Iron")));
 	TestTrue(TEXT("and that one is Shield Bash"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
 	// A TYPE NO ROW CARRIES, AND NO LONGER CELESTIAL: issue #2580 gave Celestial a Warhammer kit and every damage type
@@ -64635,8 +64637,9 @@ bool FCataclysmSkillPoolWildMagicPanelTest::RunTest(const FString& Parameters)
 
 	// THE CONTROL: CARRYING WAR ALONE, the line the War weapon test reads.
 	Slots->UseDamageTypes({TEXT("War")});
+	// 13 SINCE THE WAR WEAPON SKILLS' WINDOW 1 (issue #2972, 2026-11-28).
 	TestEqual(TEXT("control: carrying War alone"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
-			  FString(TEXT("wild magic: 0 triggered; pool of 1 War skill")));
+			  FString(TEXT("wild magic: 0 triggered; pool of 13 War skills")));
 
 	// CARRYING WAR THEN DEMONIC: both named, and both pools counted.
 	Slots->UseDamageTypes({TEXT("War"), TEXT("Demonic")});

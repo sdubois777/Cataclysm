@@ -139279,15 +139279,15 @@ problem. Counted from the table on 2026-10-04:
 
 | Reason a skill is left out | Demonic | War | A row that shows it |
 |---|---|---|---|
-| No shape: it does nothing | 0 | 53 | every undesigned War skill |
-| Movement shape: it moves the character somewhere the player did not choose | 13 | 3 | Flashpoint |
+| No shape: it does nothing | 0 | 33 | every undesigned War skill |
+| Movement shape: it moves the character somewhere the player did not choose | 13 | 9 | Flashpoint |
 | Aura: a toggle with an upkeep | 2 | 1 | Conflagration |
 | Summon or Deployable: it reserves Fervour and counts against a most-active figure | 2 | 3 | Summon Imp |
-| Tagged `Type.Channel`, or it has a charge time: it waits for a key release that never comes | 3 | 0 | Pyroclasm, Backswing, The Whole Weight |
+| Tagged `Type.Channel`, or it has a charge time: it waits for a key release that never comes | 3 | 2 | Pyroclasm, Backswing, The Whole Weight |
 | It plants the character's weapon | 1 | 0 | Buried Fire |
 | It refuses unless a condition holds (`Requires`) | 3 | 0 | Touch Off, Unbroken, Slipstream |
 | It costs health, which a free use does not pay | 1 | 0 | Blood Pyre |
-| **In the pool** | **31** | **1** | |
+| **In the pool** | **31** | **13** | |
 | Named skills | 56 | 61 | |
 
 The 31 are 13 Strikes, 8 Projectiles, 7 Self Buffs and 3 Debuffs. **War's pool is one skill, Shield Bash, because 54

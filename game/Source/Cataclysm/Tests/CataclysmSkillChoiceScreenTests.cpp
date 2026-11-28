@@ -532,12 +532,13 @@ bool FCataclysmSkillChoiceScreenNotBuiltTest::RunTest(const FString&)
 	Carrier.Screen->Refresh();
 	UCataclysmChoiceButton* NotBuilt = NewObject<UCataclysmChoiceButton>();
 	UCataclysmChoiceButton* Built = NewObject<UCataclysmChoiceButton>();
-	Carrier.Screen->DescribeButtonForTests(*NotBuilt, FName(TEXT("War_Axe_Heavy")), /*bIsSlot=*/false);
+	// THE ULTIMATE SINCE the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave the row it used before a shape (its Heavy, Cleaving Blow).
+	Carrier.Screen->DescribeButtonForTests(*NotBuilt, FName(TEXT("War_Axe_Ultimate")), /*bIsSlot=*/false);
 	Carrier.Screen->DescribeButtonForTests(*Built, FName(TEXT("Demonic_Axe_Heavy")), /*bIsSlot=*/false);
 	const FString NotBuiltLabel = NotBuilt->GetLabel().ToString();
 	const FString BuiltLabel = Built->GetLabel().ToString();
 	AddInfo(FString::Printf(TEXT("NOT BUILT LABELS: '%s', '%s'"), *NotBuiltLabel, *BuiltLabel));
-	TestTrue(TEXT("**the War Axe's heavy attack is marked not built yet**"),
+	TestTrue(TEXT("**the War Axe's Ultimate is marked not built yet**"),
 			 NotBuiltLabel.EndsWith(UCataclysmSkillAssignmentWidget::NotBuiltYetMark));
 	TestFalse(TEXT("CONTROL: the Demonic Axe's is not"), BuiltLabel.Contains(UCataclysmSkillAssignmentWidget::NotBuiltYetMark));
 	TestFalse(TEXT("set-up: the Demonic Axe's button has a label"), BuiltLabel.IsEmpty());

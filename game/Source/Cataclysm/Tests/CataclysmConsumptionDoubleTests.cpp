@@ -402,10 +402,13 @@ bool FCataclysmConsumptionDoubleNoShapeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const TArray<FCataclysmWornItem> Worn = {
-		WornIn(ECataclysmGearSlot::Weapon1, DoubleTestGreataxe({FName(TEXT("Demonic")), FName(TEXT("War"))}))};
+	// A DAGGER SINCE the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave the row it used before a shape (the Greataxe's Savage Leap): every
+	// War Dagger skill still has none, until slice WS3.
+	FCataclysmItem Dagger = DoubleTestGreataxe({FName(TEXT("Demonic")), FName(TEXT("War"))});
+	Dagger.Base = FName(TEXT("Weapon_Dagger"));
+	const TArray<FCataclysmWornItem> Worn = {WornIn(ECataclysmGearSlot::Weapon1, Dagger)};
 
-	// CONTROL: WITH NO CHOICE, THE MOVEMENT KEY HOLDS DEMONIC'S INFERNAL PLUNGE, WHICH HAS A SHAPE, AND IS OFFERED.
+	// CONTROL: WITH NO CHOICE, THE MOVEMENT KEY HOLDS DEMONIC'S ASHWALK, WHICH HAS A SHAPE, AND IS OFFERED.
 	ACataclysmConsumptionDoubleCharacter* Plain = SpawnDouble(World, FVector(0.0f, 0.0f, 0.0f));
 	if (!TestNotNull(TEXT("set-up: a double was spawned"), Plain)
 		|| !TestTrue(TEXT("set-up: it wears the build"), Plain->WearThePlayersBuild(HandMadeBuild(Worn, {}))))
@@ -417,16 +420,16 @@ bool FCataclysmConsumptionDoubleNoShapeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("CONTROL: Demonic's"), PlainMovement->RowName, FName(TEXT("Demonic_Greataxe_Movement")));
+	TestEqual(TEXT("CONTROL: Demonic's"), PlainMovement->RowName, FName(TEXT("Demonic_Dagger_Movement")));
 	const FCataclysmEnemyAbility PlainChoice = Plain->EnemyAbilities()[MovementIndex];
 	TestTrue(FString::Printf(TEXT("CONTROL: it is offered: %.0f to %.0f cm"), PlainChoice.MinRangeCm,
 							 PlainChoice.MaxRangeCm),
 			 PlainChoice.MaxRangeCm >= PlainChoice.MinRangeCm);
 
-	// WAR'S SAVAGE LEAP ON THE MOVEMENT KEY: held, with no shape, and never offered.
+	// WAR'S VANISHING TRAP ON THE MOVEMENT KEY: held, with no shape, and never offered.
 	FCataclysmSkillChoice Choice;
 	Choice.Slot = ECataclysmAbilitySlot::Movement;
-	Choice.SkillRow = FName(TEXT("War_Greataxe_Movement"));
+	Choice.SkillRow = FName(TEXT("War_Dagger_Movement"));
 	ACataclysmConsumptionDoubleCharacter* Double = SpawnDouble(World, FVector(2000.0f, 0.0f, 0.0f));
 	if (!TestNotNull(TEXT("set-up: a second double was spawned"), Double)
 		|| !TestTrue(TEXT("set-up: it wears the build"), Double->WearThePlayersBuild(HandMadeBuild(Worn, {Choice}))))
@@ -438,7 +441,7 @@ bool FCataclysmConsumptionDoubleNoShapeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("set-up: the chosen War row"), Held->RowName, FName(TEXT("War_Greataxe_Movement")));
+	TestEqual(TEXT("set-up: the chosen War row"), Held->RowName, FName(TEXT("War_Dagger_Movement")));
 	TestTrue(TEXT("set-up: whose row has no shape"), Held->Shape == ECataclysmSkillShape::None);
 	const FCataclysmEnemyAbility Skipped = Double->EnemyAbilities()[MovementIndex];
 	TestTrue(FString::Printf(TEXT("the skill with no shape is offered nowhere: %.0f to %.0f cm"), Skipped.MinRangeCm,
