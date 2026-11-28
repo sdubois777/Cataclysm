@@ -744,6 +744,16 @@ bool ACataclysmPlayerController::HoldUntilFirstInput()
 {
 	// RECORDED FIRST, AND THEN ASKED FOR: the header says why.
 	bHeldUntilFirstInput = true;
+
+	// THE CAMERA PLACED BEFORE THE PAUSE, AND THIS IS WHY. The engine updates a player's camera only while the world is
+	// not paused (`UWorld::Tick` calls `UpdateCameraManager` under `!bIsPaused`, UE 5.8 LevelTick.cpp about line 1845),
+	// and a resume pauses before the level's first tick. So the camera manager had never worked out a view, and the
+	// packaged game showed its default one for the whole hold: at ground level beside the character, looking along the
+	// floor, until the first press let the world tick and the view snapped to the boom's. Measured by the coordinating
+	// session in the package of 1dda47127, 2026-11-28. One update now takes the view from the character's top-down
+	// camera, at the end of its boom; nothing moves while paused, so it stays right.
+	UpdateCameraManager(0.0f);
+
 	if (!IsPaused())
 	{
 		SetPause(/*bPause=*/true);

@@ -272,6 +272,10 @@ public:
 	 * minions, cooldowns, damage over time and every dungeon timer stop together, with no rule of their own for each.
 	 * NO PAUSE SCREEN: the heads-up display draws `HeldUntilFirstInputLine` instead, while `IsHeldUntilFirstInput`.
 	 *
+	 * THE CAMERA IS UPDATED ONCE BEFORE THE PAUSE (`UpdateCameraManager`), because the engine does not update a camera
+	 * while paused and a resume pauses before the level's first tick; without it the hold showed the camera manager's
+	 * default view. Issue #2970's follow-up.
+	 *
 	 * THE HOLD IS RECORDED BEFORE THE PAUSE IS ASKED FOR, as `PauseTheGame` records the pause screen: a world with no
 	 * game mode to ask (a client, or a test world) refuses the pause, and the line and the first press still work.
 	 * True when the game is paused afterwards. Called by `FCataclysmSaveLoad::CharacterAndRun` when it resumes a walk.

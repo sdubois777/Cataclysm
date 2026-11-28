@@ -10,6 +10,9 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Player/CataclysmPlayerController.h"
+#include "Camera/CameraComponent.h"
+#include "Camera/PlayerCameraManager.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/GameModeBase.h"
@@ -326,6 +329,82 @@ bool FCataclysmResumeHoldEscTest::RunTest(const FString&)
 	TestFalse(TEXT("and the world runs"), bPaused);
 	TestFalse(TEXT("with no pause screen asked for"), bScreenWanted);
 	TestTrue(TEXT("CONTROL: the next Esc, with no hold, pauses and asks for the pause screen"), bNextPauses);
+	return true;
+}
+
+/**
+ * The hold places the camera before it pauses: the camera manager's view is the character's top-down camera, at the end
+ * of its boom. The coordinating session found, in the package of 1dda47127, that the hold showed the camera manager's
+ * default view at ground level until the first press, because the engine updates no camera while paused and a resume
+ * pauses before the level's first tick.
+ *
+ * THE CONTROL IS THE PACKAGED GAME'S STATE: a world never ticked, whose camera manager has never worked out a view, so
+ * before the hold its view is not the top-down camera's. The character stands away from the origin, so a view left at
+ * the origin cannot match by chance. Prints "HOLD CAMERA".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResumeHoldCameraTest,
+	"Cataclysm.ResumeHold.TheHoldPutsTheViewAtTheTopDownCameraBeforeItPauses",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResumeHoldCameraTest::RunTest(const FString&)
+{
+	using namespace CataclysmResumeHoldTest;
+
+	const FHoldWorld Hold;
+	if (!TestTrue(TEXT("set-up: a world with the engine's game mode and the game's controller holding a player state"),
+				  Hold.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = Hold.World;
+	ACataclysmPlayerController* Controller = Hold.Controller;
+
+	// AWAY FROM THE ORIGIN, then moved again, as a load's placement moves a character after it is spawned.
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector(1500.0f, -700.0f, 200.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: the player character"), Character))
+	{
+		return false;
+	}
+	Controller->Possess(Character);
+	Character->SetActorLocation(FVector(2300.0f, 900.0f, 150.0f), /*bSweep=*/false, nullptr, ETeleportType::TeleportPhysics);
+
+	const UCameraComponent* TopDown = Character->FindComponentByClass<UCameraComponent>();
+	APlayerCameraManager* CameraManager = Controller->PlayerCameraManager;
+	if (!TestNotNull(TEXT("set-up: the character's top-down camera"), TopDown)
+		|| !TestNotNull(TEXT("set-up: the controller's camera manager"), CameraManager)
+		|| !TestTrue(TEXT("set-up: the controller views its character"), Controller->GetViewTarget() == Character))
+	{
+		return false;
+	}
+
+	// A TEST WORLD HAS NO LOCAL PLAYER, and `APlayerCameraManager::UpdateCamera` works out a view only for a local
+	// player's controller or when client-side camera updates are off. The game's controller has a local player; this
+	// stands in for it, and changes nothing else the update does.
+	CameraManager->bUseClientSideCameraUpdates = false;
+
+	const FVector Boom = TopDown->GetComponentLocation();
+	const FVector ViewBefore = CameraManager->GetCameraLocation();
+	const bool bPaused = Controller->HoldUntilFirstInput();
+	const FVector ViewHeld = CameraManager->GetCameraLocation();
+	const FRotator RotationHeld = CameraManager->GetCameraRotation();
+	const FVector Character0 = Character->GetActorLocation();
+
+	AddInfo(FString::Printf(TEXT("HOLD CAMERA: character at %s; top-down camera at %s (%.0f cm above the character); view "
+								 "before the hold %s, %.1f cm from it; hold paused %s; view during the hold %s, %.1f cm "
+								 "from it, pitch %.1f"),
+							*Character0.ToCompactString(), *Boom.ToCompactString(), Boom.Z - Character0.Z,
+							*ViewBefore.ToCompactString(), FVector::Dist(ViewBefore, Boom),
+							bPaused ? TEXT("yes") : TEXT("NO"), *ViewHeld.ToCompactString(),
+							FVector::Dist(ViewHeld, Boom), RotationHeld.Pitch));
+
+	TestTrue(TEXT("set-up: the top-down camera sits well above the character, at the end of its boom"),
+			 Boom.Z - Character0.Z > 300.0f);
+	TestTrue(TEXT("CONTROL: before the hold the view is not the top-down camera's, as in the packaged game"),
+			 FVector::Dist(ViewBefore, Boom) > 100.0f);
+	TestTrue(TEXT("set-up: the hold paused the world"), bPaused);
+	TestTrue(TEXT("during the hold the view is the top-down camera's"), FVector::Dist(ViewHeld, Boom) < 1.0f);
+	TestTrue(TEXT("and looks down, as the boom does"), RotationHeld.Pitch < -30.0f);
 	return true;
 }
 

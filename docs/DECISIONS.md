@@ -57,6 +57,17 @@ with the coordinating session before the run:
 **Not shown by any test:** the line drawn on the screen, a real key reaching `InputKey` through the game viewport, and
 whether the floor's modifier panel takes a click. The coordinating session checks the first two in the packaged game.
 
+**The packaged check, 2026-11-28, and the camera follow-up.** The coordinating session packaged 1dda47127 and resumed a
+copy of the test saves. The line was drawn, centred, in white; the creatures stood in the same places 4 seconds apart;
+Space ended the hold and did not also fire its skill as far as could be seen. ONE FLAW: during the hold the view sat at
+ground level beside the character, looking along the floor, with a weapon filling the left of the screen, and it moved
+to the top-down view when the hold ended. The cause is in the engine: `UWorld::Tick` updates a player's camera only
+while the world is not paused (UE 5.8 `LevelTick.cpp`, about line 1845), and a resume pauses before the level's first
+tick, so the camera manager had never worked out a view. `HoldUntilFirstInput` now calls `UpdateCameraManager(0.0f)`
+before it pauses, which takes the view from the character's top-down camera at the end of its boom. Test:
+`Cataclysm.ResumeHold.TheHoldPutsTheViewAtTheTopDownCameraBeforeItPauses`. Branch `fix/resume-hold-camera`; not compiled
+and not run when this paragraph was written.
+
 ---
 
 ## 2026-11-27 — The game holds every loaded object of the Paragon art packs for the rest of the session, which stops the packaged game's crash when a Paragon creature is drawn again after a garbage collection (#2968)
