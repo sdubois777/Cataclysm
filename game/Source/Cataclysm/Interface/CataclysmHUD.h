@@ -192,6 +192,13 @@ private:
 	 */
 	void DrawSkillPoolNotice();
 
+	/**
+	 * "Press any key or button to resume", centred, while the player's controller says a resumed walk is held
+	 * (`ACataclysmPlayerController::IsHeldUntilFirstInput`). Issue #2970. The heads-up display is drawn while the game
+	 * is paused, which is when this line is up.
+	 */
+	void DrawResumeHoldLine();
+
 	/** A bar over every creature that has been hurt and is not the player. */
 	void DrawOverheadBars();
 
@@ -517,6 +524,13 @@ private:
 	static constexpr float SkillPoolNoticeScale = 1.0f;
 	static constexpr float SkillPoolNoticeTopShare = 0.22f;
 	static constexpr float SkillPoolNoticeWidthShare = 0.9f;
+
+	/**
+	 * The line asking for a key while a resumed walk is held: its text size and how far down the screen it sits, below
+	 * the death cost's first line. Issue #2970. Judgements, for play to settle.
+	 */
+	static constexpr float ResumeHoldLineScale = 1.5f;
+	static constexpr float ResumeHoldLineTopShare = 0.45f;
 
 	/** How far above the first skill box "K: skills" sits. Issue #837 slice 2. */
 	static constexpr float SkillBarHintGapPx = 6.0f;

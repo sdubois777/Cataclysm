@@ -121,6 +121,9 @@ void ACataclysmHUD::DrawHUD()
 	DrawDeathCostNotice();
 	DrawSkillPoolNotice();
 
+	// A RESUMED WALK WAITING FOR ITS FIRST PRESS. Issue #2970.
+	DrawResumeHoldLine();
+
 	// LAST, SO IT SITS ON TOP OF EVERYTHING. The panel hides most of what is
 	// behind it and covers a strip of the screen; a damage number or a drop
 	// name drawn after it would print over the text describing the creature.
@@ -462,6 +465,20 @@ void ACataclysmHUD::DrawDeathCostNotice()
 		const FBox2D Drawn = DrawTextCentred(Line, Ink, static_cast<float>(Canvas->SizeX) * 0.5f, Top, FittedScale);
 		Top = static_cast<float>(Drawn.Max.Y) + DeathCostNoticeLineGapPx;
 	}
+}
+
+void ACataclysmHUD::DrawResumeHoldLine()
+{
+	const ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(GetOwningPlayerController());
+	if (Controller == nullptr || Canvas == nullptr || !Controller->IsHeldUntilFirstInput())
+	{
+		return;
+	}
+
+	// IN THE NOTICE INK THE DEATH COST AND THE SKILL BAR'S NOTICES USE, centred.
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::LockedNoticeInkHex);
+	DrawTextCentred(ACataclysmPlayerController::HeldUntilFirstInputLine(), Ink, static_cast<float>(Canvas->SizeX) * 0.5f,
+					static_cast<float>(Canvas->SizeY) * ResumeHoldLineTopShare, ResumeHoldLineScale);
 }
 
 void ACataclysmHUD::DrawPotions()

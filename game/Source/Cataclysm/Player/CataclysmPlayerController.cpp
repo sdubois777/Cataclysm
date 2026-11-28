@@ -658,6 +658,18 @@ bool ACataclysmPlayerController::IsAFullScreenOpen() const
 
 bool ACataclysmPlayerController::InputKey(const FInputKeyEventArgs& Params)
 {
+	// A RESUMED WALK WAITS FOR ONE PRESS, AND THAT PRESS DOES NOTHING ELSE. Issue #2970. Every event is taken while
+	// held, so the press that lets the walk run does not also cast a skill into whatever stands beside the player, and
+	// Esc does not also open the pause screen. That is a judgement; the ruling says only "until you press a button".
+	if (bHeldUntilFirstInput)
+	{
+		if (PressEndsTheHold(Params.Key, Params.Event))
+		{
+			ReleaseTheHold();
+		}
+		return true;
+	}
+
 	// ESC IS THIS GAME'S, AND ONLY A PRESS ACTS. A release and a repeat are taken too, so Enhanced Input, which binds
 	// nothing to Esc, never sees half of a press. The header says why Esc is read here and not bound as an action.
 	if (Params.Key == EKeys::Escape)
@@ -728,9 +740,58 @@ bool ACataclysmPlayerController::PauseTheGame()
 	return true;
 }
 
+bool ACataclysmPlayerController::HoldUntilFirstInput()
+{
+	// RECORDED FIRST, AND THEN ASKED FOR: the header says why.
+	bHeldUntilFirstInput = true;
+	if (!IsPaused())
+	{
+		SetPause(/*bPause=*/true);
+	}
+	const bool bPaused = IsPaused();
+	UE_LOG(LogCataclysm, Log, TEXT("%s"),
+		   bPaused ? TEXT("The resumed walk is paused until the first key or button is pressed.")
+				   : TEXT("The resumed walk could not be paused (there is no game mode here to ask); the line asking for "
+						  "a key is up all the same, and the first press takes it down."));
+	return bPaused;
+}
+
+bool ACataclysmPlayerController::ReleaseTheHold()
+{
+	bHeldUntilFirstInput = false;
+
+	// NOT WHILE THE PAUSE SCREEN IS UP, which holds the pause for its own reason. Nothing puts it up during the hold,
+	// since `InputKey` takes Esc, but a console command could.
+	if (IsPaused() && !bPauseScreenWanted)
+	{
+		SetPause(/*bPause=*/false);
+	}
+	ApplyPlayingInputMode();
+
+	const bool bRuns = !IsPaused();
+	UE_LOG(LogCataclysm, Log, TEXT("%s"),
+		   bRuns ? TEXT("The first press: the resumed walk runs.")
+				 : TEXT("The first press took the hold down, and the game is still paused by something else."));
+	return bRuns;
+}
+
+bool ACataclysmPlayerController::PressEndsTheHold(const FKey& Key, const EInputEvent Event)
+{
+	if (Event != IE_Pressed)
+	{
+		return false; // A release, a repeat, a double click's second half, or an axis.
+	}
+	if (Key == EKeys::MouseScrollUp || Key == EKeys::MouseScrollDown || Key == EKeys::MouseWheelAxis)
+	{
+		return false; // A scroll is not a press.
+	}
+	return !Key.IsAxis1D() && !Key.IsAxis2D() && !Key.IsAxis3D();
+}
+
 bool ACataclysmPlayerController::ResumeTheGame()
 {
 	bPauseScreenWanted = false;
+	bHeldUntilFirstInput = false; // The pause screen's Resume ends a hold too, so the line cannot outlive the pause.
 	HidePauseScreen();
 	if (IsPaused())
 	{
