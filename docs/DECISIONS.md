@@ -34,11 +34,13 @@ Decisions made outside the Google Drive documents, newest first.
   away from the aim. As a plain Blink, which goes toward the aim, it would be a 6 m gap-closer, shorter than every
   Movement skill, and three enemy designs are measured against the shortest one (the Succubus's 8 m, the Abyssal
   Warden's 8 m charge, the 6.5 m telegraph cap). Sent to the coordinating session for its ruling.
-- **TWO SKILL NAMES ARE AN OPEN QUESTION FOR THE OWNER**, kept as they are by the coordinating session's ruling of
-  2026-11-28 because names are creative:
-  - the Fist Ultimate "Unstoppable Force" has the same name as the Berserker keystone `Berserker_dw_ks_002`;
-  - the Warhammer Ultimate is named "Cataclysm", the game's own name.
-  Nothing is renamed until the owner answers.
+- **THE TWO SKILL NAMES ARE RENAMED.** They were an open question for the owner, because names are creative. The owner
+  answered on 2026-11-28, verbatim: "Rename them, your call". The names are the coordinating session's choice, checked
+  against `game/Data` and `docs` on development, where neither appears:
+  - the Warhammer Ultimate, "Cataclysm" (the game's own name), is now **Worldbreaker**;
+  - the Fist Ultimate, "Unstoppable Force" (the name of the Berserker keystone `Berserker_dw_ks_002`), is now **Unchained
+    Fury**. The keystone, and the Bulwark node `Bulwark_basic_jg_stem_005`, keep "Unstoppable Force".
+  Written by `tools/reapply_war_skills_workbook.py` (`RENAMES`, the Skill Name column only; the row keys are unchanged).
 
 ### THE RULINGS (the coordinating session, 2026-11-28, under the owner's delegation of details)
 
