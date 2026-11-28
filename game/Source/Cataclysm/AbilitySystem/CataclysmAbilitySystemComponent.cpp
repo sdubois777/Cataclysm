@@ -1778,6 +1778,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND WHETHER THIS CHARACTER IS HELD BY CROWD CONTROL NOW, for `while_crowd_controlled` (Dead Weight, R27). The War
 	// trees' slice E1 (2026-11-27). The one reading every "is held" question uses.
 	State.bSelfCrowdControlled = UCataclysmSkillEffects::IsCrowdControlled(GetAvatarActor());
+	// AND WHETHER THE HIT TAKEN IN HAND WAS BLOCKED, for `hit_taken_was_unblocked` (the War trees' engine slice E2).
+	State.HitTakenBlocked = HitTakenBlockedNow;
 
 	// AND HOW MANY CHARACTERS STRUCK THIS ONE IN THE LAST 10 SECONDS, from its own record, for
 	// `enemies_that_struck_you_recently` (Outnumbered). The War trees' slice E1 (2026-11-27). A gone striker is not
@@ -4474,8 +4476,11 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded)
 }
 
 void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime,
-												float PercentOfMaxHealthLost)
+												float PercentOfMaxHealthLost, bool bBlocked)
 {
+	// WHETHER A LANDED HIT THAT IS NOT A TICK WAS BLOCKED, HELD WHILE THE ROWS ACT, for `hit_taken_was_unblocked`
+	// (Consecutive Blocks, the War trees' engine slice E2, 2026-11-27). -1 for anything else, which refuses.
+	TGuardValue<int32> SaysWhetherBlocked(HitTakenBlockedNow, bLanded && !bDamageOverTime ? (bBlocked ? 1 : 0) : -1);
 	if (const UWorld* World = GetWorld())
 	{
 		LastHitTakenAtSeconds = World->GetTimeSeconds();
@@ -5234,6 +5239,54 @@ void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
 		// THE NAME WRITTEN OUT, as every raise spells its event: `tools/tests/test_pool_action_names_match_the_engine.py`
 		// reads the calls as text. `FervourDecayedEvent` holds the same name for the tests.
 		ActOnEvent(FName(TEXT("fervour_decayed")), nullptr, FervourDecayedPerEvent);
+	}
+}
+
+FString UCataclysmAbilitySystemComponent::NodeOfRowName(const FString& RowName)
+{
+	// THE PASSIVE TREE ADDS `_From<N>` FOR A ROW FROM N POINTS AND `_Row<N>` FOR A SECOND ACTION ROW OF ONE NODE
+	// (`UCataclysmPassiveTree`); each is cut where it begins. A name with neither is the node's own.
+	FString Node = RowName;
+	for (const TCHAR* Suffix : {TEXT("_Row"), TEXT("_From")})
+	{
+		const int32 At = Node.Find(Suffix, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+		if (At != INDEX_NONE)
+		{
+			const FString Digits = Node.Mid(At + FCString::Strlen(Suffix));
+			if (!Digits.IsEmpty() && Digits.IsNumeric())
+			{
+				Node.LeftInline(At);
+			}
+		}
+	}
+	return Node;
+}
+
+void UCataclysmAbilitySystemComponent::RemoveOwnStacksOf(const FString& Node)
+{
+	if (Node.IsEmpty())
+	{
+		return;
+	}
+	const auto Belongs = [&Node](const FName& Key)
+	{
+		const FString Text = Key.ToString();
+		return Text.StartsWith(Node + TEXT(":")) || Text.StartsWith(Node + TEXT("_From"))
+			|| Text.StartsWith(Node + TEXT("_Row"));
+	};
+	for (auto It = OwnStacks.CreateIterator(); It; ++It)
+	{
+		if (Belongs(It.Key()))
+		{
+			It.RemoveCurrent();
+		}
+	}
+	for (auto It = OwnStacksLastingAlone.CreateIterator(); It; ++It)
+	{
+		if (Belongs(It.Key()))
+		{
+			It.RemoveCurrent();
+		}
 	}
 }
 
@@ -6816,6 +6869,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetOfTargetMissingHealth
 	TEXT("strike_target_of_target_missing_health");
 const TCHAR* UCataclysmAbilitySystemComponent::KnockBackTargetAction =
 	TEXT("knock_back_target");
+const TCHAR* UCataclysmAbilitySystemComponent::OwnStacksRemovedAction =
+	TEXT("own_stacks_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
 	TEXT("retaliation_pulse");
 const TCHAR* UCataclysmAbilitySystemComponent::FrenzyChainAction =
@@ -9642,6 +9697,17 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				NoteTriggerFired(Action);
 				UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Amount);
+			}
+			continue;
+		}
+		// THE OWN STACKS OF EVERY ROW OF THE ROW'S NODE, REMOVED: Killing Rhythm and Consecutive Blocks (the War trees'
+		// engine slice E2, 2026-11-27). Landed only, once per row per event.
+		if (Action.bRemoveOwnStacks)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				RemoveOwnStacksOf(Action.OwnStacksRemovedOf);
 			}
 			continue;
 		}

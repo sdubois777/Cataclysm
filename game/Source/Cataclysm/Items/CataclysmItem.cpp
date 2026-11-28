@@ -1793,6 +1793,13 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::StrikeTargetOfTargetMissingHealthAction, ESearchCase::IgnoreCase);
 					Action.bKnockBackTarget = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::KnockBackTargetAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT REMOVES ITS NODE'S OWN STACKS, the War trees' engine slice E2 (2026-11-27).
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::OwnStacksRemovedAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.bRemoveOwnStacks = true;
+						Action.OwnStacksRemovedOf = UCataclysmAbilitySystemComponent::NodeOfRowName(Effect->Enchantment);
+					}
 					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::NextAttackBonusOfMaximumHealthAction,
 											  ESearchCase::IgnoreCase))
 					{

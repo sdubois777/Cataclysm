@@ -297,6 +297,19 @@ E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # is counted, the attacks "every Nth attack" rows count; the coordinating session marked the size a play-test point.
     ("Berserker_dw_002", "Flurry", (
         R(None, "", 50, action="nth_attack_more_damage", every_nth=5, **DUAL),)),
+    # KILLING RHYTHM: "+5% critical strike multiplier per point for each consecutive critical strike, up to 5 stacks.
+    # Missing a critical strike or your Fervour reaching 0 resets the streak." The sentence names no window; a stack
+    # lasts 10 seconds, a judgement, so a streak broken by nothing at all still ends.
+    ("Berserker_crit_005", "Killing Rhythm", (
+        R("crit_multiplier", "flat", 5, scale="own_stacks", step=1, cap=5, action_event="critical_strike",
+          stack_seconds=10),
+        R(None, "", 100, action="own_stacks_removed", action_event="hit_dealt", cond="blow_was_not_critical"),
+        R(None, "", 100, action="own_stacks_removed", action_event="resource_empty"))),
+    # CONSECUTIVE BLOCKS: "+2% damage reduction per successive block per point, stacking up to 5 times. Resets if you
+    # take an unblocked hit." No window named; 10 seconds, the same judgement.
+    ("Bulwark_basic_ic_t2_002", "Consecutive Blocks", (
+        R("damage_reduction", "flat", 2, scale="own_stacks", step=1, cap=5, action_event="block", stack_seconds=10),
+        R(None, "", 100, action="own_stacks_removed", action_event="hit_taken", cond="hit_taken_was_unblocked"))),
     # SHATTER: "Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times."
     ("Berserker_twoh_009", "Shatter", (
         R(None, "", 5, tags=MELEE, action="enemy_armor_removed", action_event="critical_strike", stack_seconds=5,

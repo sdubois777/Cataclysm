@@ -194,6 +194,7 @@ namespace
 		{ TEXT("blow_was_not_critical"),          ECataclysmStatCondition::HitIsNotCritical },
 		{ TEXT("while_crowd_controlled"),       ECataclysmStatCondition::WhileCrowdControlled },
 		{ TEXT("dual_wielding_outside_frenzy"),                ECataclysmStatCondition::DualWieldingOutsideFrenzy },
+		{ TEXT("hit_taken_was_unblocked"),      ECataclysmStatCondition::HitTakenWasUnblocked },
 		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
 		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
 		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
@@ -470,6 +471,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitIsNotCritical:
 	case ECataclysmStatCondition::WhileCrowdControlled:
 	case ECataclysmStatCondition::DualWieldingOutsideFrenzy:
+	case ECataclysmStatCondition::HitTakenWasUnblocked:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
 		// nothing for a number to be compared against. Each of the sixty-one says
 		// so in its own comment in the header, and
@@ -757,6 +759,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::AttackAtFullFervour:
 	case C::HitIsCritical:
 	case C::HitIsNotCritical:
+	case C::HitTakenWasUnblocked:
 		return EOn::TheBlowOrSkill;
 
 	// WHETHER THE CHARACTER IS HELD BY CROWD CONTROL, which ends on a timer nothing tells a cached stat about. The War
@@ -1249,6 +1252,10 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::WhileCrowdControlled:
 		// THE READING `CurrentConditions` TOOK. The War trees' slice E1 (2026-11-27).
 		return State.bSelfCrowdControlled;
+
+	case ECataclysmStatCondition::HitTakenWasUnblocked:
+		// 0 IS A HIT TAKEN IN HAND THAT WAS NOT BLOCKED; -1, NONE, REFUSES. The War trees' engine slice E2.
+		return State.HitTakenBlocked == 0;
 
 	case ECataclysmStatCondition::TargetCarriesBleed:
 		// THE SAME WALK AS THE VOID SPLINTER'S, ON THE BLEED'S TAG. The War trees' slice E1 (2026-11-27).

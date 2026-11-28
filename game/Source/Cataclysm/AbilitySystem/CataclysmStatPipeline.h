@@ -2309,6 +2309,15 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	DualWieldingOutsideFrenzy
 		UMETA(DisplayName = "Dual Wielding Outside Frenzy"),
+
+	/**
+	 * The hit taken being announced was NOT blocked: Consecutive Blocks' "Resets if you take an unblocked hit". The War
+	 * trees' engine slice E2 (2026-11-27). Read from `HitTakenBlocked`, which `CurrentConditions` copies from the ability
+	 * system component while `NoteHitTaken` announces a landed hit (1 blocked, 0 not, -1 no hit in hand, which refuses).
+	 * IT TAKES NO VALUE.
+	 */
+	HitTakenWasUnblocked
+		UMETA(DisplayName = "Hit Taken Was Unblocked"),
 };
 
 /**
@@ -3918,6 +3927,10 @@ struct CATACLYSM_API FCataclysmStatConditions
 	/** Whether the character is held by crowd control now, for `WhileCrowdControlled`. The War trees' slice E1. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bSelfCrowdControlled = false;
+
+	/** Whether the hit taken in hand was blocked: 1, 0, or -1 with none. For `HitTakenWasUnblocked`. War trees E2. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 HitTakenBlocked = -1;
 
 	/**
 	 * How much maximum health the character has. Issue #1515.
@@ -5568,6 +5581,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * engine slice E2 (2026-11-27), Whirlwind's "Enemies hit while you are at maximum Fervour are knocked back".
 	 */
 	bool bKnockBackTarget = false;
+
+	/**
+	 * Removes every own stack of every row of the same node: `own_stacks_removed`. The War trees' engine slice E2
+	 * (2026-11-27): Killing Rhythm's "Missing a critical strike or your Fervour reaching 0 resets the streak" and
+	 * Consecutive Blocks' "Resets if you take an unblocked hit". The node is `OwnStacksRemovedOf`, the row's own name less
+	 * the `_From<N>` and `_Row<N>` the passive tree adds to it.
+	 */
+	bool bRemoveOwnStacks = false;
+
+	/** See `bRemoveOwnStacks`. */
+	FString OwnStacksRemovedOf;
 
 	/**
 	 * Set, this action CLEANSES ITS WEARER instead of moving a pool: `UCataclysmDebuffs::Cleanse`. For "You are

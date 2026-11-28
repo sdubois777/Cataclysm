@@ -6330,6 +6330,8 @@ CONDITIONS = {
     # AND THE COMPLEMENT OF "While in Frenzy", the War trees' engine slice E2 (2026-11-27): Death Strike's 20% row holds
     # outside Frenzy and its 35% row in it.
     "dual_wielding_outside_frenzy": None,
+    # AND "an unblocked hit" taken, the same slice: Consecutive Blocks' reset, held while a landed hit is announced.
+    "hit_taken_was_unblocked": None,
     # AND THREE FACTS OF THE ATTACK OR HIT IN HAND, the same slice: "when you attack at maximum Fervour" is
     # `attack_at_full_fervour`, the pool full when the attack began, before Berserking spends it (Executioner, Apex
     # Predator, Whirlwind, Coup de Grace); "on critical melee strikes" on a leech row is `blow_was_critical` (Vital
@@ -8864,6 +8866,10 @@ STRIKE_TARGET_OF_MAX_HEALTH_ACTION = "strike_target_of_max_health"
 #: the value's per cent of the health that character is missing (Coup de Grace), and `knock_back_target`, which knocks
 #: it back the value in metres, up to `MAX_KNOCK_BACK_METRES` (Whirlwind). Checked with the strike above.
 STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION = "strike_target_of_target_missing_health"
+#: AND `own_stacks_removed`, which removes the own stacks of every row of its own node: Killing Rhythm's "Missing a
+#: critical strike or your Fervour reaching 0 resets the streak" and Consecutive Blocks' "Resets if you take an
+#: unblocked hit". Its value is 100, all of them. On any event the game fires.
+OWN_STACKS_REMOVED_ACTION = "own_stacks_removed"
 KNOCK_BACK_TARGET_ACTION = "knock_back_target"
 MAX_KNOCK_BACK_METRES = 10.0
 NEXT_ATTACK_BONUS_ACTIONS = ("next_attack_bonus_of_max_health", "next_attack_bonus_of_armor")
@@ -9529,7 +9535,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
                                     kind, raw, headers)
         return
     if action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
-                  KNOCK_BACK_TARGET_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS:
+                  KNOCK_BACK_TARGET_ACTION, OWN_STACKS_REMOVED_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS:
         _check_sized_by_a_stat_action(index, who, action, event, fraction_of, kind, raw, headers)
         return
     if action == EXECUTE_TARGET_ACTION:
@@ -10696,6 +10702,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != STRIKE_TARGET_OF_MAX_HEALTH_ACTION \
                 and action != STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION \
                 and action != KNOCK_BACK_TARGET_ACTION \
+                and action != OWN_STACKS_REMOVED_ACTION \
                 and action not in NEXT_ATTACK_BONUS_ACTIONS \
                 and action != EXECUTE_TARGET_ACTION \
                 and action != TEMPORARY_ABSORB_ACTION \
@@ -11085,7 +11092,12 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
 
     # A ROW SIZED BY A STAT OF THE WEARER'S IS A PER CENT OF IT, above 0 and up to the bound. The War trees' engine
     # slice E2 (2026-11-27).
-    if action == KNOCK_BACK_TARGET_ACTION:
+    if action == OWN_STACKS_REMOVED_ACTION:
+        if low != 100 or high != 100:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} removes {low:g} to {high:g} of its node's stacks. It removes "
+                f"all of them: 100.")
+    elif action == KNOCK_BACK_TARGET_ACTION:
         if not (0 < low <= MAX_KNOCK_BACK_METRES and 0 < high <= MAX_KNOCK_BACK_METRES):
             raise DataError(
                 f"Enchantment Effects row {index}: {name} knocks back {low:g} to {high:g} metres. It is above 0 and "

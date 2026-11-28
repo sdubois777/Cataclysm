@@ -1519,6 +1519,16 @@ public:
 	void GrantOwnStack(FName StackKey, float WindowSeconds, int32 Cap);
 
 	/**
+	 * Remove every own stack whose key belongs to `Node`: the key is `Node` followed by `:`, `_From` or `_Row`. Both kinds
+	 * of own stack, the ones that lapse together and the ones that lapse alone. The War trees' engine slice E2
+	 * (2026-11-27), for `own_stacks_removed`.
+	 */
+	void RemoveOwnStacksOf(const FString& Node);
+
+	/** The name of the node a passive row's copy belongs to: its own name less `_From<N>` and `_Row<N>`. War trees E2. */
+	static FString NodeOfRowName(const FString& RowName);
+
+	/**
 	 * The two action names a row uses to grant a charge the next use spends.
 	 * Issue #1833, phase 2. `tools/generate_datatables.py` holds the same two in
 	 * `NEXT_USE_ACTIONS`.
@@ -2096,6 +2106,8 @@ public:
 	static const TCHAR* StrikeTargetOfTargetMissingHealthAction;
 	/** `knock_back_target`. The same slice. */
 	static const TCHAR* KnockBackTargetAction;
+	/** `own_stacks_removed`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* OwnStacksRemovedAction;
 
 	/**
 	 * Wrath Incarnate's pulse. The War vow options' third slice, V3a, 2026-11-25: "When a single hit takes more than 10%
@@ -4708,7 +4720,7 @@ public:
 	 * @param bDamageOverTime  whether the blow was a tick and not a hit
 	 */
 	void NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime,
-					  float PercentOfMaxHealthLost = -1.0f);
+					  float PercentOfMaxHealthLost = -1.0f, bool bBlocked = false);
 
 	/**
 	 * The same, for a blow that landed. Kept as a form of its own rather than
@@ -7021,6 +7033,9 @@ protected:
 
 	/** See `SetAttackBeganAtFullFervour`. The War trees' slice E1 (2026-11-27). */
 	bool bAttackBeganAtFullFervour = false;
+
+	/** Whether the hit taken being announced was blocked: 1, 0, or -1 with none. Held by `NoteHitTaken`. War trees E2. */
+	int32 HitTakenBlockedNow = -1;
 
 	/**
 	 * Whether some row in `StatInputs` is scaled by `increased_max_health`, set by `NoteWhatTheRowsAsk` whenever the

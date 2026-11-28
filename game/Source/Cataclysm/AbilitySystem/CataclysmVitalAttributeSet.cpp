@@ -2908,7 +2908,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					!Outcome.bEvaded,
 					UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
 					Hit.bIsDamageOverTime,
-					MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);
+					MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f,
+					// AND WHETHER IT WAS BLOCKED, for `hit_taken_was_unblocked` (the War trees' engine slice E2).
+					Outcome.bBlocked);
 
 				// AND A BIG HIT IS ANNOUNCED, after the hit taken. The War vow options' third slice, V3a, ruled
 				// 2026-11-25: a landed hit, not a tick, that took more than 10% of maximum health after defences, counting

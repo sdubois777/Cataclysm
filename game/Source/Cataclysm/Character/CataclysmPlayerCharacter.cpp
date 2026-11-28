@@ -1289,9 +1289,13 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// AND EVERYTHING THE HIT LANDED, its shield's part included, for the rows that lay an ailment on it: the owner's
 	// ruling of 2026-11-26. Held across the three events below, which are all this hit's, and put back after them.
 	const float WasHitLanded = Acting->SetHitBeingAnnouncedLanded(Notice.Landed);
+	// AND WHETHER IT WAS CRITICAL, HELD WHILE `hit_dealt`'S ROWS ACT, for Killing Rhythm's reset on a hit that is not
+	// critical (the War trees' engine slice E2, 2026-11-27). Put back straight after.
+	const int32 WasCriticalForHitDealt = Acting->SetHitBeingAnnouncedCritical(Notice.bCritical ? 1 : 0);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
+	Acting->SetHitBeingAnnouncedCritical(WasCriticalForHitDealt);
 	Acting->SetHitBeingAnnouncedSent(WasHitSent);
 	Acting->SetAttackBeingAnnouncedSent(WasSent);
 
