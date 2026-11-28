@@ -403,14 +403,33 @@ public:
 	 *
 	 * IT DOES NOT LOAD THE INPUT CONFIGURATION. The heads-up display calls this
 	 * from its draw pass, and a synchronous asset load there would stall a frame.
-	 * A configuration that is not loaded yet answers with no key, which draws an
-	 * unlabelled box for the frames before input has been set up.
+	 * It reads the configuration `HoldTheInputConfig` holds; before input has
+	 * been set up that is none, which answers with no key and draws an
+	 * unlabelled box.
 	 *
 	 * @param SlotTag a Slot.* tag. Anything else answers no key.
 	 * @return the key, or an invalid `FKey` when nothing is bound
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Input")
 	FKey KeyForAbilitySlot(FGameplayTag SlotTag) const;
+
+	/**
+	 * Load the input configuration and hold it for as long as this controller lives.
+	 *
+	 * HELD IN A PROPERTY BECAUSE NOTHING ELSE HOLDS IT. `InputConfig` is a soft pointer, which keeps nothing loaded, and
+	 * until 2026-11-27 the loaded configuration was kept only in a local in `SetupInputComponent`. The editor happens
+	 * to keep the asset loaded; a packaged game does not, so its first garbage collection, about a minute in, freed
+	 * it. From then `KeyForAbilitySlot` answered no key, so a right click over the inventory was sent to the Heavy
+	 * skill instead of equipping the item, and the skill bar lost its key letters.
+	 *
+	 * `SetupInputComponent` calls it; public so a test, whose world has no local player and so sets up no input, can.
+	 *
+	 * @return the configuration held, or null when none is set or it will not load
+	 */
+	const UCataclysmInputConfig* HoldTheInputConfig();
+
+	/** The configuration `HoldTheInputConfig` holds, or null before it has run. */
+	const UCataclysmInputConfig* GetHeldInputConfig() const { return HeldInputConfig; }
 
 	/**
 	 * Opens and closes the character creator.
@@ -605,6 +624,10 @@ protected:
 	/** The key-to-action mapping. Path set in Config/DefaultGame.ini. */
 	UPROPERTY(Config, EditDefaultsOnly, Category = "Cataclysm|Input")
 	TSoftObjectPtr<UInputMappingContext> DefaultMappingContext;
+
+	/** `InputConfig`, loaded and held so garbage collection cannot free it while it is read. See `HoldTheInputConfig`. */
+	UPROPERTY(Transient)
+	TObjectPtr<const UCataclysmInputConfig> HeldInputConfig = nullptr;
 
 	/** How long the move button may be held and still count as a click, in seconds. */
 	UPROPERTY(EditDefaultsOnly, Category = "Cataclysm|Input")

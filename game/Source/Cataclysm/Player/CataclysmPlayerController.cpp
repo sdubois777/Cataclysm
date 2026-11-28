@@ -201,7 +201,7 @@ void ACataclysmPlayerController::SetupInputComponent()
 		return;
 	}
 
-	const UCataclysmInputConfig* Config = InputConfig.LoadSynchronous();
+	const UCataclysmInputConfig* Config = HoldTheInputConfig();
 	if (!Config)
 	{
 		// Loudly, because the symptom otherwise is a character that does nothing
@@ -1649,6 +1649,12 @@ bool ACataclysmPlayerController::IsMerchantOpen() const
 	return MerchantScreen != nullptr && MerchantScreen->IsInViewport();
 }
 
+const UCataclysmInputConfig* ACataclysmPlayerController::HoldTheInputConfig()
+{
+	HeldInputConfig = InputConfig.LoadSynchronous();
+	return HeldInputConfig;
+}
+
 FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const
 {
 	if (!SlotTag.IsValid())
@@ -1656,9 +1662,11 @@ FKey ACataclysmPlayerController::KeyForAbilitySlot(FGameplayTag SlotTag) const
 		return FKey();
 	}
 
-	// `Get` RATHER THAN `LoadSynchronous`. See the header: this runs inside the
+	// THE HELD CONFIGURATION, NOT A LOAD. See the header: this runs inside the
 	// heads-up display's draw pass and a synchronous load there stalls a frame.
-	const UCataclysmInputConfig* Config = InputConfig.Get();
+	// Not `InputConfig.Get()` either, which answers null once garbage collection
+	// has freed an asset nothing held (2026-11-27).
+	const UCataclysmInputConfig* Config = HeldInputConfig;
 	if (!Config)
 	{
 		return FKey();
@@ -2644,7 +2652,9 @@ void ACataclysmPlayerController::UpdatePendingAttack()
 bool ACataclysmPlayerController::LeftButtonAlsoMoves() const
 {
 	const UInputMappingContext* Context = DefaultMappingContext.Get();
-	const UCataclysmInputConfig* Config = InputConfig.Get();
+	// THE HELD CONFIGURATION, for `KeyForAbilitySlot`'s reason. The mapping context stays `Get`: the input subsystem
+	// holds it once `SetupInputComponent` has added it.
+	const UCataclysmInputConfig* Config = HeldInputConfig;
 	if (!Context || !Config)
 	{
 		// NOTHING LOADED YET, OR NOTHING TO LOAD. Answering true is how this
