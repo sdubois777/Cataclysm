@@ -1541,7 +1541,7 @@
       "data": {
         "kind": "keystone",
         "name": "Blood for Blood",
-        "description": "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances and cannot be blocked or evaded. The reflection percentage increases by 1% for every 2% of your maximum Fervour currently held, up to 100% at full Fervour.",
+        "description": "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances, armour and damage reduction and cannot be blocked or evaded. The reflection percentage increases by 1% for every 2% of your maximum Fervour currently held, up to 100% at full Fervour.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

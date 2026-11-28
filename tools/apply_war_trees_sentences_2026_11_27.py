@@ -155,9 +155,9 @@ SENTENCES: tuple[Sentence, ...] = (
              "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances and "
              "cannot be blocked or evaded. The reflection percentage increases by 1% for every 5 Fervour currently "
              "held, up to a maximum of 100% at full Fervour.",
-             "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances and "
-             "cannot be blocked or evaded. The reflection percentage increases by 1% for every 2% of your maximum "
-             "Fervour currently held, up to 100% at full Fervour."),
+             "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances, "
+             "armour and damage reduction and cannot be blocked or evaded. The reflection percentage increases by 1% "
+             "for every 2% of your maximum Fervour currently held, up to 100% at full Fervour."),
     Sentence("Spiteful (coordinator, 2026-11-27)", "Bulwark", "basic_tw_stem_003",
              "+3% Fervour generated from taking hits per point. At 5 points: When you reach maximum Fervour from taking hits, your next retaliation deals 50% bonus damage.",
              "+3% Fervour generated from taking hits per point. At 5 points: when your Fervour becomes full, your next "
