@@ -509,7 +509,7 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 {
 	using namespace CataclysmWarVowsV2aTest;
 	// THE WORDS THE FLOOR MODIFIER PANEL USES, "(not built yet: it does nothing)", on a node and an option with no row:
-	// Open Wounds (`Berserker_trunk_006`) and Bolted Together (the Saboteur's Third Oath, option 2). The First Oath's
+	// Colossus (`Berserker_twoh_ks_001`, see below) and Bolted Together (the Saboteur's Third Oath, option 2). The First Oath's
 	// Warlord was the option until V2b built it, Thousand Deaths until V3b, Magnum Opus until V4b and Crossfire until
 	// V5a, the same day. BOLTED TOGETHER WAS BUILT LAST, BY V5c, AND NO OPTION IN ANY TREE IS LEFT WITHOUT A ROW: so its
 	// rows are taken out of a copy of the effect table here, and the copy is what is asked. THE CONTROL for that: the
@@ -524,14 +524,14 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 		return false;
 	}
 	using FTree = UCataclysmPassiveTree;
-	const FName Unbuilt(TEXT("Berserker_trunk_006"));
+	// COLOSSUS (`Berserker_twoh_ks_001`) SINCE THE WAR TREES' ENGINE SLICE E3 (2026-11-27), which gave Open Wounds
+	// (`Berserker_trunk_006`) rows: Colossus waits on the Earthquake skill (#2972) and has none. The screen's tool tip
+	// below reads the loaded table, so the node has to be one with no row there.
+	const FName Unbuilt(TEXT("Berserker_twoh_ks_001"));
 	const FName Built(TEXT("Berserker_twoh_001"));
 	const FName FinalOath(TEXT("Saboteur_capstone_100"));
-	// OPEN WOUNDS HAS ROWS SINCE THE WAR TREES' ENGINE SLICE E3 (2026-11-27), so its rows are taken out of the copy too,
-	// as Bolted Together's are, and the table as loaded is its control.
 	if (!TestTrue(TEXT("control: the table as loaded holds Bolted Together's rows"),
-				  FTree::HasEffectRows(Loaded, FinalOath, 2))
-		|| !TestTrue(TEXT("control: the table as loaded holds Open Wounds' rows"), FTree::HasEffectRows(Loaded, Unbuilt)))
+				  FTree::HasEffectRows(Loaded, FinalOath, 2)))
 	{
 		return false;
 	}
@@ -544,7 +544,7 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	for (const TPair<FName, uint8*>& Each : Effects->GetRowMap())
 	{
 		const FCataclysmPassiveEffectRow* Row = reinterpret_cast<const FCataclysmPassiveEffectRow*>(Each.Value);
-		if (Row && ((Row->Node == FinalOath.ToString() && Row->Option == 2) || Row->Node == Unbuilt.ToString()))
+		if (Row && Row->Node == FinalOath.ToString() && Row->Option == 2)
 		{
 			Removing.Add(Each.Key);
 		}
@@ -556,9 +556,9 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	const FName BuiltOath(TEXT("Berserker_capstone_200"));
 	const FCataclysmPassiveNodeRow* UnbuiltRow = FTree::FindNode(Nodes, Unbuilt);
 	const FCataclysmPassiveNodeRow* BuiltRow = FTree::FindNode(Nodes, Built);
-	if (!TestNotNull(TEXT("set-up: Open Wounds is a node"), UnbuiltRow)
+	if (!TestNotNull(TEXT("set-up: Colossus is a node"), UnbuiltRow)
 		|| !TestNotNull(TEXT("set-up: Wrath is a node"), BuiltRow)
-		|| !TestFalse(TEXT("set-up: Open Wounds has no row"), FTree::HasEffectRows(Effects, Unbuilt))
+		|| !TestFalse(TEXT("set-up: Colossus has no row"), FTree::HasEffectRows(Effects, Unbuilt))
 		|| !TestTrue(TEXT("set-up: Wrath has a row"), FTree::HasEffectRows(Effects, Built))
 		|| !TestFalse(TEXT("set-up: Bolted Together has no row"), FTree::HasEffectRows(Effects, FinalOath, 2))
 		|| !TestTrue(TEXT("set-up: Thousand Deaths has a row"), FTree::HasEffectRows(Effects, BuiltOath, 2)))
@@ -568,10 +568,10 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	const FString Mark(TEXT(" (not built yet: it does nothing)"));
 
 	// THE DESCRIPTION UNDER THE TREE.
-	TestEqual(TEXT("Open Wounds' words are marked"), FTree::ShortDescriptionOf(Nodes, Unbuilt, Effects),
+	TestEqual(TEXT("Colossus's words are marked"), FTree::ShortDescriptionOf(Nodes, Unbuilt, Effects),
 			  UnbuiltRow->Description + Mark);
 	TestEqual(TEXT("control: Wrath's are not"), FTree::ShortDescriptionOf(Nodes, Built, Effects), BuiltRow->Description);
-	TestEqual(TEXT("control: with no table, Open Wounds' are not"), FTree::ShortDescriptionOf(Nodes, Unbuilt),
+	TestEqual(TEXT("control: with no table, Colossus's are not"), FTree::ShortDescriptionOf(Nodes, Unbuilt),
 			  UnbuiltRow->Description);
 	const FString Full = FTree::FullDescriptionOf(Nodes, FinalOath, Effects);
 	TestTrue(TEXT("the Saboteur's Third Oath's full text marks Bolted Together's heading"),
@@ -601,7 +601,7 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	}
 	UCataclysmChoiceButton* Marked = NewObject<UCataclysmChoiceButton>();
 	Screen->DescribeButtonForTests(*Marked, Unbuilt, false);
-	TestEqual(TEXT("Open Wounds' tool tip says it is not built yet"), Marked->GetToolTipText().ToString(),
+	TestEqual(TEXT("Colossus's tool tip says it is not built yet"), Marked->GetToolTipText().ToString(),
 			  UnbuiltRow->NodeName + Mark);
 	UCataclysmChoiceButton* Unmarked = NewObject<UCataclysmChoiceButton>();
 	Screen->DescribeButtonForTests(*Unmarked, Built, false);
