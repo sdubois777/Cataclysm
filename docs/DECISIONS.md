@@ -207,9 +207,10 @@ the one pixel explanation above.
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** Window 1 compiles the engine slices, rebuilds the two DataTable
-  assets and runs the Unreal tests. Until then `test_datatable_assets_are_current.py` fails, naming the two CSVs, as it
-  does on every branch that changes a table before its window.
+- **WINDOW 1 (war-w1) HAS RUN**, on 2026-11-28; "WINDOW 1" below has every figure. Its first whole suite performed the
+  6,147 tests predicted and failed five, each a test expectation these changes moved; the four affected groups then
+  passed alone, and the four C++ guard proofs proved. Until that window this line said nothing had been built.
+- **COLOSSUS (BERSERKER) IS NOT BUILT**: it waits on the Earthquake skill having a shape ([#2972](https://github.com/sdubois777/Cataclysm/issues/2972)).
 - **THE PLAN'S 29 DATA-ONLY NODES ARE 23.** War Cry and Rapid Fire need "after attacking at maximum Fervour": a
   Condition on a row scaled by `own_stacks` is judged when the stat is asked, not when the stack is granted
   (`refuse_a_condition_nothing_asks_for`), so it cannot be written as data. Resolve to Steel, Living Fortress and
@@ -523,6 +524,53 @@ own under the owner's delegation, 2026-11-27.
 - **Blood for Blood (coordinator, 2026-11-27)**, `Bulwark_keystone_tw_final`: "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances, armour and damage reduction and cannot be blocked or evaded. The reflection percentage increases by 1% for every 2% of your maximum Fervour currently held, up to 100% at full Fervour."
 - **Spiteful (coordinator, 2026-11-27)**, `Bulwark_basic_tw_stem_003`: "+3% Fervour generated from taking hits per point. At 5 points: when your Fervour becomes full, your next retaliation deals 50% more damage."
 - **The Inevitable (coordinator, 2026-11-27)**, `Bulwark_keystone_jg_t3`: "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all enemies within 4 metres equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second."
+
+### WINDOW 1 (war-w1), 2026-11-28
+
+On `feat/war-trees-complete`, with development merged at `678ec273b` (#2974). Registered with the coordinating session
+and cleared by it. The editor lock was held as "war-w1" throughout.
+
+| Step | Printed |
+|---|---|
+| Compile of `ed4d8ce81`, before the merge | "Build: Succeeded - 62 actions, 58 files compiled" |
+| Compile of `828ee780b`, the merged head | "Build: Succeeded - 30 actions, 27 files compiled" |
+| The editor step, `run_editor_python.py tools/generate_datatable_assets.py` | only `DT_ClassStats`, `DT_PassiveEffects` and `DT_PassiveNodes` changed, with `datatable_asset_sources.json`; committed as `519466f24` |
+| `Cataclysm.ClassLine.` alone | "Tests: 2 tests performed, 2 succeeded, 0 failed"; saves 0 and 0 |
+| `Cataclysm.WarTreesE1.` alone | "Tests: 7 tests performed, 7 succeeded, 0 failed"; saves 0 and 0 |
+| `Cataclysm.WarTreesE2E3.` alone | "Tests: 4 tests performed, 4 succeeded, 0 failed"; saves 0 and 0 |
+| The whole Unreal suite on `519466f24` (predicted 6147 performed, 63 skipped halves, 895 saves) | "Tests: 6147 tests performed, 6142 succeeded, 5 failed ... 63 skipped part of what they check"; "Test saves: 895 written and deleted, 0 left behind" |
+| `Cataclysm.HealingSkillUse.` alone, after the fixes | "5 tests performed, 5 succeeded, 0 failed" |
+| `Cataclysm.Passives.` alone | "161 tests performed, 161 succeeded, 0 failed" |
+| `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` alone | "1 tests performed, 1 succeeded, 0 failed" |
+| `Cataclysm.WarVowsV2a.` alone, second try | "6 tests performed, 6 succeeded, 0 failed" (the first try failed once; below) |
+| Proof (a), prefix `Cataclysm.WarTreesE2E3.`, four breaks | "PROVED: with the break in: 4 tests performed, 0 succeeded, 4 failed ... restored: 4 tests performed, 4 succeeded, 0 failed"; the four predicted |
+| Proof (b), prefix `Cataclysm.ClassLine.`, the tie reversed | "PROVED: ... 2 tests performed, 1 succeeded, 1 failed: TheMostPointsWinATieGoesToTheFirstChosen... restored: 2 ... 0 failed"; as predicted |
+| Proof (c), prefix `Cataclysm.WarTreesE1.`, two breaks | "PROVED: ... 7 tests performed, 5 succeeded, 2 failed: AFullPoolIsJudgedAsTheFullBar..., TheSevenConditions... restored: 7 ... 0 failed"; exactly the two predicted |
+| Proof (d), `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, two breaks | "PROVED: ... 1 tests performed, 0 succeeded, 1 failed ... restored: 1 ... 0 failed"; as predicted |
+| The whole Python suite on `828ee780b`, in parallel | "9763 passed, 10 skipped in 1116.39s"; JUnit 9773 tests, 0 failures, 0 errors, 10 skipped |
+| The table and asset checks at `519466f24` (the asset commit landed during that run) | nine files, "1200 passed in 43.05s" |
+
+**The five failures of the whole suite**, each a test expectation these changes moved, none an engine fault:
+1. `Cataclysm.HealingSkillUse.SkillUseAndAttackUseAreStillRaised...`: every use in it is named "Carom", so a basic
+   attack after the strike is the same melee skill twice and Weaving's `same_melee_skill_used` fires. The expected list
+   now names it.
+2. and 3. `Cataclysm.Passives.SpendingAPointRaisesMaximumHealthWithNothingElseTouched` and
+   `ACharacterArrivingInTheWorldGetsThePointsItHasAlreadySpent`: maximum health 666.6 against 561. **Issue #932 makes a
+   character with the most points in the Masochist's tree stand on the Masochist's line, so a player's maximum health
+   can change when points move it to another class: the ruled behaviour.** Both tests are about the tree reaching the
+   stat line, so they are pinned to the Ravager; the class rule is `Cataclysm.ClassLine`'s.
+4. `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: Hair Trigger's probe dealt 1500 with and without
+   its flag. The probe's fault: `GrantFlats` writes a line of base nought, so `crit_chance` 100 was 100 and nothing was
+   past the cap. It gives 200.
+5. `Cataclysm.WarVowsV2a.APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet`: Open Wounds, its node with no row, has rows
+   since E3. A first fix took them out of the test's copy of the table, and failed: the screen's tool tip reads the
+   loaded table. It now uses Colossus (`Berserker_twoh_ks_001`), which has no row until #2972, and the test's comment and
+   a note on #2972 say it needs another node then.
+
+**The second whole suite was skipped**, by the coordinating session under the narrowed re-run rule: between the whole
+suite's head and the tested head only test files changed (`git diff --stat 519466f24 e80bf6f47`:
+`CataclysmEnchantmentEffectTests.cpp`, `CataclysmPassiveTreeTests.cpp`, `CataclysmStatExemptionTests.cpp` and
+`CataclysmWarVowsV2aTests.cpp`), and their groups passed alone.
 
 ### EVIDENCE
 
