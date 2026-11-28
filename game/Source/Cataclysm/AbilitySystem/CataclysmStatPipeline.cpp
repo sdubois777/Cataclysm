@@ -699,7 +699,6 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesCripple:
 	case C::TargetCarriesCrippleAndWeaken:
 	case C::TargetCarriesVoidSplinter:
-	// AND A BLEED, the War trees' slice E1 (2026-11-27).
 	case C::TargetCarriesBleed:
 	case C::OpponentCarriesWeaken:
 	case C::TargetHealthBelowPercent:
@@ -752,7 +751,6 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::MinionHasYourMostMaximumHealth:
 	case C::TargetMarkedByYou:
 	case C::TargetIsYourLastAttacker:
-	// AND THE WAR TREES' SLICE E1'S THREE FACTS OF THE ATTACK OR HIT IN HAND (2026-11-27).
 	case C::AttackAtFullFervour:
 	case C::HitIsCritical:
 	case C::HitIsNotCritical:
