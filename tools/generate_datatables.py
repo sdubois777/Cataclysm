@@ -13284,6 +13284,12 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # each through `StatForSkill`. `ProbeConditionedMeleeArcFullCircle` and `ProbeConditionedFervourPerEnemyHit`.
     "melee_arc_full_circle": ASKER_PASSES_NOTHING_MORE,
     "fervour_per_enemy_hit": ASKER_PASSES_NOTHING_MORE,
+    # AND BLOODIED'S "Berserking triggers on every melee hit" under "While below 30% HP", the War trees' engine slice E3
+    # (2026-11-27), asked by `FCataclysmBerserkerStates::SpendBerserking`; `ProbeConditionedBerserkingOnEveryMeleeHit`.
+    "berserking_on_every_melee_hit": ASKER_PASSES_NOTHING_MORE,
+    # AND BERSERKER'S RAGE'S HALF POOL under "Two-handed weapons only", the same slice and asker;
+    # `ProbeConditionedBerserkingSpendsHalf`.
+    "berserking_spends_half": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,

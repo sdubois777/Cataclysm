@@ -94,6 +94,9 @@ SENTENCES: tuple[Sentence, ...] = (
     Sentence("R11", "Berserker", "dw_002",
              "Dual wield only. Every 5th consecutive melee attack triggers an additional offhand strike dealing 50% weapon damage per point.",
              "Dual wield only. Every 5th consecutive melee attack deals 50% more damage per point."),
+    Sentence("Berserker's Rage (owner, 2026-11-27)", "Berserker", "twoh_ks_002",
+             "Two-handed weapons only. Effects that trigger at maximum Fervour no longer drain your Fervour when they fire.",
+             "Two-handed weapons only. Berserking spends half your Fervour instead of all of it."),
     Sentence("Unstoppable Force (owner, 2026-11-27)", "Berserker", "dw_ks_002",
              "Dual wield only. Killing an enemy while in Frenzy immediately resets the Frenetic auto-strike timer. "
              "Additionally, entering Frenzy instantly triggers three bonus strikes at full damage.",

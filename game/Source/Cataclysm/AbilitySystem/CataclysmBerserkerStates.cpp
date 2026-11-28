@@ -14,6 +14,8 @@
 const TCHAR* FCataclysmBerserkerStates::WrathOnFullFervourStat = TEXT("wrath_on_full_fervour");
 const TCHAR* FCataclysmBerserkerStates::FrenzyOnFullFervourStat = TEXT("frenzy_on_full_fervour");
 const TCHAR* FCataclysmBerserkerStates::BerserkingDamagePerFervourStat = TEXT("berserking_damage_per_fervour");
+const TCHAR* FCataclysmBerserkerStates::BerserkingSpendsHalfStat = TEXT("berserking_spends_half");
+const TCHAR* FCataclysmBerserkerStates::BerserkingOnEveryMeleeHitStat = TEXT("berserking_on_every_melee_hit");
 const TCHAR* FCataclysmBerserkerStates::DrainPerSecondStat = TEXT("fervour_drain_per_second");
 const TCHAR* FCataclysmBerserkerStates::WrathText = TEXT("Wrath");
 const TCHAR* FCataclysmBerserkerStates::FrenzyText = TEXT("Frenzy");
@@ -176,7 +178,11 @@ float FCataclysmBerserkerStates::SpendBerserking(UAbilitySystemComponent* Abilit
 												 const FGameplayTagContainer& SkillTags, int32 TargetsStruck)
 {
 	UCataclysmAbilitySystemComponent* Cataclysm = Cast<UCataclysmAbilitySystemComponent>(AbilitySystem);
-	if (!Cataclysm || !Cataclysm->IsBerserkingArmed() || TargetsStruck <= 0)
+	// ARMED, OR ON EVERY MELEE ATTACK WHILE BLOODIED'S FLAG HOLDS (the War trees' engine slice E3, 2026-11-27), asked with
+	// the attack's own tags so its scope decides. Wrath and Frenzy still refuse it below (Q21).
+	const bool bEveryHit = Cataclysm
+		&& Cataclysm->StatForSkill(FName(BerserkingOnEveryMeleeHitStat), SkillTags, 0.0f) > 0.0f;
+	if (!Cataclysm || (!Cataclysm->IsBerserkingArmed() && !bEveryHit) || TargetsStruck <= 0)
 	{
 		return 0.0f;
 	}
@@ -197,7 +203,10 @@ float FCataclysmBerserkerStates::SpendBerserking(UAbilitySystemComponent* Abilit
 	// DISARMED BEFORE THE POOL IS WRITTEN, so the change notice the write raises judges a character already spent.
 	Cataclysm->SetBerserkingArmed(false);
 	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
-	const float Consumed = Cataclysm->GetNumericAttribute(Pool);
+	// THE WHOLE POOL, OR HALF OF IT UNDER BERSERKER'S RAGE (the project owner's ruling of 2026-11-27, the War trees'
+	// engine slice E3): "Berserking spends half the pool instead of all of it".
+	const bool bHalf = Cataclysm->StatForSkill(FName(BerserkingSpendsHalfStat), SkillTags, 0.0f) > 0.0f;
+	const float Consumed = Cataclysm->GetNumericAttribute(Pool) * (bHalf ? 0.5f : 1.0f);
 	if (Consumed <= 0.0f)
 	{
 		return 0.0f;

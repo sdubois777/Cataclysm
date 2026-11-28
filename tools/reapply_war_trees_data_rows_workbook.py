@@ -335,8 +335,25 @@ E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
           cap=4, **TWO_HANDED),)),
 )
 
+#: ENGINE SLICE E3'S NODES (2026-11-27): the keystone rules.
+E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
+    # OPEN WOUNDS (Berserker): "Life leech can overheal you up to 30% above your maximum HP. Bonus HP from overleech
+    # decays at 1% per second when you are not leeching. While you have any overleech HP, incoming damage removes
+    # overleech before your actual HP." Eternal Hunger's two stats, read as the largest of their rows (R14).
+    ("Berserker_trunk_006", "Open Wounds", (
+        R("leech_overheal_absorb_percent_of_maximum_health", "flat", 30),
+        R("leech_overheal_absorb_decay_percent_per_second", "flat", 1))),
+    # BERSERKER'S RAGE, the project owner's ruling (2026-11-27): "Berserking spends half the pool instead of all of it".
+    ("Berserker_twoh_ks_002", "Berserker's Rage", (R("berserking_spends_half", "flat", 1, **TWO_HANDED),)),
+    # BLOODIED: "While below 30% HP your Fervour generation is tripled and Berserking triggers on every melee hit rather
+    # than only when Fervour is full." Tripled is 200% more.
+    ("Berserker_trunk_012", "Bloodied", (
+        R("class_resource_generation", "more", 200, cond="health_below", cond_value=30),
+        R("berserking_on_every_melee_hit", "flat", 1, cond="health_below", cond_value=30))),
+)
+
 #: Every node this script writes.
-NODES = DATA_NODES + E1_NODES + E2_NODES
+NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES
 
 
 def apply(path: pathlib.Path = base.WORKBOOK, check_only: bool = False) -> list[str]:

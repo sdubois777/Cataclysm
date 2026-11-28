@@ -2853,6 +2853,14 @@ public:
 	static const TCHAR* LeechOverhealAbsorbDecayStat;
 
 	/**
+	 * The LARGEST of one stat's rows, each judged alone with this character's state, rather than their sum; nought with
+	 * none. The War trees' engine slice E3 (2026-11-27), for the two overleech stats: R14 says a character with Open
+	 * Wounds (30%) and Eternal Hunger (100%) heals up to 100% above its maximum, not 130%, and decays at 1% a second,
+	 * not 2%.
+	 */
+	float LargestOfItsRows(FName Stat) const;
+
+	/**
 	 * A leech payment healed this character's health and offered `Overheal` points more than fitted under the heal's
 	 * ceiling (nought when it all fitted). Notes the payment's time, which `DecayLeechAbsorb` reads, and adds the
 	 * overheal to the temporary absorb, counted as Eternal Hunger's part, to no more than `LeechOverhealAbsorbCapStat`

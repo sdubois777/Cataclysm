@@ -14220,6 +14220,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("retaliation_radius_metres"), &ProbeConditionedRetaliationRadius},
 			{TEXT("melee_arc_full_circle"), &ProbeConditionedMeleeArcFullCircle},
 			{TEXT("fervour_per_enemy_hit"), &ProbeConditionedFervourPerEnemyHit},
+			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
+			{TEXT("berserking_spends_half"), &ProbeConditionedBerserkingSpendsHalf},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -14412,6 +14414,140 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("with 10 of it the 40 held buy 400%, so SpendBerserking really reads it"), Held, 400.0f,
 					   0.001f);
 		Test.TestEqual(TEXT("and the whole pool is consumed"), System->GetNumericAttribute(Pool), 0.0f, 0.001f);
+	}
+
+	/**
+	 * `berserking_spends_half`, read by `FCataclysmBerserkerStates::SpendBerserking`. The War trees' engine slice E3
+	 * (2026-11-27), Berserker's Rage. An armed holder with 40 Fervour and 10 a point spends all 40 without it, and 20 with it.
+	 */
+	void ProbeBerserkingSpendsHalf(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		GrantFlat(Holder, FCataclysmBerserkerStates::BerserkingDamagePerFervourStat, 10.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Whole = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		GrantFlats(Holder, {{FName(FCataclysmBerserkerStates::BerserkingDamagePerFervourStat), 10.0f},
+							{FName(FCataclysmBerserkerStates::BerserkingSpendsHalfStat), 1.0f}});
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Half = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Test.TestEqual(TEXT("berserking_spends_half: control, without it the 40 held buy 400%"), Whole, 400.0f, 0.001f);
+		Test.TestEqual(TEXT("and with it 20 are spent for 200%, so SpendBerserking reads it"), Half, 200.0f, 0.001f);
+		Test.TestEqual(TEXT("and 20 are left"), System->GetNumericAttribute(Pool), 20.0f, 0.001f);
+	}
+
+	/**
+	 * `berserking_on_every_melee_hit`, read by `FCataclysmBerserkerStates::SpendBerserking`. The War trees' engine slice E3
+	 * (2026-11-27), Bloodied, shipped under `health_below`; a Fervour condition stands for it. A holder NOT armed, with 40
+	 * Fervour and 10 a point, spends nothing under a condition that refuses and all 40 under one that holds.
+	 */
+	void ProbeConditionedBerserkingOnEveryMeleeHit(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const auto Hold = [System](float AbovePercent)
+		{
+			FCataclysmStatModifier PerFervour;
+			PerFervour.Bucket = ECataclysmStatBucket::Flat;
+			PerFervour.Source = ECataclysmModifierSource::PassiveKeystone;
+			PerFervour.Value = 10.0f;
+			FCataclysmStatModifier EveryHit = PerFervour;
+			EveryHit.Value = 1.0f;
+			EveryHit.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			EveryHit.ConditionValue = AbovePercent;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(FCataclysmBerserkerStates::BerserkingDamagePerFervourStat)).Modifiers = {PerFervour};
+			Inputs.FindOrAdd(FName(FCataclysmBerserkerStates::BerserkingOnEveryMeleeHitStat)).Modifiers = {EveryHit};
+			System->SetStatInputs(MoveTemp(Inputs));
+		};
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Hold(60.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(false);
+		const float Refused = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Hold(30.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(false);
+		const float Held = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Test.TestEqual(TEXT("berserking_on_every_melee_hit under a refused condition: an unarmed holder buys nothing"),
+					   Refused, 0.0f);
+		Test.TestEqual(TEXT("and under one that holds it spends its 40 for 400%, so it is asked with its condition"), Held,
+					   400.0f, 0.001f);
+	}
+
+	/**
+	 * `berserking_spends_half` under a condition, read by `FCataclysmBerserkerStates::SpendBerserking`. The War trees'
+	 * engine slice E3 (2026-11-27), shipped under `wielding_two_handed_weapon` (Berserker's Rage); a Fervour condition
+	 * stands for it. An armed holder with 40 Fervour and 10 a point spends all 40 under a condition that refuses, and 20
+	 * under one that holds.
+	 */
+	void ProbeConditionedBerserkingSpendsHalf(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const auto Hold = [System](float AbovePercent)
+		{
+			FCataclysmStatModifier PerFervour;
+			PerFervour.Bucket = ECataclysmStatBucket::Flat;
+			PerFervour.Source = ECataclysmModifierSource::PassiveKeystone;
+			PerFervour.Value = 10.0f;
+			FCataclysmStatModifier Half = PerFervour;
+			Half.Value = 1.0f;
+			Half.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			Half.ConditionValue = AbovePercent;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(FCataclysmBerserkerStates::BerserkingDamagePerFervourStat)).Modifiers = {PerFervour};
+			Inputs.FindOrAdd(FName(FCataclysmBerserkerStates::BerserkingSpendsHalfStat)).Modifiers = {Half};
+			System->SetStatInputs(MoveTemp(Inputs));
+		};
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Hold(60.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Refused = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Hold(30.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Held = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Test.TestEqual(TEXT("berserking_spends_half under a refused condition: the whole 40 buy 400%"), Refused, 400.0f,
+					   0.001f);
+		Test.TestEqual(TEXT("and under one that holds, half of it: 200%"), Held, 200.0f, 0.001f);
 	}
 
 	/** A holder for the Fervour spends' probes, with 50 of 100 Fervour and 10,000 maximum health. 2026-11-25. */
@@ -16547,6 +16683,9 @@ namespace CataclysmStatExemptionTest
 										  ECataclysmBerserkerState::Frenzy); }},
 			{TEXT("fervour_drain_per_second"), &ProbeBerserkerDrain},
 			{TEXT("berserking_damage_per_fervour"), &ProbeBerserkingSpend},
+			// THE WAR TREES' ENGINE SLICE E3 (2026-11-27).
+			{TEXT("berserking_spends_half"), &ProbeBerserkingSpendsHalf},
+			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			// THE FERVOUR SPENDS, 2026-11-25.
 			{TEXT("fervour_cost_per_negated_block"), &ProbeCostPerNegatedBlock},
 			{TEXT("health_percent_per_ten_fervour_on_lethal_blow"), &ProbeLethalBlowHealthPerTenFervour},
@@ -16830,9 +16969,10 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
 	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
 	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
-	// FORTY-FIVE SINCE THE WAR TREES' ENGINE SLICES E1 AND E2 (2026-11-27): E1's three immunities, unmitigated
-	// retaliation and the retaliation radius, and E2's full-circle swing and Fervour per enemy hit.
-	if (!TestEqual(TEXT("the forty-five probes are all here"), ConditionedProbes().Num(), 45))
+	// FORTY-SEVEN SINCE THE WAR TREES' ENGINE SLICES E1 TO E3 (2026-11-27): E1's three immunities, unmitigated
+	// retaliation and the retaliation radius, E2's full-circle swing and Fervour per enemy hit, and E3's Bloodied and
+	// Berserker's Rage.
+	if (!TestEqual(TEXT("the forty-seven probes are all here"), ConditionedProbes().Num(), 47))
 	{
 		return false;
 	}

@@ -7993,6 +7993,26 @@ void UCataclysmAbilitySystemComponent::SpendTemporaryAbsorb(float Taken)
 	LeechAbsorb = FMath::Min(LeechAbsorb, TemporaryAbsorb);
 }
 
+float UCataclysmAbilitySystemComponent::LargestOfItsRows(FName Stat) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		return 0.0f;
+	}
+	// EACH ROW ALONE, ON THE LINE'S BASE, WITH EVERY READING ITS OWN CONDITIONS AND SCALE ASK FOR, as `StatForSkill`
+	// asks the whole line; the largest answer is kept. The War trees' engine slice E3 (2026-11-27).
+	float Largest = 0.0f;
+	for (const FCataclysmStatModifier& Row : Inputs->Modifiers)
+	{
+		const TArray<FCataclysmStatModifier> Alone = {Row};
+		Largest = FMath::Max(Largest,
+			UCataclysmStatPipeline::Evaluate(Inputs->Base, Alone, FGameplayTagContainer(),
+				WithEnemiesInReach(Alone, WithTargetState(Alone, nullptr, CurrentConditions()))).Final);
+	}
+	return Largest;
+}
+
 const TCHAR* UCataclysmAbilitySystemComponent::LeechOverhealAbsorbCapStat =
 	TEXT("leech_overheal_absorb_percent_of_maximum_health");
 const TCHAR* UCataclysmAbilitySystemComponent::LeechOverhealAbsorbDecayStat =
@@ -8009,7 +8029,9 @@ void UCataclysmAbilitySystemComponent::NoteLeechHealed(float Overheal)
 	{
 		return;
 	}
-	const float CapPercent = StatForSkill(FName(LeechOverhealAbsorbCapStat), FGameplayTagContainer(), 0.0f);
+	// THE LARGEST ROW AND NOT THEIR SUM, R14 (the War trees' engine slice E3, 2026-11-27): Open Wounds and Eternal Hunger
+	// together allow 100% above maximum, not 130%.
+	const float CapPercent = LargestOfItsRows(FName(LeechOverhealAbsorbCapStat));
 	const FGameplayAttribute MaxHealthAttribute = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
 	if (CapPercent <= 0.0f || !HasAttributeSetForAttribute(MaxHealthAttribute))
 	{
@@ -8038,7 +8060,8 @@ void UCataclysmAbilitySystemComponent::DecayLeechAbsorb(float Seconds)
 	{
 		return;
 	}
-	const float PercentPerSecond = StatForSkill(FName(LeechOverhealAbsorbDecayStat), FGameplayTagContainer(), 0.0f);
+	// THE LARGEST ROW, as the ceiling above is: two 1%-a-second decays are 1% a second (the War trees' engine slice E3).
+	const float PercentPerSecond = LargestOfItsRows(FName(LeechOverhealAbsorbDecayStat));
 	const FGameplayAttribute MaxHealthAttribute = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
 	if (PercentPerSecond <= 0.0f || !HasAttributeSetForAttribute(MaxHealthAttribute))
 	{

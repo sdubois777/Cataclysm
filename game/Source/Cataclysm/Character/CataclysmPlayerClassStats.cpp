@@ -1358,6 +1358,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("wrath_on_full_fervour"),
 		TEXT("frenzy_on_full_fervour"),
 		TEXT("berserking_damage_per_fervour"),
+		// And the War trees' two Berserking flags, engine slice E3 (2026-11-27): Berserker's Rage's half pool and Bloodied's
+		// every melee hit, each read by FCataclysmBerserkerStates::SpendBerserking.
+		TEXT("berserking_spends_half"),
+		TEXT("berserking_on_every_melee_hit"),
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),

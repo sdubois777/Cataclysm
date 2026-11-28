@@ -683,7 +683,7 @@
       "data": {
         "kind": "keystone",
         "name": "Berserker's Rage",
-        "description": "Two-handed weapons only. Effects that trigger at maximum Fervour no longer drain your Fervour when they fire.",
+        "description": "Two-handed weapons only. Berserking spends half your Fervour instead of all of it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
