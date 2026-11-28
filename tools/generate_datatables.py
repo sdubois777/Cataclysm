@@ -8005,7 +8005,12 @@ NEXT_USE_ACTIONS = (
 #: `UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction` and
 #: `AttackerDamageRemovedAction` hold the same two names.
 PLACED_ACTIONS = {
-    "enemy_armor_removed": ("hit_dealt", "deployable_hit"),
+    # THE WAR TREES' ENGINE SLICE E2 (2026-11-27): issue #964's mark, a stack on the enemy of the event that raises
+    # the damage it takes from every source (Open Wound on a critical strike; Marked Territory on a trap's blow), and
+    # Rend's, which lowers its damage reduction. `enemy_armor_removed` below gains `critical_strike` for Shatter.
+    "enemy_damage_taken": ("hit_dealt", "critical_strike", "deployable_hit"),
+    "enemy_damage_reduction_removed": ("hit_dealt",),
+    "enemy_armor_removed": ("hit_dealt", "deployable_hit", "critical_strike"),
     "attacker_damage_removed": ("melee_hit_taken",),
     # THE SAME ARMOUR STACK PLACED ON EVERY ENEMY NEAR THE WEARER, within the
     # nearby radius of five metres, rather than on the event's own character.

@@ -1297,6 +1297,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					const bool bRetaliationTaken = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction,
 						ESearchCase::IgnoreCase);
+					// AND THE WAR TREES' TWO, engine slice E2 (2026-11-27): issue #964's mark and Rend's.
+					const bool bDamageTakenRaised = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EnemyDamageTakenAction, ESearchCase::IgnoreCase);
+					const bool bDamageReductionRemoved = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EnemyDamageReductionRemovedAction, ESearchCase::IgnoreCase);
 					// AN "EVERY Nth" ROW, keyed by the enchantment and the action.
 					// Issue #1833, phase 2. The action names what is counted, so
 					// the row has no Action Event.
@@ -1344,7 +1349,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 								TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						}
 					}
-					if (bArmourRemoved || bDamageRemoved || bRetaliationTaken)
+					if (bArmourRemoved || bDamageRemoved || bRetaliationTaken || bDamageTakenRaised
+						|| bDamageReductionRemoved)
 					{
 						Action.PlacedKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
@@ -1352,6 +1358,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						Action.StackCap = Effect->ScaleMaxSteps;
 						Action.bPlacedCutsDamage = bDamageRemoved;
 						Action.bPlacedRaisesRetaliationTaken = bRetaliationTaken;
+						Action.bPlacedRaisesDamageTaken = bDamageTakenRaised;
+						Action.bPlacedRemovesDamageReduction = bDamageReductionRemoved;
 					}
 					// A NEXT-SPELL COOLDOWN CHARGE, the fourth next-use kind. Issue
 					// #1833, the cooldown reduction action.

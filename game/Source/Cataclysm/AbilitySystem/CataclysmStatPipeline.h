@@ -5477,6 +5477,12 @@ struct CATACLYSM_API FCataclysmPoolAction
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bPlacedRaisesRetaliationTaken = false;
 
+	/** The placed stack raises the damage its carrier takes: `enemy_damage_taken`. The War trees' engine slice E2. */
+	bool bPlacedRaisesDamageTaken = false;
+
+	/** The placed stack lowers its carrier's damage reduction: `enemy_damage_reduction_removed`. The same slice. */
+	bool bPlacedRemovesDamageReduction = false;
+
 	/**
 	 * Set, this action COUNTS ITS KIND OF EVENT, and acts on every Nth. Issue
 	 * #1833, phase 2. `EveryNth` is N, `Percent` what the Nth is worth (unused

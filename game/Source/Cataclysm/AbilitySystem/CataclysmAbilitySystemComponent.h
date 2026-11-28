@@ -1445,6 +1445,11 @@ public:
 		ArmourRemoved,
 		DamageCut,
 		RetaliationTaken,
+		// THE WAR TREES' ENGINE SLICE E2 (2026-11-27): issue #964's mark, "the target takes +3% increased damage per
+		// point from all sources" (Open Wound, Marked Territory), read at the damage taken step with the Deathmark;
+		DamageTaken,
+		// and Rend's "reduces the target's damage reduction by 1% per point", taken from its damage reduction.
+		DamageReductionRemoved,
 	};
 
 	/** The same, saying which of the three the stack does. The form above places `ArmourRemoved` or `DamageCut`. */
@@ -1537,6 +1542,10 @@ public:
 	 * through `RetaliationTakenPercentNow`. In `PLACED_ACTIONS` too.
 	 */
 	static const TCHAR* AttackerRetaliationTakenAction;
+	/** `enemy_damage_taken`: a stack on the enemy of the event raising the damage it takes. War trees E2 (#964). */
+	static const TCHAR* EnemyDamageTakenAction;
+	/** `enemy_damage_reduction_removed`: a stack on the enemy of the event lowering its damage reduction. Rend. */
+	static const TCHAR* EnemyDamageReductionRemovedAction;
 
 	/**
 	 * The armour stack of `EnemyArmorRemovedAction` placed on every enemy within `NearbyActionRadiusCm` of the
@@ -2378,6 +2387,19 @@ public:
 
 	/** `DeathmarkPercentNow` of `Carrier`'s component, or nought for any other component. For the damage step. */
 	static float DeathmarkPercentOn(const UAbilitySystemComponent* Carrier);
+
+	/**
+	 * The increased damage the `enemy_damage_taken` stacks placed on `Carrier` add now, in per cent, summed; nought for
+	 * none or a carrier that is not a Cataclysm ability system. Read at the damage taken step beside the Deathmark: from
+	 * every attacker, as issue #964's "from all sources" says. The War trees' engine slice E2 (2026-11-27).
+	 */
+	static float PlacedDamageTakenPercentOn(const UAbilitySystemComponent* Carrier);
+
+	/**
+	 * The damage reduction the `enemy_damage_reduction_removed` stacks placed on `Carrier` take away now, in points,
+	 * summed; nought for none. Taken from its damage reduction before the cap (Rend). The War trees' engine slice E2.
+	 */
+	static float PlacedDamageReductionRemovedOn(const UAbilitySystemComponent* Carrier);
 
 	/**
 	 * Hold Blood Price's damage for `Seconds`: the first melee blow of this character's own that lands in that time adds

@@ -4222,6 +4222,18 @@ float UCataclysmAbilitySystemComponent::DeathmarkPercentNow() const
 	return IsDeathmarked() ? DeathmarkedPercent : 0.0f;
 }
 
+float UCataclysmAbilitySystemComponent::PlacedDamageTakenPercentOn(const UAbilitySystemComponent* Carrier)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Carrier);
+	return Cataclysm ? Cataclysm->PlacedPercentNow(EPlacedStackKind::DamageTaken) : 0.0f;
+}
+
+float UCataclysmAbilitySystemComponent::PlacedDamageReductionRemovedOn(const UAbilitySystemComponent* Carrier)
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Carrier);
+	return Cataclysm ? Cataclysm->PlacedPercentNow(EPlacedStackKind::DamageReductionRemoved) : 0.0f;
+}
+
 float UCataclysmAbilitySystemComponent::DeathmarkPercentOn(const UAbilitySystemComponent* Carrier)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Carrier);
@@ -6312,6 +6324,10 @@ const TCHAR* UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction =
 	TEXT("attacker_damage_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction =
 	TEXT("attacker_retaliation_taken");
+const TCHAR* UCataclysmAbilitySystemComponent::EnemyDamageTakenAction =
+	TEXT("enemy_damage_taken");
+const TCHAR* UCataclysmAbilitySystemComponent::EnemyDamageReductionRemovedAction =
+	TEXT("enemy_damage_reduction_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::NthHitTakenDamageAction =
 	TEXT("nth_hit_taken_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::NthSpellManaCostAction =
@@ -9249,9 +9265,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 					// THORNWALL'S IS THE THIRD KIND, V3a (2026-11-25): it raises the retaliation the attacker takes.
 					Other->ReceivePlacedStack(Action.PlacedKey, Action.Percent,
 						Action.StackSeconds, Action.StackCap,
-						Action.bPlacedRaisesRetaliationTaken ? EPlacedStackKind::RetaliationTaken
-						: Action.bPlacedCutsDamage			 ? EPlacedStackKind::DamageCut
-															 : EPlacedStackKind::ArmourRemoved);
+						Action.bPlacedRaisesRetaliationTaken	 ? EPlacedStackKind::RetaliationTaken
+						: Action.bPlacedCutsDamage				 ? EPlacedStackKind::DamageCut
+						// AND THE WAR TREES' TWO, engine slice E2 (2026-11-27).
+						: Action.bPlacedRaisesDamageTaken		 ? EPlacedStackKind::DamageTaken
+						: Action.bPlacedRemovesDamageReduction	 ? EPlacedStackKind::DamageReductionRemoved
+																 : EPlacedStackKind::ArmourRemoved);
 				}
 			}
 			continue;

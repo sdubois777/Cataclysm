@@ -189,8 +189,32 @@ E1_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("retaliation_cannot_be_mitigated", "flat", 1, cond="health_below", cond_value=25, min_points=6))),
 )
 
+#: ENGINE SLICE E2'S NODES (2026-11-27): written once the slice's actions exist.
+E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
+    # OPEN WOUND (issue #964): "Critical melee strikes apply a wound to the target for 2 seconds per point. While
+    # wounded, the target takes +3% increased damage per point from all sources. Applying a new wound refreshes the
+    # duration." A placed stack's window does not grow with points, so the wound is one row for each point count, each
+    # with its own window: 2 seconds at 1 point, 4 at 2, up to 12 at 6. One stack, refreshed.
+    ("Berserker_dw_006", "Open Wound", tuple(
+        R(None, "", 3, tags=MELEE, action="enemy_damage_taken", action_event="critical_strike",
+          stack_seconds=2 * points, cap=1, min_points=points, max_points=points + 1 if points < 6 else None,
+          per_point_from=1 if points > 1 else None, **DUAL)
+        for points in range(1, 7))),
+    # REND: "Each melee hit reduces the target's damage reduction by 1% per point for 3 seconds, stacking up to 5
+    # times. Stacks refresh on each hit. At 5 points: The stack cap is increased to 8."
+    ("Berserker_dw_004", "Rend", (
+        R(None, "", 1, tags=MELEE, action="enemy_damage_reduction_removed", action_event="hit_dealt",
+          stack_seconds=3, cap=5, max_points=5, **DUAL),
+        R(None, "", 1, tags=MELEE, action="enemy_damage_reduction_removed", action_event="hit_dealt",
+          stack_seconds=3, cap=8, min_points=5, per_point_from=1, **DUAL))),
+    # SHATTER: "Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times."
+    ("Berserker_twoh_009", "Shatter", (
+        R(None, "", 5, tags=MELEE, action="enemy_armor_removed", action_event="critical_strike", stack_seconds=5,
+          cap=4, **TWO_HANDED),)),
+)
+
 #: Every node this script writes.
-NODES = DATA_NODES + E1_NODES
+NODES = DATA_NODES + E1_NODES + E2_NODES
 
 
 def apply(path: pathlib.Path = base.WORKBOOK, check_only: bool = False) -> list[str]:

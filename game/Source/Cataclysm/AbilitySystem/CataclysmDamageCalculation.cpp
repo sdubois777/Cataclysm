@@ -1186,10 +1186,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// this the only lookup a conditioned row could be dropped by. Both were
 		// false. The count was measured correctly and then transcribed wrongly,
 		// which is why the figure is now written beside the names it counts.
+		// LESS WHAT REND'S STACKS PLACED ON THE DEFENDER TAKE AWAY, before the cap and floored at nought by it: "Each
+		// melee hit reduces the target's damage reduction by 1% per point" (the War trees' engine slice E2, 2026-11-27).
 		Damage *= 1.0f
 			- EffectiveDamageReduction(
 				  DefenderStat(Defender, TEXT("damage_reduction"),
-							   Combat->GetDamageReduction(), BlowOf(Hit)))
+							   Combat->GetDamageReduction(), BlowOf(Hit))
+				  - UCataclysmAbilitySystemComponent::PlacedDamageReductionRemovedOn(Defender))
 				  / 100.0f;
 
 		// AND THE MULTIPLICATIVE BUCKET, WHICH THAT CAP DOES NOT REACH. Twelve
@@ -1268,7 +1271,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			// AND A DEATHMARK'S PERCENT, "Marked enemies take +3% increased damage per point from all sources" (the
 			// Berserker's Deathmark, 2026-11-25): from every attacker, minions and allies included (question 3), as the
 			// rider beside it is.
-			+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender)) / 100.0f;
+			+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender)
+			// AND ISSUE #964'S MARK, "the target takes +3% increased damage per point from all sources" (Open Wound,
+			// Marked Territory), the stacks placed on it summed, the same way (the War trees' engine slice E2).
+			+ UCataclysmAbilitySystemComponent::PlacedDamageTakenPercentOn(Defender)) / 100.0f;
 		Damage *= DamageTakenFactor;
 
 		// AND A BLOW THE DEFENDER CANNOT MITIGATE IS PUT BACK TO WHAT IT WAS
