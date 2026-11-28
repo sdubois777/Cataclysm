@@ -793,7 +793,8 @@ void UCataclysmPassiveTreeWidget::DescribeNodeButton(
 	// AND, LAST, A NODE WITH NO ROW: its name marked "(not built yet: it does nothing)". The War vow options' second
 	// slice, 2026-11-25. Not a capstone, whose own points carry no row by design: its options are marked where they are
 	// offered. No table, nothing marked.
-	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* Effects =
+		EffectTableForTests ? EffectTableForTests.Get() : UCataclysmPassiveTree::LoadEffectTable();
 	if (ToolTip.IsEmpty() && Row->Kind != UCataclysmPassiveTree::CapstoneKind && Effects
 		&& !UCataclysmPassiveTree::HasEffectRows(Effects, Node))
 	{

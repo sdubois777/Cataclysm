@@ -282,6 +282,14 @@ public:
 	void DescribeButtonForTests(class UCataclysmChoiceButton& Button, FName Value,
 								bool bIsTree);
 
+	/**
+	 * FOR TESTS: the effect table a node's "not built yet" tool tip reads instead of the loaded one, null for the loaded
+	 * one. Since the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave Colossus its row, no node in the loaded
+	 * table is without one, so the test hands the screen a copy with a node's rows taken out.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<const UDataTable> EffectTableForTests;
+
 	/** How big the tree's panel is right now, in pixels. For tests. */
 	FVector2D PanelSize() const { return CanvasSize(); }
 

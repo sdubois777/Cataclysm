@@ -524,16 +524,16 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 		return false;
 	}
 	using FTree = UCataclysmPassiveTree;
-	// COLOSSUS (`Berserker_twoh_ks_001`) SINCE THE WAR TREES' ENGINE SLICE E3 (2026-11-27), which gave Open Wounds
-	// (`Berserker_trunk_006`) rows: Colossus waits on the Earthquake skill (#2972) and has none. The screen's tool tip
-	// below reads the loaded table, so the node has to be one with no row there. WHEN #2972 BUILDS EARTHQUAKE AND WIRES
-	// COLOSSUS, Colossus gets a row and this test fails on "set-up: Colossus has no row": pick another node with no row
-	// then (the note on #2972 says the same).
+	// COLOSSUS (`Berserker_twoh_ks_001`) SINCE THE WAR TREES' ENGINE SLICE E3 (2026-11-27). The War weapon skills'
+	// slice WS1 (issue #2972, 2026-11-28) gave it its row, after which NO NODE IN THE LOADED TABLE IS WITHOUT ONE: so its
+	// rows are taken out of the copy as Bolted Together's are, and the screen's tool tip is handed the copy
+	// (`UCataclysmPassiveTreeWidget::EffectTableForTests`). THE CONTROL: the table as loaded holds Colossus's row.
 	const FName Unbuilt(TEXT("Berserker_twoh_ks_001"));
 	const FName Built(TEXT("Berserker_twoh_001"));
 	const FName FinalOath(TEXT("Saboteur_capstone_100"));
 	if (!TestTrue(TEXT("control: the table as loaded holds Bolted Together's rows"),
-				  FTree::HasEffectRows(Loaded, FinalOath, 2)))
+				  FTree::HasEffectRows(Loaded, FinalOath, 2))
+		|| !TestTrue(TEXT("control: the table as loaded holds Colossus's row"), FTree::HasEffectRows(Loaded, Unbuilt)))
 	{
 		return false;
 	}
@@ -546,7 +546,7 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	for (const TPair<FName, uint8*>& Each : Effects->GetRowMap())
 	{
 		const FCataclysmPassiveEffectRow* Row = reinterpret_cast<const FCataclysmPassiveEffectRow*>(Each.Value);
-		if (Row && Row->Node == FinalOath.ToString() && Row->Option == 2)
+		if (Row && ((Row->Node == FinalOath.ToString() && Row->Option == 2) || Row->Node == Unbuilt.ToString()))
 		{
 			Removing.Add(Each.Key);
 		}
@@ -601,6 +601,7 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	{
 		return false;
 	}
+	Screen->EffectTableForTests = Effects;
 	UCataclysmChoiceButton* Marked = NewObject<UCataclysmChoiceButton>();
 	Screen->DescribeButtonForTests(*Marked, Unbuilt, false);
 	TestEqual(TEXT("Colossus's tool tip says it is not built yet"), Marked->GetToolTipText().ToString(),

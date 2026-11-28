@@ -175,7 +175,7 @@ def plan(book) -> list[Write]:
         at = rows[0]
         name = f"War {row.weapon} {row.slot}"
 
-        def cell(column: str) -> object:
+        def cell(column: str, at: int = at) -> object:
             return sheet.cell(at, columns[column]).value
 
         wanted_shape, wanted_params = (row.shape, row.params) if row.works else (None, None)
