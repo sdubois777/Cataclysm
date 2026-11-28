@@ -53,6 +53,16 @@ KNOWN_PIECES = frozenset({f"W{n}" for n in range(1, 13) if n != 7})
 
 WEAPON, DAMAGE, SLOT = "Weapon Type", "Damage Type", "Slot"
 DESCRIPTION, SHAPE, PARAMS, DAMAGE_PERCENT = "Skill Description", "Shape", "Shape Params", "Damage Percent"
+NAME = "Skill Name"
+
+#: TWO SKILLS RENAMED BY THE OWNER, 2026-11-28, verbatim: "Rename them, your call". The names are the coordinating
+#: session's choice, checked against game/Data and docs on development (no match for either). The War Fist Ultimate
+#: shared its name with the Berserker keystone `Berserker_dw_ks_002`, which keeps "Unstoppable Force"; the War Warhammer
+#: Ultimate was named "Cataclysm", the game's own name. (weapon, slot) -> (name before, name after). Row keys unchanged.
+RENAMES: dict[tuple[str, str], tuple[str, str]] = {
+    ("Warhammer", "Ultimate"): ("Cataclysm", "Worldbreaker"),
+    ("Fist", "Ultimate"): ("Unstoppable Force", "Unchained Fury"),
+}
 
 
 class WarRow(NamedTuple):
@@ -166,13 +176,23 @@ def plan(book) -> list[Write]:
     check_rows()
     death.refuse_what_a_save_would_lose(book)
     sheet = book[SKILLS_SHEET]
-    columns = death.header_of(sheet, (WEAPON, DAMAGE, SLOT, DESCRIPTION, SHAPE, PARAMS, DAMAGE_PERCENT))
+    columns = death.header_of(sheet, (WEAPON, DAMAGE, SLOT, NAME, DESCRIPTION, SHAPE, PARAMS, DAMAGE_PERCENT))
     found: dict[tuple[str, str], list[int]] = {}
     for cells in sheet.iter_rows(min_row=2):
         if cells[columns[DAMAGE] - 1].value == DAMAGE_TYPE:
             found.setdefault((cells[columns[WEAPON] - 1].value, cells[columns[SLOT] - 1].value), []).append(
                 cells[0].row)
     writes: list[Write] = []
+    for (weapon, slot), (name_before, name_after) in RENAMES.items():
+        rows = found.get((weapon, slot), [])
+        if len(rows) != 1:
+            raise ApplyError(f"War {weapon} {slot} is in the sheet {len(rows)} time(s), not once")
+        held = sheet.cell(rows[0], columns[NAME]).value
+        if death.same(held, name_after):
+            continue
+        if not death.same(held, name_before):
+            raise ApplyError(f"War {weapon} {slot} {NAME} holds {held!r}, neither {name_before!r} nor {name_after!r}")
+        writes.append(Write(SKILLS_SHEET, rows[0], columns[NAME], held, name_after, f"War {weapon} {slot} {NAME}"))
     for row in ROWS:
         rows = found.get((row.weapon, row.slot), [])
         if len(rows) != 1:
