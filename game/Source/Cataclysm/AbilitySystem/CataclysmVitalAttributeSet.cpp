@@ -1318,6 +1318,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 												   /*Target=*/GetOwningActor())
 							: Offence->GetCritMultiplier();
 
+						// AND HAIR TRIGGER'S "Critical strike chance past 100% is converted to critical strike multiplier at
+						// a 2:1 ratio": every 2% of chance above 100, before the ceiling, adds 1% to the multiplier (the War
+						// trees' engine slice E3, 2026-11-27). The chance the blow keeps is still held to the ceiling above.
+						if (Asking
+							&& Asking->StatForSkill(FName(TEXT("crit_chance_past_cap_to_multiplier")), AssetTags, 0.0f)
+								   > 0.0f)
+						{
+							const float Past = (Stated >= 0.0f ? Stated : OwnCritChance) + FromNails - 100.0f;
+							Hit.CritMultiplier += FMath::Max(0.0f, Past) / 2.0f;
+						}
+
 						// AND THE EDICT OF HUMILITY HOLDS IT AT 100: "a critical strike deals no extra damage".
 						// 2026-10-23, G7c. HELD, NOT ZEROED AND NOT REMOVED: 100 keeps the roll's guard in
 						// `UCataclysmDamageCalculation::Resolve` above nought, so a critical strike is still rolled,

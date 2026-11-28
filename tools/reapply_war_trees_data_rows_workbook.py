@@ -350,6 +350,9 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Berserker_trunk_012", "Bloodied", (
         R("class_resource_generation", "more", 200, cond="health_below", cond_value=30),
         R("berserking_on_every_melee_hit", "flat", 1, cond="health_below", cond_value=30))),
+    # HAIR TRIGGER: "Critical strike chance past 100% is converted to critical strike multiplier at a 2:1 ratio." Every 2%
+    # of chance past 100 adds 1% to the multiplier; the chance itself is still held to its ceiling.
+    ("Berserker_crit_ks_002", "Hair Trigger", (R("crit_chance_past_cap_to_multiplier", "flat", 1),)),
 )
 
 #: Every node this script writes.

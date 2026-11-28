@@ -8415,6 +8415,45 @@ namespace CataclysmStatExemptionTest
 					  WhenHurt.DealtToHealth > AtFull.DealtToHealth * 1.2f);
 	}
 
+	/**
+	 * `crit_chance_past_cap_to_multiplier`, read where a hit is priced. The War trees' engine slice E3 (2026-11-27), Hair
+	 * Trigger. Two strikers with 200% critical strike chance and a multiplier of 150; the one holding it adds 50, so its
+	 * certain critical strike deals more. The 100 past the cap come through the pipeline (`crit_chance` flat 100 on the
+	 * attribute's 100), because the attribute itself is clamped to its ceiling when it is written.
+	 */
+	void ProbeCritChancePastCapToMultiplier(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll AlwaysCritical(0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		for (FScopedFighter* Striker : {&Plain, &Holding})
+		{
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritMultiplierAttribute(), 150.0f);
+		}
+		GrantFlats(Plain.Actor, {{FName(TEXT("crit_chance")), 100.0f}});
+		GrantFlats(Holding.Actor,
+				   {{FName(TEXT("crit_chance")), 100.0f}, {FName(TEXT("crit_chance_past_cap_to_multiplier")), 1.0f}});
+		const FCataclysmDamageResult Without = OneBlow(Plain, Defender);
+		const FCataclysmDamageResult With = OneBlow(Holding, Defender);
+		if (!Test.TestTrue(TEXT("both blows landed and critically struck"),
+				Without.bWasCritical && With.bWasCritical && Without.DealtToHealth > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(FString::Printf(TEXT("crit_chance_past_cap_to_multiplier is read: the 100 past the cap add 50 to the "
+										   "multiplier, so the critical strike deals more: %.1f against %.1f"),
+						  With.DealtToHealth, Without.DealtToHealth),
+					  With.DealtToHealth > Without.DealtToHealth * 1.1f);
+	}
+
 	// ------------------------------------------------------------------------
 	// THE SEVEN THE SHIPPED PASSIVES CONDITION THAT WERE READ AND NOT RUN.
 	// Issue #2236. Each was listed in `READ_FROM_THE_CODE_AND_NOT_PROBED` in
@@ -16685,6 +16724,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("berserking_damage_per_fervour"), &ProbeBerserkingSpend},
 			// THE WAR TREES' ENGINE SLICE E3 (2026-11-27).
 			{TEXT("berserking_spends_half"), &ProbeBerserkingSpendsHalf},
+			{TEXT("crit_chance_past_cap_to_multiplier"), &ProbeCritChancePastCapToMultiplier},
 			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			// THE FERVOUR SPENDS, 2026-11-25.
 			{TEXT("fervour_cost_per_negated_block"), &ProbeCostPerNegatedBlock},
