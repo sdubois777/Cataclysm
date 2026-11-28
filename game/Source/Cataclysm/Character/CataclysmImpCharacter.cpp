@@ -2,6 +2,7 @@
 
 #include "Character/CataclysmImpCharacter.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmCreatureAnimInstance.h"
 #include "Animation/AnimSequence.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -286,18 +287,20 @@ void ACataclysmImpCharacter::UpdateLoopingAnimation()
 		// Issue #2793. AND A CHARGE'S SPEED WHILE ONE RUNS, issue #2809.
 		if (bWalking && (bWalkSpeedFollowsACommander || IsCharging()))
 		{
-			MeshComponent->SetPlayRate(JogPlayRateAtItsWalkingSpeed(JogPlayRate(), DesignedWalkSpeedCmPerSecond,
-																	MinimumPlayRate, MaximumPlayRate));
+			UCataclysmCreatureAnimInstance::SetLoopPlayRate(
+				MeshComponent, JogPlayRateAtItsWalkingSpeed(JogPlayRate(), DesignedWalkSpeedCmPerSecond, MinimumPlayRate,
+															MaximumPlayRate));
 		}
 		return;
 	}
 
 	CurrentLoopingAnimation = Wanted;
-	MeshComponent->PlayAnimation(Wanted, /*bLooping=*/true);
 	// AT THE RATE FOR THE SPEED IT WALKS AT, which is its designed speed unless something commands it. Issue #2793.
-	MeshComponent->SetPlayRate(bWalking ? JogPlayRateAtItsWalkingSpeed(JogPlayRate(), DesignedWalkSpeedCmPerSecond,
-																	   MinimumPlayRate, MaximumPlayRate)
-										: 1.0f);
+	UCataclysmCreatureAnimInstance::PlayLoop(
+		MeshComponent, Wanted, /*bLooping=*/true,
+		bWalking ? JogPlayRateAtItsWalkingSpeed(JogPlayRate(), DesignedWalkSpeedCmPerSecond, MinimumPlayRate,
+												MaximumPlayRate)
+				 : 1.0f);
 }
 
 float ACataclysmImpCharacter::PlayOneShot(UAnimSequence* Animation,
@@ -332,25 +335,29 @@ float ACataclysmImpCharacter::PlayOneShot(UAnimSequence* Animation,
 	const float Rate = FMath::Clamp(FMath::Max(1.0f, Length / Hold),
 									MinimumPlayRate, MaximumPlayRate);
 
-	// NO ANIMATION BLUEPRINT EXISTS FOR THIS CREATURE, so this always takes the
-	// single-node path today.
-	MeshComponent->PlayAnimation(Animation, /*bLooping=*/false);
-	MeshComponent->SetPlayRate(Rate);
+	// INTO THE SLOT OVER THE LOOP, through `UCataclysmCreatureAnimInstance`: a swipe blends over the idle or the jog,
+	// and a hit reaction, which is an additive clip, is added to it. Issue #2976. Without the art there is no instance
+	// and no clip, and nothing plays.
+	const float Seconds = UCataclysmCreatureAnimInstance::PlayOneShot(MeshComponent, Animation, Rate);
+	if (Seconds <= 0.0f)
+	{
+		return 0.0f;
+	}
 	LastPlayedRate = Rate;
 
-	// AND THE MESH IS OWED BACK WHEN IT FINISHES. A one-shot in single-node mode
-	// plays once and then HOLDS ITS LAST FRAME forever.
+	// AND ITS END RECORDED, which `UpdateLoopingAnimation` and `IsPlayingAOneShot` read. The loop plays on under the
+	// slot, so nothing is owed back to the mesh; the record still says when the one-shot is over.
 	if (const UWorld* World = GetWorld())
 	{
-		OneShotEndsAtSeconds = World->GetTimeSeconds() + Length / Rate;
+		OneShotEndsAtSeconds = World->GetTimeSeconds() + Seconds;
 	}
 
-	// CLEARED SO THE LOOP RESTARTS AFTERWARDS. UpdateLoopingAnimation only acts
-	// on a change, and without this the creature would still be "already
-	// playing" the loop the swipe interrupted, so nothing would put it back.
+	// CLEARED SO THE LOOP IS CHOSEN AGAIN AFTERWARDS, which restarts it. With the loop playing on under the slot this
+	// is no longer needed to put the mesh back, and it is kept so the loop chosen after a one-shot is still the one
+	// the creature's speed asks for at that moment.
 	CurrentLoopingAnimation = nullptr;
 
-	return Length / Rate;
+	return Seconds;
 }
 
 bool ACataclysmImpCharacter::IsPlayingAOneShot() const
@@ -435,6 +442,10 @@ bool ACataclysmImpCharacter::ResolveBody(bool bIncludeAnimation)
 
 		// AND THE FOUR HIT REACTIONS, the same way. Issue #745.
 		LoadHitReactionClips();
+
+		// PLAYED OVER A POSE, NOT IN SINGLE-NODE MODE. Its hit reactions are additive clips, which single-node play
+		// shows on the reference pose; `UCataclysmCreatureAnimInstance` plays them into a slot over the loop. Issue #2976.
+		UCataclysmCreatureAnimInstance::UseOn(MeshComponent);
 
 		// COUNTED RATHER THAN CHECKED ONE BY ONE, because there are ten of them
 		// and naming each in a warning would be a wall of text nobody reads.

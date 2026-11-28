@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmCreatureAnimInstance.h"
 // For the walking speed a commanded creature takes from its commander. Issue #2793.
 #include "AbilitySystem/CataclysmCommand.h"
 #include "Cataclysm.h"
@@ -668,8 +669,11 @@ float ACataclysmEnemyCharacter::PlayDeathAnimation()
 	// AT ITS AUTHORED SPEED. Nothing constrains a death to a window, unlike
 	// every other clip in this project, which has to fit inside a telegraph or
 	// an attack interval.
-	MeshComponent->PlayAnimation(Clip, /*bLooping=*/false);
-	MeshComponent->SetPlayRate(1.0f);
+	//
+	// THROUGH THE ONE HELPER, issue #2976: played once and held, under the slot on a creature that plays over a pose
+	// (whatever flinch or swing was in the slot is stopped), and in single-node mode on any other.
+	UCataclysmCreatureAnimInstance::StopOneShots(MeshComponent);
+	UCataclysmCreatureAnimInstance::PlayLoop(MeshComponent, Clip, /*bLooping=*/false, /*PlayRate=*/1.0f);
 
 	return UCataclysmEnemyDeath::CorpseSecondsFor(Clip->GetPlayLength());
 }

@@ -2,6 +2,54 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-28 — Creatures play additive clips into a slot over their loop, through one C++ animation instance, and single-node play refuses an additive clip (#2976, slice 1: the Imp)
+
+**Affects:**
+- `game/Source/Cataclysm/Character/CataclysmCreatureAnimInstance.h` and `.cpp`: `UCataclysmCreatureAnimInstance` and
+  its proxy, and the static `PlayLoop`, `PlayOneShot`, `StopOneShots`, `SetLoopPlayRate` and `LoopPlayRate`.
+- `CataclysmImpCharacter.cpp`: the Imp is put on the instance, and its loops, rates and one-shots go through it.
+- `CataclysmEnemyCharacter.cpp`: every creature's death clip goes through `PlayLoop`.
+- `game/Source/Cataclysm/Tests/CataclysmCreatureAnimTests.cpp` and `tools/tests/test_creature_clips_go_through_one_helper.py`.
+
+**The fault.** Creatures with no animation Blueprint played every clip with `USkeletalMeshComponent::PlayAnimation`,
+in single-node mode. Every Paragon pack's hit reactions are ADDITIVE clips (each `.uasset` names
+`AAT_LocalSpaceBase`, or `AAT_RotationOffsetMeshSpace` for Rampage), and so are the Corrupted Sentinel's
+`Fire_Planted` and `Fire_Planted_B` and the Hellhound's `IggyScorch_Idle`. No pack has a full-pose twin of a hit
+reaction. Single-node play of an additive clip resets the mesh to its REFERENCE POSE and adds the clip to that
+(UE 5.8 AnimSingleNodeInstanceProxy.cpp lines 331-350); the branch that would use a base pose needs
+`bCanProcessAdditiveAnimations`, which is compiled out of non-editor builds and off by default in the editor. The engine
+warns on every such call that it "will not function correctly in cooked builds". The coordinating session's packaged
+look on 2026-11-28 could not see an individual creature's pose in a crowd and claims nothing either way; the pose test
+below is the evidence in its place.
+
+**How the packs intend these clips.** Their own animation Blueprints (Sevarog, Countess, Grux) are state machines of
+sequence players with Slot and ApplyAdditive nodes and name no hit reaction: gameplay plays the hit reaction into a slot
+over the locomotion pose. ABP_Brute does the same with its DefaultSlot, which is why the Brute never warned. The engine's
+`SlotEvaluatePose` adds an additive montage on top of the pose entering the slot (AnimInstanceProxy.cpp about line
+1951).
+
+**The options, and the one chosen by the coordinating session on 2026-11-28.** (1) An animation Blueprint per skeleton,
+made by hand: five binary assets, the cost issue #406 records for ABP_Brute. (2) One C++ animation instance shared by
+every creature, with no asset. (3) Never play an additive clip, losing every hit reaction. **Option 2**, in two slices;
+option 3 stays the fallback. A judgement, labelled as one: the research settles that additive clips are played into a
+slot over a pose; whether to build that in C++ or in Blueprints is this project's choice.
+
+**What was built.** `UCataclysmCreatureAnimInstance` is a native `UAnimInstance`, as the engine's own
+`UAnimSingleNodeInstance` is. Its proxy does what a graph of "sequence player, Slot, output" would: it registers
+`DefaultSlot` and keeps its weight as `FAnimNode_Slot` does (AnimNode_Slot.cpp), ticks the loop through an
+`FAnimTickRecord` (which fires its notifies), and evaluates the loop as the slot's source pose, handing it to
+`SlotEvaluatePose` while a montage plays. Loops and death clips are the pose under the slot; swings and hit reactions are
+dynamic montages in it, blending in and out over 0.15 s (the Brute's figure). Single-node play had no blend.
+
+**The guard.** The static functions are the only place a creature's clip is played. In single-node mode they REFUSE an
+additive clip and log it once per clip name. The Python check fails on a `PlayAnimation(` call anywhere else in the
+game's source except the files not yet moved, each at its exact count, so the list can only shrink. In slice 1 the other
+creatures keep their single-node calls, unchanged, so their flinches still show the fault until slice 2 moves them.
+
+**Not compiled and not run when this was written.**
+
+---
+
 ## 2026-11-28 — The War passive trees, window 2: the Saboteur's last 27 nodes act (engine slice E4 and the Saboteur rows)
 
 **Affects:**
