@@ -375,10 +375,7 @@ INVENTORY = {
         "the wearer's own armour, which an armour nova strikes nearby enemies "
         'with when it blocks; no skill and no blow of its own is in hand, and the '
         'blow it blocked belongs to the attacker; issue #1833',
-    # THE WAR TREES' WINDOW 2 (2026-11-28): four switches and figures of the player's, with no skill or blow in hand.
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
-     'FName(ACataclysmMinion::CoordinatedStrikeAllGadgetsStat), FGameplayTagContainer(), 0.0f'):
-        "Coordinated Strike's switch for every gadget, read when the player's hit has already landed",
+    # THE WAR TREES' WINDOW 2 (2026-11-28): three switches and figures of the player's, with no skill or blow in hand.
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(ACataclysmMinion::GadgetEmpowerFreeEverySecondsStat), FGameplayTagContainer(), 0.0f'):
         "Rapid Deployment's period, read when a gadget is placed",

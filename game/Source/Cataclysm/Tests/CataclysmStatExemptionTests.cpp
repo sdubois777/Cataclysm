@@ -16791,6 +16791,297 @@ namespace CataclysmStatExemptionTest
 						  With, Without);
 	}
 
+	// ======================================================================
+	// THE WAR TREES' WINDOW 2 (2026-11-28): the fifteen Saboteur stats with no attribute. Two characters in each, the
+	// first without the stat as the control.
+	// ======================================================================
+
+	/** A skill gadget of `Summoner`'s, spawned 3 m away, or null. */
+	ACataclysmMinion* SpawnWindowTwoGadget(AActor* Summoner)
+	{
+		return ACataclysmMinion::Spawn(Summoner, FVector(300.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f, /*bBurns=*/false,
+									   FString(ACataclysmMinion::SkillGadgetTypeName));
+	}
+
+	/** Rapid Deployment's `gadget_empower_cost_less`, read by `ACataclysmMinion::Empower`: a 4 Fervour empowerment pays 4,
+	 * and with 3 less pays 1 while counting the whole 4. */
+	void ProbeGadgetEmpowerCostLess(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Paid = [World, &Test](float Less, float& OutCounted)
+		{
+			FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+			GiveAFervourPool(Summoner);
+			Summoner.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+			if (Less > 0.0f)
+			{
+				GrantFlats(Summoner.Actor, {{FName(ACataclysmMinion::GadgetEmpowerCostLessStat), Less}});
+			}
+			ACataclysmMinion* Gadget = SpawnWindowTwoGadget(Summoner.Actor);
+			if (!Test.TestNotNull(TEXT("gadget_empower_cost_less: a gadget"), Gadget))
+			{
+				return -1.0f;
+			}
+			const float Result = Gadget->Empower(4.0f, /*HealthPercentPerFervour=*/0.0f, /*bFree=*/false);
+			OutCounted = Gadget->EmpoweredFervour;
+			Gadget->Destroy();
+			return Result;
+		};
+		float Counted = 0.0f;
+		Test.TestEqual(TEXT("without gadget_empower_cost_less a 4 Fervour empowerment pays 4"), Paid(0.0f, Counted), 4.0f,
+					   0.001f);
+		Test.TestEqual(TEXT("with 3 less it pays 1, so Empower really reads it"), Paid(3.0f, Counted), 1.0f, 0.001f);
+		Test.TestEqual(TEXT("and still counts the whole 4 (the accepted judgement)"), Counted, 4.0f, 0.001f);
+	}
+
+	/** Rapid Deployment's `gadget_empower_free_every_seconds`, read by `IsEmpowermentFree`: never free without it; with
+	 * 15, the first gadget is free and a second one at once is not. */
+	void ProbeGadgetEmpowerFreeEverySeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::GadgetEmpowerFreeEverySecondsStat), 15.0f}});
+		Test.TestFalse(TEXT("without gadget_empower_free_every_seconds no empowerment is free"),
+					   Plain.AbilitySystem->IsEmpowermentFree(Plain.Actor));
+		Test.TestTrue(TEXT("with it the first is free, so IsEmpowermentFree really reads it"),
+					  Holding.AbilitySystem->IsEmpowermentFree(Holding.Actor));
+		Test.TestFalse(TEXT("and another gadget at once is not"), Holding.AbilitySystem->IsEmpowermentFree(Plain.Actor));
+	}
+
+	/** Jury Rigged's `gadget_survives_lethal_once`, read by `ACataclysmMinion::TryJuryRig`: no save without it; with it
+	 * one save, then none. */
+	void ProbeGadgetSurvivesLethalOnce(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::GadgetSurvivesLethalOnceStat), 1.0f}});
+		ACataclysmMinion* Unheld = SpawnWindowTwoGadget(Plain.Actor);
+		ACataclysmMinion* Held = SpawnWindowTwoGadget(Holding.Actor);
+		if (!Test.TestTrue(TEXT("gadget_survives_lethal_once: two gadgets"), Unheld && Held))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("a gadget of a summoner without gadget_survives_lethal_once is not saved"), Unheld->TryJuryRig());
+		Test.TestTrue(TEXT("one of a summoner holding it is, so TryJuryRig really reads it"), Held->TryJuryRig());
+		Test.TestFalse(TEXT("and only once a placing"), Held->TryJuryRig());
+	}
+
+	/** Persistent Systems' `gadget_regen_percent_above_half`, read by `StepGadgetReadings`: a gadget at 60% stays there
+	 * for a second without it, and with 10 reaches 70%. */
+	void ProbeGadgetRegenPercentAboveHalf(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto ShareAfterASecond = [World, &Test](float Regen)
+		{
+			FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+			if (Regen > 0.0f)
+			{
+				GrantFlats(Summoner.Actor, {{FName(ACataclysmMinion::GadgetRegenPercentAboveHalfStat), Regen}});
+			}
+			ACataclysmMinion* Gadget = SpawnWindowTwoGadget(Summoner.Actor);
+			UAbilitySystemComponent* Its = Gadget ? UCataclysmTargeting::AbilitySystemOf(Gadget) : nullptr;
+			if (!Test.TestNotNull(TEXT("gadget_regen_percent_above_half: a gadget"), Its))
+			{
+				return -1.0f;
+			}
+			const float Maximum = Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+			Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), Maximum * 0.6f);
+			Gadget->StepGadgetReadings(1.0f);
+			const float Share = Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()) / Maximum;
+			Gadget->Destroy();
+			return Share;
+		};
+		Test.TestEqual(TEXT("without gadget_regen_percent_above_half a gadget at 60% stays at 60%"),
+					   ShareAfterASecond(0.0f), 0.6f, 0.001f);
+		Test.TestEqual(TEXT("with 10 it reaches 70% in a second, so StepGadgetReadings really reads it"),
+					   ShareAfterASecond(10.0f), 0.7f, 0.001f);
+	}
+
+	/** Redundant Systems' `gadget_ignore_hit_chance`, read by `ACataclysmMinion::RollToIgnoreAHit`, the roll pinned at 0:
+	 * no hit ignored without it, and with 50 the hit is ignored. */
+	void ProbeGadgetIgnoreHitChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		IConsoleVariable* Roll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.GadgetIgnoreRoll"));
+		if (!Test.TestNotNull(TEXT("gadget_ignore_hit_chance: the roll's console variable"), Roll))
+		{
+			return;
+		}
+		Roll->Set(0.0f, ECVF_SetByCode);
+		ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByCode); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::GadgetIgnoreHitChanceStat), 50.0f}});
+		ACataclysmMinion* Unheld = SpawnWindowTwoGadget(Plain.Actor);
+		ACataclysmMinion* Held = SpawnWindowTwoGadget(Holding.Actor);
+		if (!Test.TestTrue(TEXT("gadget_ignore_hit_chance: two gadgets"), Unheld && Held))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("without gadget_ignore_hit_chance no hit is ignored"), Unheld->RollToIgnoreAHit());
+		Test.TestTrue(TEXT("with 50 and the roll pinned at 0 it is, so RollToIgnoreAHit really reads it"),
+					  Held->RollToIgnoreAHit());
+	}
+
+	/** Reinforced Housing's `trap_reuse_more_percent`, read by `TrapDamageNamingTrap`: a trap's second triggering is
+	 * unchanged without it, and 1.2 times with 20. */
+	void ProbeTrapReuseMorePercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::TrapReuseMorePercentStat), 20.0f}});
+		float Increases = 0.0f;
+		float More = 0.0f;
+		Plain.AbilitySystem->TrapDamageNamingTrap(FGameplayTagContainer(), nullptr, Increases, More, nullptr, 2);
+		Test.TestEqual(TEXT("without trap_reuse_more_percent a second triggering is unchanged"), More, 1.0f, 0.0001f);
+		Holding.AbilitySystem->TrapDamageNamingTrap(FGameplayTagContainer(), nullptr, Increases, More, nullptr, 2);
+		Test.TestEqual(TEXT("with 20 it is 1.2 times, so TrapDamageNamingTrap really reads it"), More, 1.2f, 0.0001f);
+	}
+
+	/** The Last Surprise's `trap_last_surprise`, read by `ArmLastSurprise`: with trap damage noted, nothing arms without
+	 * it, and the surprise arms with it. */
+	void ProbeTrapLastSurprise(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(UCataclysmAbilitySystemComponent::TrapLastSurpriseStat), 1.0f}});
+		Plain.AbilitySystem->NoteTrapDamageDealt(30.0f);
+		Holding.AbilitySystem->NoteTrapDamageDealt(30.0f);
+		Test.TestFalse(TEXT("without trap_last_surprise nothing arms"), Plain.AbilitySystem->ArmLastSurprise(Plain.Actor));
+		Test.TestTrue(TEXT("with it the surprise arms, so ArmLastSurprise really reads it"),
+					  Holding.AbilitySystem->ArmLastSurprise(Holding.Actor));
+	}
+
+	/** A window 2 player figure read by its named reader: nought without the stat, `Expected` with `Value`. */
+	void ProbeWindowTwoReader(FAutomationTestBase& Test, const TCHAR* Stat, float Value, float Expected,
+							  TFunctionRef<float(const AActor*)> Read, const TCHAR* Reader)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Holding.Actor, {{FName(Stat), Value}});
+		Test.TestEqual(*FString::Printf(TEXT("a character without %s is answered nought"), Stat), Read(Plain.Actor), 0.0f);
+		Test.TestEqual(*FString::Printf(TEXT("and one holding it %g, so %s really reads it"), Expected, Reader),
+					   Read(Holding.Actor), Expected, 0.001f);
+	}
+
+	void ProbeTrapMostActive(FAutomationTestBase& Test)
+	{
+		ProbeWindowTwoReader(Test, ACataclysmMinion::TrapMostActiveStat, 1.0f, 1.0f,
+			[](const AActor* Who) { return ACataclysmMinion::TrapsMostActiveFor(Who); }, TEXT("TrapsMostActiveFor"));
+	}
+
+	void ProbeTrapCopyOnPlaceChance(FAutomationTestBase& Test)
+	{
+		ProbeWindowTwoReader(Test, ACataclysmMinion::TrapCopyOnPlaceChanceStat, 10.0f, 10.0f,
+			[](const AActor* Who) { return ACataclysmMinion::ScattershotChanceFor(Who); }, TEXT("ScattershotChanceFor"));
+	}
+
+	void ProbeTrapFirstTriggerStunSeconds(FAutomationTestBase& Test)
+	{
+		ProbeWindowTwoReader(Test, ACataclysmMinion::TrapFirstTriggerStunSecondsStat, 1.0f, 1.0f,
+			[](const AActor* Who) { return ACataclysmMinion::ConcealedStunSecondsFor(Who); },
+			TEXT("ConcealedStunSecondsFor"));
+	}
+
+	void ProbeTrapUnreservedDrainPerSecond(FAutomationTestBase& Test)
+	{
+		ProbeWindowTwoReader(Test, ACataclysmMinion::TrapUnreservedDrainPerSecondStat, 5.0f, 5.0f,
+			[](const AActor* Who) { return ACataclysmMinion::UnreservedTrapDrainPerSecondFor(Who); },
+			TEXT("UnreservedTrapDrainPerSecondFor"));
+	}
+
+	void ProbeCoordinatedStrikeAllGadgets(FAutomationTestBase& Test)
+	{
+		ProbeWindowTwoReader(Test, ACataclysmMinion::CoordinatedStrikeAllGadgetsStat, 1.0f, 1.0f,
+			[](const AActor* Who) { return ACataclysmMinion::CoordinatedStrikeReachesEveryGadgetFor(Who) ? 1.0f : 0.0f; },
+			TEXT("CoordinatedStrikeReachesEveryGadgetFor"));
+	}
+
+	void ProbeGadgetPowerSurge(FAutomationTestBase& Test)
+	{
+		ProbeWindowTwoReader(Test, ACataclysmMinion::GadgetPowerSurgeStat, 1.0f, 1.0f,
+			[](const AActor* Who) { return ACataclysmMinion::PowerSurgeFor(Who) ? 1.0f : 0.0f; }, TEXT("PowerSurgeFor"));
+	}
+
+	/** Reinforced Housing's cost and its cut, read by `ReinforcedHousingCostFor`: -1 (not held) without the cost, 15 with
+	 * it, and 12 with a cut of 3 beside it. */
+	void ProbeReinforcedHousingCost(FAutomationTestBase& Test, bool bTheCut)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Costed(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Cut(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Costed.Actor, {{FName(ACataclysmMinion::TrapReuseFervourCostStat), 15.0f}});
+		GrantFlats(Cut.Actor, {{FName(ACataclysmMinion::TrapReuseFervourCostStat), 15.0f},
+							   {FName(ACataclysmMinion::TrapReuseFervourCostLessStat), 3.0f}});
+		if (bTheCut)
+		{
+			Test.TestEqual(TEXT("trap_reuse_fervour_cost_less: control, the cost alone is 15"),
+						   ACataclysmMinion::ReinforcedHousingCostFor(Costed.Actor), 15.0f, 0.001f);
+			Test.TestEqual(TEXT("and with a cut of 3 it is 12, so ReinforcedHousingCostFor really reads it"),
+						   ACataclysmMinion::ReinforcedHousingCostFor(Cut.Actor), 12.0f, 0.001f);
+			return;
+		}
+		Test.TestEqual(TEXT("without trap_reuse_fervour_cost Reinforced Housing is not held, -1"),
+					   ACataclysmMinion::ReinforcedHousingCostFor(Plain.Actor), -1.0f, 0.001f);
+		Test.TestEqual(TEXT("and with 15 it costs 15, so ReinforcedHousingCostFor really reads it"),
+					   ACataclysmMinion::ReinforcedHousingCostFor(Costed.Actor), 15.0f, 0.001f);
+	}
+
+	void ProbeTrapReuseFervourCost(FAutomationTestBase& Test) { ProbeReinforcedHousingCost(Test, /*bTheCut=*/false); }
+	void ProbeTrapReuseFervourCostLess(FAutomationTestBase& Test) { ProbeReinforcedHousingCost(Test, /*bTheCut=*/true); }
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -16953,6 +17244,22 @@ namespace CataclysmStatExemptionTest
 			{TEXT("gadget_follow_within_metres"), &ProbeGadgetFollowWithin},
 			{TEXT("gadget_bolt_reach_metres"), &ProbeBoltReach},
 			{TEXT("bolted_more_percent_per_gadget"), &ProbeBoltedMore},
+			// THE WAR TREES' WINDOW 2 (2026-11-28): the fifteen Saboteur stats.
+			{TEXT("gadget_empower_cost_less"), &ProbeGadgetEmpowerCostLess},
+			{TEXT("gadget_empower_free_every_seconds"), &ProbeGadgetEmpowerFreeEverySeconds},
+			{TEXT("gadget_survives_lethal_once"), &ProbeGadgetSurvivesLethalOnce},
+			{TEXT("gadget_regen_percent_above_half"), &ProbeGadgetRegenPercentAboveHalf},
+			{TEXT("gadget_ignore_hit_chance"), &ProbeGadgetIgnoreHitChance},
+			{TEXT("coordinated_strike_all_gadgets"), &ProbeCoordinatedStrikeAllGadgets},
+			{TEXT("gadget_power_surge"), &ProbeGadgetPowerSurge},
+			{TEXT("trap_copy_on_place_chance"), &ProbeTrapCopyOnPlaceChance},
+			{TEXT("trap_reuse_fervour_cost"), &ProbeTrapReuseFervourCost},
+			{TEXT("trap_reuse_fervour_cost_less"), &ProbeTrapReuseFervourCostLess},
+			{TEXT("trap_reuse_more_percent"), &ProbeTrapReuseMorePercent},
+			{TEXT("trap_most_active"), &ProbeTrapMostActive},
+			{TEXT("trap_first_trigger_stun_seconds"), &ProbeTrapFirstTriggerStunSeconds},
+			{TEXT("trap_last_surprise"), &ProbeTrapLastSurprise},
+			{TEXT("trap_unreserved_drain_per_second"), &ProbeTrapUnreservedDrainPerSecond},
 			{TEXT("enemies_immune_to_you_after_seconds"), &ProbeEnemiesImmuneAfterSeconds},
 			{TEXT("projectile_count"), &ProbeProjectileCount},
 			{TEXT("damage_taken_delayed_percent"), &ProbeDamageTakenDelayedPercent},

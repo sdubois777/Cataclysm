@@ -2152,6 +2152,12 @@ public:
 	float PendingGadgetMoveCooldownCut = 0.0f;
 
 	/**
+	 * Whether this placing's empowerment of `Gadget` is free (Rapid Deployment, window 2), deciding it on the first ask
+	 * for that gadget. Public for its probe.
+	 */
+	bool IsEmpowermentFree(const AActor* Gadget);
+
+	/**
 	 * THE LAST SURPRISE (ruled 2026-11-28), window 2: "the last trap's own blow deals, to each enemy it hits, the total
 	 * every trap dealt in the last 10 s (its own trigger not counted), at most once every 30 s". Every trap blow's damage
 	 * is noted (`NoteTrapDamageDealt`); the trigger of the only trap standing arms the surprise (`ArmLastSurprise`) with
@@ -7235,8 +7241,6 @@ protected:
 	float NextFreeEmpowerAtSeconds = -1.0f;
 	TWeakObjectPtr<const AActor> FreeEmpowerGadget;
 
-	/** Whether this placing's empowerment of `Gadget` is free, deciding it on the first ask for that gadget. */
-	bool IsEmpowermentFree(const AActor* Gadget);
 
 	/** The class resource spent in the last 5 seconds. */
 	float FervourSpentRecently() const;

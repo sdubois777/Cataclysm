@@ -615,6 +615,46 @@ namespace CataclysmWarTreesW2
 	}
 }
 
+float ACataclysmMinion::TrapsMostActiveFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), TrapMostActiveStat);
+}
+
+float ACataclysmMinion::ScattershotChanceFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), TrapCopyOnPlaceChanceStat);
+}
+
+float ACataclysmMinion::ConcealedStunSecondsFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), TrapFirstTriggerStunSecondsStat);
+}
+
+float ACataclysmMinion::UnreservedTrapDrainPerSecondFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), TrapUnreservedDrainPerSecondStat);
+}
+
+float ACataclysmMinion::ReinforcedHousingCostFor(const AActor* Player)
+{
+	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Player);
+	const float Cost = CataclysmWarTreesW2::TrapStat(Theirs, TrapReuseFervourCostStat);
+	return Cost > 0.0f
+		? FMath::Max(0.0f, Cost - CataclysmWarTreesW2::TrapStat(Theirs, TrapReuseFervourCostLessStat))
+		: -1.0f;
+}
+
+bool ACataclysmMinion::CoordinatedStrikeReachesEveryGadgetFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), CoordinatedStrikeAllGadgetsStat)
+		> 0.0f;
+}
+
+bool ACataclysmMinion::PowerSurgeFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), GadgetPowerSurgeStat) > 0.0f;
+}
+
 void ACataclysmMinion::StepUnreservedSkillTrap(float StepSeconds)
 {
 	AActor* const Player = Summoner.Get();
@@ -625,7 +665,7 @@ void ACataclysmMinion::StepUnreservedSkillTrap(float StepSeconds)
 		return;
 	}
 	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
-	const float Drain = CataclysmWarTreesW2::TrapStat(Theirs, TrapUnreservedDrainPerSecondStat) * StepSeconds;
+	const float Drain = UnreservedTrapDrainPerSecondFor(Player) * StepSeconds;
 	const float Before = Theirs->GetNumericAttribute(Pool);
 	if (Drain > 0.0f && Before > 0.0f)
 	{
@@ -811,7 +851,7 @@ void ACataclysmMinion::StepGadgetReadings(float StepSeconds)
 
 	// POWER SURGE: a charge every 5 s, and at 5 a discharge, a shot at 40% at each enemy within the gadget's own reach
 	// (ruled 2026-11-28), and the charges begin again. A skill gadget only: what it fires is its skill.
-	if (IsSkillGadget() && SummonersGadgetStat(GadgetPowerSurgeStat) > 0.0f)
+	if (IsSkillGadget() && PowerSurgeFor(Summoner))
 	{
 		PowerSurgeSeconds += StepSeconds;
 		while (PowerSurgeSeconds >= PowerSurgeStackSeconds)
@@ -3995,7 +4035,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 
 	// PRECISION PLACEMENT'S "You may only have one active trap at a time" (window 2, 2026-11-28): the oldest standing
 	// trap goes to make room, as a trap limit does in the genre (a judgement), so the press always places one.
-	const int32 MostActive = FMath::FloorToInt(CataclysmWarTreesW2::TrapStat(PlayersOwn, TrapMostActiveStat));
+	const int32 MostActive = FMath::FloorToInt(TrapsMostActiveFor(Player));
 	if (MostActive > 0)
 	{
 		TArray<ACataclysmMinion*> Standing = SkillTrapsOf(Player);
@@ -4012,7 +4052,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 	{
 		// OR CALCULATED CHAOS: "Your traps can be placed even when your Fervour has no room to reserve them. Each trap
 		// placed that way reserves nothing and drains 5 Fervour per second instead" (window 2, 2026-11-28).
-		if (CataclysmWarTreesW2::TrapStat(PlayersOwn, TrapUnreservedDrainPerSecondStat) <= 0.0f)
+		if (UnreservedTrapDrainPerSecondFor(Player) <= 0.0f)
 		{
 			UE_LOG(LogCataclysm, Verbose,
 				TEXT("%s has no room in its pool for a skill trap reserving %.0f Fervour, so none was placed."),
@@ -4087,7 +4127,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		// AND SCATTERSHOT: "a 10% chance per point ... to deploy an additional trap at a random nearby location",
 		// reserving as normal (ruled 2026-11-27), placed as a copy so it raises no placing of its own and no second
 		// copy. Not while Precision Placement's limit is held: the limit wins (a judgement of window 2).
-		const float Chance = CataclysmWarTreesW2::TrapStat(Theirs, TrapCopyOnPlaceChanceStat);
+		const float Chance = ScattershotChanceFor(Player);
 		const float Pinned = CVarScattershotRoll.GetValueOnAnyThread();
 		if (Chance > 0.0f && MostActive <= 0 && IsValid(Placed)
 			&& (Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) < Chance)
@@ -4220,7 +4260,7 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 
 	// CONCEALED (R20, ruled 2026-11-27): "The first enemy to trigger each of your traps is stunned for 1 second", before
 	// the cast, on this trap's first triggering only.
-	const float StunSeconds = CataclysmWarTreesW2::TrapStat(Theirs, TrapFirstTriggerStunSecondsStat);
+	const float StunSeconds = ConcealedStunSecondsFor(Player);
 	if (Enemy && StunSeconds > 0.0f && SkillTrapTriggersMade == 0)
 	{
 		UCataclysmSkillEffects::ApplyStun(Player, Enemy, StunSeconds, /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
@@ -4285,11 +4325,9 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// OR REINFORCED HOUSING (window 2, ruled 2026-11-27): "Traps are not consumed when triggered. Instead each
 	// subsequent trigger costs 15 Fervour, reduced by 1 Fervour per point"; with too little, the trap is used up. The
 	// first triggering is free; each later one pays here, after it, and only a whole payment keeps the trap.
-	const float ReuseCost = CataclysmWarTreesW2::TrapStat(Theirs, TrapReuseFervourCostStat);
-	if (!IsActorBeingDestroyed() && ReuseCost > 0.0f
-		&& (SkillTrapTriggersMade <= 1
-			|| CataclysmWarTreesW2::TakeFervourExactly(Theirs, FMath::Max(0.0f,
-				ReuseCost - CataclysmWarTreesW2::TrapStat(Theirs, TrapReuseFervourCostLessStat)))))
+	const float ReuseCost = ReinforcedHousingCostFor(Player);
+	if (!IsActorBeingDestroyed() && ReuseCost >= 0.0f
+		&& (SkillTrapTriggersMade <= 1 || CataclysmWarTreesW2::TakeFervourExactly(Theirs, ReuseCost)))
 	{
 		BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, TypeTags, this));
 		return true;

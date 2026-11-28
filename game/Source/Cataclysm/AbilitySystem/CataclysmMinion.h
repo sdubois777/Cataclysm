@@ -311,6 +311,20 @@ public:
 	/** Calculated Chaos's drain for this trap's step, and, at 0 Fervour, every such trap of its player set off. */
 	void StepUnreservedSkillTrap(float StepSeconds);
 
+	/**
+	 * THE READERS OF WINDOW 2'S PLAYER STATS, each asked where the behaviour runs and each measured by its probe in
+	 * `CataclysmStatExemptionTests.cpp`: Precision Placement's limit, Scattershot's chance, Concealed's stun, Calculated
+	 * Chaos's drain, Reinforced Housing's cost for a later triggering (-1 when not held, else the cost less the cut,
+	 * never below nought), Coordinated Strike's every-gadget switch and Power Surge's switch.
+	 */
+	static float TrapsMostActiveFor(const AActor* Player);
+	static float ScattershotChanceFor(const AActor* Player);
+	static float ConcealedStunSecondsFor(const AActor* Player);
+	static float UnreservedTrapDrainPerSecondFor(const AActor* Player);
+	static float ReinforcedHousingCostFor(const AActor* Player);
+	static bool CoordinatedStrikeReachesEveryGadgetFor(const AActor* Player);
+	static bool PowerSurgeFor(const AActor* Player);
+
 	/** Overclock's step, the fall below a quarter, and Persistent Systems' regeneration, run by `GadgetStep`. */
 	void StepGadgetReadings(float StepSeconds);
 

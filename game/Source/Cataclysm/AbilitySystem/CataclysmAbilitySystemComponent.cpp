@@ -10314,8 +10314,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				const float Multiplier = 1.0f + FMath::Max(0.0f, Action.Percent) / 100.0f;
 				bool bAny = false;
-				if (StatForSkill(FName(ACataclysmMinion::CoordinatedStrikeAllGadgetsStat), FGameplayTagContainer(), 0.0f)
-					> 0.0f)
+				if (ACataclysmMinion::CoordinatedStrikeReachesEveryGadgetFor(Self))
 				{
 					for (ACataclysmMinion* Each : ACataclysmMinion::DevicesOf(Self))
 					{
