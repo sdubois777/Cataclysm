@@ -3257,6 +3257,38 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPercentOfTargetHealthMissing
 		UMETA(DisplayName = "Per Percent Of Target Health Missing"),
+
+	/**
+	 * `Value` per `ScaleStep` per cent of INCREASED MAXIMUM HEALTH the character's `max_health` line sums: Iron Will,
+	 * "Your maximum HP bonus from all sources also increases your maximum Fervour by 1 point for every 2% maximum HP bonus
+	 * you have". The War trees' slice E1 (2026-11-27). Read from `IncreasedMaximumHealthPercent`, which
+	 * `CurrentConditions` fills -- and only for a component some row of which asks
+	 * (`UCataclysmAbilitySystemComponent::bSomeRowAsksIncreasedMaximumHealth`) -- from the line's unconditional rows:
+	 * the line evaluated with an empty state, so filling it can never ask for itself. A conditioned increase to maximum
+	 * health is left out, a judgement.
+	 */
+	PerPercentOfIncreasedMaximumHealth
+		UMETA(DisplayName = "Per Percent Of Increased Maximum Health"),
+
+	/**
+	 * `Value` per hostile character the character STRUCK IN THE LAST 3 SECONDS: Dancing Blades, "each unique enemy you
+	 * have hit in the last 3 seconds drains 2 additional Fervour per second". The War trees' slice E1 (2026-11-27). Read
+	 * from `EnemiesStruckRecently`, which `WithEnemiesInReach` counts when a row asks: every hostile within
+	 * `UCataclysmAbilitySystemComponent::StruckRecentlySearchMetres` whose record says this character struck it at most
+	 * `StruckRecentlySeconds` ago (`SecondsSinceStruckBy`). THE WINDOW IS THE SCALE'S, 3 seconds, because the one
+	 * sentence that asks names it.
+	 */
+	PerEnemyStruckRecently
+		UMETA(DisplayName = "Per Enemy Struck Recently"),
+
+	/**
+	 * `Value` per character that STRUCK THIS ONE IN THE LAST 10 SECONDS: Outnumbered, "+2% retaliation damage per point
+	 * for each unique enemy that has hit you in the last 10 seconds". The War trees' slice E1 (2026-11-27). Read from
+	 * `EnemiesThatStruckYouRecently`, which `CurrentConditions` counts from this character's own record of who struck
+	 * it (`StruckBy`). THE WINDOW IS THE SCALE'S, 10 seconds, because the one sentence that asks names it.
+	 */
+	PerEnemyThatStruckYouRecently
+		UMETA(DisplayName = "Per Enemy That Struck You Recently"),
 };
 
 /**
@@ -3797,6 +3829,15 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float IncreasedMovementSpeedPercent = -1.0f;
+
+	/** Increased maximum health, in per cent, for `PerPercentOfIncreasedMaximumHealth`, or -1 unread. War trees E1. */
+	float IncreasedMaximumHealthPercent = -1.0f;
+
+	/** Hostiles this character struck in the last 3 seconds, for `PerEnemyStruckRecently`, or -1 unread. War trees E1. */
+	int32 EnemiesStruckRecently = -1;
+
+	/** Characters that struck this one in the last 10 seconds, for `PerEnemyThatStruckYouRecently`, or -1. War trees E1. */
+	int32 EnemiesThatStruckYouRecently = -1;
 
 	/**
 	 * How much maximum mana the character has. Issue #1515.

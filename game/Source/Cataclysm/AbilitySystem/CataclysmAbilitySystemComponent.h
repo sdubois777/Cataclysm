@@ -624,6 +624,9 @@ public:
 	void SetStatInputs(TMap<FName, FCataclysmStatInputs>&& Inputs)
 	{
 		StatInputs = MoveTemp(Inputs);
+		// AND WHETHER ANY ROW ASKS FOR THE INCREASED MAXIMUM HEALTH, so `CurrentConditions` sums it only then. The War
+		// trees' slice E1 (2026-11-27).
+		NoteWhatTheRowsAsk();
 		// AND A HELD AURA'S RESERVATION FOLLOWS THE NEW LINE AT ONCE, ruled 2026-11-27 ("reprice auras LIVE"). Nothing
 		// for a component holding no aura. `UCataclysmPlayerClassStats::ApplyTo` asks again once both maxima are written.
 		RepriceAuraReservations();
@@ -5833,7 +5836,25 @@ public:
 	{
 		LeechPayments.Add(Payment);
 		NoteLeechPaymentsChanged();
+		// AND A PAYMENT OF HEALTH IS A LEECH, for the rows on `life_leeched` (the War trees' slice E1, 2026-11-27).
+		NoteLifeLeechPromised(Payment);
 	}
+
+	/**
+	 * Raises `life_leeched`, with the health the payment promises as the event's amount, for a payment to the health
+	 * pool: Sanguine's "Each time you leech HP" and Vampiric Fury. The War trees' slice E1 (2026-11-27). Nothing for a
+	 * mana or energy shield payment, or one of nothing.
+	 */
+	void NoteLifeLeechPromised(const FCataclysmLeechPayment& Payment);
+
+	/** How far `WithEnemiesInReach` looks for the enemies this character struck recently, in metres. War trees E1. */
+	static constexpr float StruckRecentlySearchMetres = 40.0f;
+
+	/** The window of `enemies_struck_recently`, in seconds: Dancing Blades' "in the last 3 seconds". War trees E1. */
+	static constexpr float StruckRecentlySeconds = 3.0f;
+
+	/** The window of `enemies_that_struck_you_recently`: Outnumbered's "in the last 10 seconds". War trees E1. */
+	static constexpr float StruckYouRecentlySeconds = 10.0f;
 
 	/** Replace the list with what is still owed after a step. */
 	void SetLeechPayments(TArray<FCataclysmLeechPayment>&& Payments)
@@ -6930,6 +6951,16 @@ protected:
 
 	/** See `SetAttackBeganAtFullFervour`. The War trees' slice E1 (2026-11-27). */
 	bool bAttackBeganAtFullFervour = false;
+
+	/**
+	 * Whether some row in `StatInputs` is scaled by `increased_max_health`, set by `NoteWhatTheRowsAsk` whenever the
+	 * inputs are written. `CurrentConditions` sums the increases only then, because it runs on every stat asked. The War
+	 * trees' slice E1 (2026-11-27).
+	 */
+	bool bSomeRowAsksIncreasedMaximumHealth = false;
+
+	/** Sets `bSomeRowAsksIncreasedMaximumHealth` from `StatInputs`. */
+	void NoteWhatTheRowsAsk();
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;

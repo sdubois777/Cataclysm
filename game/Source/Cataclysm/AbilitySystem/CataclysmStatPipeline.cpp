@@ -228,6 +228,9 @@ namespace
 		{ TEXT("bleeding_enemies_in_reach"), ECataclysmStatScale::PerBleedingEnemyInReach },
 		{ TEXT("class_resource_held_percent"), ECataclysmStatScale::PerPercentOfClassResourceHeld },
 		{ TEXT("target_health_missing"), ECataclysmStatScale::PerPercentOfTargetHealthMissing },
+		{ TEXT("increased_max_health"), ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth },
+		{ TEXT("enemies_struck_recently"), ECataclysmStatScale::PerEnemyStruckRecently },
+		{ TEXT("enemies_that_struck_you_recently"), ECataclysmStatScale::PerEnemyThatStruckYouRecently },
 		{ TEXT("remains_in_reach"),    ECataclysmStatScale::PerOwnRemainsInReach },
 		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
 		{ TEXT("damage_reduction"),    ECataclysmStatScale::PerPercentOfDamageReduction },
@@ -2414,6 +2417,23 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 												/ Modifier.ScaleStep);
 		return Modifier.Value * Steps;
 	}
+
+	// INCREASED MAXIMUM HEALTH IN WHOLE STEPS OF PER CENT, the shape of the movement speed one. The War trees' slice E1.
+	case ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth:
+	{
+		if (State.IncreasedMaximumHealthPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(State.IncreasedMaximumHealthPercent / Modifier.ScaleStep));
+	}
+
+	// TWO COUNTS OF CHARACTERS, the War trees' slice E1 (2026-11-27). Unread, -1, counts none.
+	case ECataclysmStatScale::PerEnemyStruckRecently:
+		return StackedValue(Modifier, FMath::Max(0, State.EnemiesStruckRecently));
+
+	case ECataclysmStatScale::PerEnemyThatStruckYouRecently:
+		return StackedValue(Modifier, FMath::Max(0, State.EnemiesThatStruckYouRecently));
 
 	case ECataclysmStatScale::PerBleedingEnemyInReach:
 		return StackedValue(Modifier, CountWithin(State.BleedingHostileDistancesMetres, Modifier.ReachMetres));

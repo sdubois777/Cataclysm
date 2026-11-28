@@ -4970,6 +4970,55 @@ namespace CataclysmStatExemptionTest
 	 * stack; one holds a stack. A blocked hit of 100 keeps 50 on the one and 40 on
 	 * the other.
 	 */
+	void ProbeScaledBlockChance(FAutomationTestBase& Test)
+	{
+		// `block_chance`, asked by `UCataclysmDamageCalculation::Resolve` at the block step. The War trees' slice E1
+		// (2026-11-27), shipped under `own_stacks` (Unyielding Guard), `class_resource_held` and `enemies_in_reach`.
+		// Two defenders carry the line at nought with 100 per own stack; one holds a stack. A roll of 50 is blocked by
+		// the one holding it and not by the other.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Key(TEXT("Probe:block_chance"));
+		const auto Prepare = [&Key](FScopedFighter& Defender)
+		{
+			FCataclysmStatModifier PerStack;
+			PerStack.Bucket = ECataclysmStatBucket::Flat;
+			PerStack.Source = ECataclysmModifierSource::Enchantment;
+			PerStack.Value = 100.0f;
+			PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+			PerStack.ScaleStep = 1.0f;
+			PerStack.ScaleMaxSteps = 1;
+			PerStack.StackKey = Key;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("block_chance")));
+			Line.Base = 0.0f;
+			Line.Modifiers = {PerStack};
+			Defender.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		};
+		FScopedFighter Clean(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Stacked(World, /*AttackDamage=*/0.0f);
+		Prepare(Clean);
+		Prepare(Stacked);
+		Cast<UCataclysmAbilitySystemComponent>(Stacked.AbilitySystem)
+			->GrantOwnStack(Key, /*WindowSeconds=*/3.0f, /*Cap=*/1);
+
+		FCataclysmIncomingHit Blow;
+		Blow.Damage = 100.0f;
+		const auto Blocks = [&Blow](FScopedFighter& Defender)
+		{
+			return UCataclysmDamageCalculation::Resolve(
+				Blow, Defender.AbilitySystem, /*Tier=*/1, /*EvasionRoll=*/100.0f, /*BlockRoll=*/50.0f).bBlocked;
+		};
+		Test.TestFalse(TEXT("block_chance: control, with no stack a roll of 50 is not blocked"), Blocks(Clean));
+		Test.TestTrue(TEXT("and with a stack the scaled 100 is asked for, so the same roll is blocked"),
+					  Blocks(Stacked));
+	}
+
 	void ProbeScaledBlockDamageReduction(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -6554,6 +6603,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("movement_speed"),             &ProbeScaledMovementSpeed},
 			{TEXT("evasion"),                    &ProbeScaledEvasion},
 			{TEXT("block_damage_reduction"),     &ProbeScaledBlockDamageReduction},
+			// THE WAR TREES' SLICE E1 (2026-11-27): Unyielding Guard, Resolve to Steel and Living Fortress.
+			{TEXT("block_chance"),               &ProbeScaledBlockChance},
 			{TEXT("resistance_cap"),             &ProbeScaledResistanceCap},
 			{TEXT("life_leech"),                 &ProbeScaledLifeLeech},
 			{TEXT("mana_leech"),                 &ProbeScaledManaLeech},
@@ -8554,6 +8605,38 @@ namespace CataclysmStatExemptionTest
 					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stagger")));
 		Test.TestFalse(TEXT("and it is immunity to stagger only: a stun still takes hold"),
 					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+	}
+
+	/**
+	 * `retaliation_cannot_be_mitigated`, read by `UCataclysmRetaliation` through `StatForSkill`. The War trees' slice E1
+	 * (2026-11-27), shipped under `health_below` (Undying Rage). Below half health the whole retaliation reaches the
+	 * attacker's health through its armour; at full health the armour takes a share.
+	 */
+	void ProbeConditionedRetaliationCannotBeMitigated(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		Attacker.AbilitySystem->SetNumericAttributeBase(Combat::GetArmorAttribute(), 5000.0f);
+		Holding.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		AtHealthShare(Holding, 1.0f);
+		ConditionedBelowHalf(Holding, TEXT("retaliation_cannot_be_mitigated"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		const float AtFull =
+			UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, /*DamageTaken=*/500.0f);
+		AtHealthShare(Holding, 0.4f);
+		const float BelowHalf =
+			UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, /*DamageTaken=*/500.0f);
+		Test.TestTrue(*FString::Printf(TEXT("retaliation_cannot_be_mitigated at full health: the attacker's armour "
+											"takes a share, %.2f reached health"), AtFull),
+					  AtFull > 0.0f && AtFull < 99.0f);
+		Test.TestTrue(*FString::Printf(TEXT("and it is asked for, so below half health more reaches it: %.2f"),
+									   BelowHalf),
+					  BelowHalf > AtFull + 1.0f);
 	}
 
 	void ProbeConditionedImmuneToSlow(FAutomationTestBase& Test)
@@ -13990,6 +14073,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("immune_to_crowd_control"), &ProbeConditionedImmuneToCrowdControl},
 			{TEXT("immune_to_stun"), &ProbeConditionedImmuneToStun},
 			{TEXT("immune_to_stagger"), &ProbeConditionedImmuneToStagger},
+			{TEXT("retaliation_cannot_be_mitigated"), &ProbeConditionedRetaliationCannotBeMitigated},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -16600,7 +16684,8 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
 	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
 	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
-	if (!TestEqual(TEXT("the thirty-eight probes are all here"), ConditionedProbes().Num(), 38))
+	// FORTY-TWO SINCE THE WAR TREES' SLICE E1 (2026-11-27): its three immunities and unmitigated retaliation.
+	if (!TestEqual(TEXT("the forty-two probes are all here"), ConditionedProbes().Num(), 42))
 	{
 		return false;
 	}

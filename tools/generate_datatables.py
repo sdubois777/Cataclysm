@@ -6773,6 +6773,13 @@ SCALES = {
     # AND "for every 1% of HP the target is missing" is `target_health_missing` with a step of 1 (Executioner, Death
     # Strike), the same slice.
     "target_health_missing": (0.0, 100.0, "a percentage of the target's maximum health"),
+    # AND THREE MORE, the same slice: "for every 2% maximum HP bonus you have" is `increased_max_health` with a step of
+    # 2 (Iron Will); "each unique enemy you have hit in the last 3 seconds" is `enemies_struck_recently` (Dancing
+    # Blades); "each unique enemy that has hit you in the last 10 seconds" is `enemies_that_struck_you_recently`
+    # (Outnumbered). The two windows are the scales' own, each named by its one sentence.
+    "increased_max_health": (0.0, 1000.0, "a percentage of increased maximum health"),
+    "enemies_struck_recently": (0.0, 10.0, "a number of enemies"),
+    "enemies_that_struck_you_recently": (0.0, 10.0, "a number of enemies"),
 
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish
@@ -9109,6 +9116,10 @@ ACTION_ONLY_EVENTS = (
     # it.
     "crowd_control_taken",
     "crowd_control_refused",
+    # A LEECH PAYMENT OF HEALTH PROMISED, raised by `UCataclysmAbilitySystemComponent::NoteLifeLeechPromised` with the
+    # health promised as its amount: Sanguine's "Each time you leech HP" and Vampiric Fury (the War trees' slice E1,
+    # 2026-11-27).
+    "life_leeched",
     "critical_strike",
     "nearby_death",
     # EACH 5 FERVOUR A DECAY TAKES, raised by
@@ -12689,6 +12700,11 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # THE WAR TREES' SLICE E1 (2026-11-27): block chance scaled by the Fervour held (Resolve to Steel), the enemies in
+    # reach (Living Fortress) and its own stacks (Unyielding Guard). Asked at the block step by
+    # `UCataclysmDamageCalculation::Resolve` through `StatForSkill` with every reading; `ProbeScaledBlockChance`
+    # measures it.
+    "block_chance",
     # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's
     # damage scaled by the other minions near the one going off (Close Packed),
     # by the summoner's own stacks (Bursting Ranks) and by the minion's age
@@ -13118,6 +13134,10 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "immune_to_crowd_control": ASKER_PASSES_NOTHING_MORE,
     "immune_to_stun": ASKER_PASSES_NOTHING_MORE,
     "immune_to_stagger": ASKER_PASSES_NOTHING_MORE,
+    # AND RETALIATION THAT CANNOT BE MITIGATED, the same slice: Undying Rage's "While below 25% HP, retaliation ...
+    # cannot be reduced by enemy resistances". Asked by `UCataclysmRetaliation` through `StatForSkill`;
+    # `ProbeConditionedRetaliationCannotBeMitigated` measures it.
+    "retaliation_cannot_be_mitigated": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,

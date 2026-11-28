@@ -1778,6 +1778,35 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND WHETHER THIS CHARACTER IS HELD BY CROWD CONTROL NOW, for `while_crowd_controlled` (Dead Weight, R27). The War
 	// trees' slice E1 (2026-11-27). The one reading every "is held" question uses.
 	State.bSelfCrowdControlled = UCataclysmSkillEffects::IsCrowdControlled(GetAvatarActor());
+
+	// AND HOW MANY CHARACTERS STRUCK THIS ONE IN THE LAST 10 SECONDS, from its own record, for
+	// `enemies_that_struck_you_recently` (Outnumbered). The War trees' slice E1 (2026-11-27). A gone striker is not
+	// counted.
+	if (const UWorld* World = GetWorld())
+	{
+		const float Now = World->GetTimeSeconds();
+		State.EnemiesThatStruckYouRecently = 0;
+		for (const TPair<TWeakObjectPtr<const UAbilitySystemComponent>, float>& Strike : StruckBy)
+		{
+			if (Strike.Key.IsValid() && Strike.Value >= 0.0f && Now - Strike.Value <= StruckYouRecentlySeconds)
+			{
+				++State.EnemiesThatStruckYouRecently;
+			}
+		}
+	}
+
+	// AND THE INCREASED MAXIMUM HEALTH, only when some row asks (`bSomeRowAsksIncreasedMaximumHealth`), for
+	// `increased_max_health` (Iron Will). The War trees' slice E1 (2026-11-27). The line's unconditional rows, evaluated
+	// with an empty state, so this can never ask for itself; no line is nought.
+	if (bSomeRowAsksIncreasedMaximumHealth)
+	{
+		const FCataclysmStatInputs* Health = StatInputs.Find(FName(TEXT("max_health")));
+		State.IncreasedMaximumHealthPercent = Health
+			? FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(Health->Base, Health->Modifiers,
+																FGameplayTagContainer(), FCataclysmStatConditions())
+								   .SumOfIncreases)
+			: 0.0f;
+	}
 	State.HitInHandCritical = HitBeingAnnouncedCritical;
 
 	// AND HOW MANY HANDS THE EQUIPPED WEAPON TAKES. Issue #1515, for
@@ -2059,6 +2088,41 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// scaled by its own increases cannot ask for itself without end. No line
 	// recorded means nothing increased, which is nought rather than unknown: a
 	// character with no movement rows has no increased movement speed.
+	// AND THE ENEMIES THIS CHARACTER STRUCK IN THE LAST 3 SECONDS, for `enemies_struck_recently` (Dancing Blades). The
+	// War trees' slice E1 (2026-11-27). Every hostile within the search radius whose own record says this character
+	// struck it inside the window.
+	bool bWantsStruckRecently = false;
+	for (const FCataclysmStatModifier& Modifier : Modifiers)
+	{
+		if (Modifier.Scale == ECataclysmStatScale::PerEnemyStruckRecently)
+		{
+			bWantsStruckRecently = true;
+			break;
+		}
+	}
+	if (bWantsStruckRecently)
+	{
+		State.EnemiesStruckRecently = 0;
+		const ACataclysmCharacterBase* Self = Cast<ACataclysmCharacterBase>(GetAvatarActor());
+		if (UCataclysmTargetCandidates* Nearby = Self ? UCataclysmTargetCandidates::In(GetWorld()) : nullptr)
+		{
+			TArray<float> Distances;
+			TArray<ACataclysmCharacterBase*> Bodies;
+			Nearby->HostileActorsWithinMetres(Self, Self->GetActorLocation(),
+											  StruckRecentlySearchMetres, Distances, Bodies);
+			for (const ACataclysmCharacterBase* Body : Bodies)
+			{
+				const UCataclysmAbilitySystemComponent* Theirs =
+					Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Body));
+				const float Ago = Theirs ? Theirs->SecondsSinceStruckBy(this) : -1.0f;
+				if (Ago >= 0.0f && Ago <= StruckRecentlySeconds)
+				{
+					++State.EnemiesStruckRecently;
+				}
+			}
+		}
+	}
+
 	if (bWantsIncreasedMovementSpeed)
 	{
 		const FCataclysmStatInputs* Movement = StatInputs.Find(FName(TEXT("movement_speed")));
@@ -5142,6 +5206,31 @@ void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
 		// THE NAME WRITTEN OUT, as every raise spells its event: `tools/tests/test_pool_action_names_match_the_engine.py`
 		// reads the calls as text. `FervourDecayedEvent` holds the same name for the tests.
 		ActOnEvent(FName(TEXT("fervour_decayed")), nullptr, FervourDecayedPerEvent);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::NoteWhatTheRowsAsk()
+{
+	bSomeRowAsksIncreasedMaximumHealth = false;
+	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
+	{
+		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
+		{
+			if (Row.Scale == ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth)
+			{
+				bSomeRowAsksIncreasedMaximumHealth = true;
+				return;
+			}
+		}
+	}
+}
+
+void UCataclysmAbilitySystemComponent::NoteLifeLeechPromised(const FCataclysmLeechPayment& Payment)
+{
+	// THE NAME WRITTEN OUT, as every raise spells its event. The War trees' slice E1 (2026-11-27).
+	if (Payment.Pool == ECataclysmLeechPool::Health && Payment.Remaining > 0.0f)
+	{
+		ActOnEvent(FName(TEXT("life_leeched")), nullptr, Payment.Remaining);
 	}
 }
 
