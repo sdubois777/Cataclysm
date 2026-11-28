@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Player/CataclysmPlayerController.h"
 #include "Input/CataclysmInputConfig.h"
 #include "Abilities/GameplayAbility.h"
 #include "GameplayTagsManager.h"
@@ -736,6 +737,67 @@ bool FCataclysmCameraZoomClampTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a wheel that did not turn leaves the camera where it was"),
 		Character->GetTargetCameraDistance(), Furthest);
 
+	return true;
+}
+
+/**
+ * The player controller holds the input configuration in a property garbage collection follows, once it has loaded it.
+ *
+ * WHY. Until 2026-11-27 `SetupInputComponent` kept the loaded configuration only in a local, and `KeyForAbilitySlot`
+ * read it back through the soft `InputConfig`, which keeps nothing loaded. The editor keeps the asset loaded, so no
+ * test saw it; the packaged game's first garbage collection, about a minute in, freed it. From then a right click over
+ * the inventory went to the Heavy skill instead of equipping the item (the owner: "The right clicking an item is what
+ * stops working"), and the skill bar's key letters went blank.
+ *
+ * WHAT IT CHECKS: the controller holds nothing before `HoldTheInputConfig`, and afterwards holds the configuration the
+ * game's settings name, in an object property of the controller's class -- the reference garbage collection follows.
+ * A garbage collection is not run: the editor holds the asset anyway, so the asset staying loaded here would prove
+ * nothing. THE CONTROL: the property is read through reflection by its name, and before the hold it reads null, so the
+ * check reads the property and not merely the object the test loaded. Prints "HELD".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInputConfigHeldTest,
+	"Cataclysm.Input.TheControllerHoldsTheInputConfigItLoaded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInputConfigHeldTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = CataclysmInputTest::MakeWorld();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT
+	{
+		World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+	};
+
+	ACataclysmPlayerController* Controller = World->SpawnActor<ACataclysmPlayerController>();
+	const UCataclysmInputConfig* Expected = LoadObject<UCataclysmInputConfig>(nullptr, CataclysmInputTest::ConfigPath);
+	if (!TestNotNull(TEXT("set-up: a player controller"), Controller)
+		|| !TestNotNull(TEXT("set-up: the generated input configuration loads"), Expected))
+	{
+		return false;
+	}
+
+	const FObjectPropertyBase* Property =
+		FindFProperty<FObjectPropertyBase>(ACataclysmPlayerController::StaticClass(), TEXT("HeldInputConfig"));
+	if (!TestNotNull(TEXT("the controller has an object property named HeldInputConfig"), Property))
+	{
+		return false;
+	}
+	const auto ReadProperty = [Property, Controller]()
+	{
+		return Property->GetObjectPropertyValue_InContainer(Controller);
+	};
+
+	TestNull(TEXT("CONTROL: before the hold the property holds nothing"), ReadProperty());
+	TestNull(TEXT("CONTROL: and the controller says so"), Controller->GetHeldInputConfig());
+
+	const UCataclysmInputConfig* Held = Controller->HoldTheInputConfig();
+	AddInfo(FString::Printf(TEXT("HELD: %s; the property reads %s"), *GetPathNameSafe(Held), *GetPathNameSafe(ReadProperty())));
+	TestTrue(TEXT("the hold answers the configuration the game's settings name"), Held == Expected);
+	TestTrue(TEXT("and the property garbage collection follows holds that same object"), ReadProperty() == Expected);
+	TestTrue(TEXT("and the controller says so"), Controller->GetHeldInputConfig() == Expected);
 	return true;
 }
 

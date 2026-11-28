@@ -205,6 +205,24 @@ FVector2D UCataclysmEmpireTreeLayout::LineEnd(const FCataclysmEmpireTreeDecorati
 	return FVector2D(Row.CentreX, Row.CentreY) + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * Row.Length;
 }
 
+FLinearColor UCataclysmEmpireTreeLayout::MarkColourFor(const FCataclysmEmpireTreeNodeRow& Row)
+{
+	switch (UCataclysmPassiveTreeLayout::MarkFor(Row.Kind))
+	{
+	case ECataclysmTreeMark::Vow:
+		return ColourOf(TEXT("#C8B078"), 1.0f);
+	case ECataclysmTreeMark::Keystone:
+		return ColourOf(TEXT("#96A0AF"), 1.0f);
+	default:
+		return ColourOf(TEXT("#6E7887"), 1.0f);
+	}
+}
+
+FLinearColor UCataclysmEmpireTreeLayout::BackdropColour()
+{
+	return ColourOf(TEXT("#0E1016"), 1.0f);
+}
+
 FLinearColor UCataclysmEmpireTreeLayout::ColourOf(const FString& Hex, float Opacity)
 {
 	FLinearColor Colour = FLinearColor::White;
@@ -224,7 +242,7 @@ int32 UCataclysmEmpireTreeLayout::LabelFontSize(float FontSize, float Zoom)
 
 float UCataclysmEmpireTreeLayout::DecorationThicknessPx(float Thickness, float Zoom)
 {
-	return FMath::Max(1.5f, Thickness * Zoom);
+	return FMath::Max(ThinnestDecorationPx, Thickness * Zoom);
 }
 
 FString UCataclysmEmpireTreeLayout::BankLine(double Banked, bool bTheCharactersOwn)
