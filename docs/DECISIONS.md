@@ -54,6 +54,10 @@ Decisions made outside the Google Drive documents, newest first.
    exists (`ACataclysmMinion::PlaceSkillGadget` calls `SkillGadgetReserveFor` before `Spawn`). So `gadgets_active` then
    counts only the gadgets already standing, and a first gadget gets no reduction. A gadget placed later does not
    lower the reserve of one already standing, because nothing re-reads a reserve that is already held.
+   **ACCEPTED by the coordinating session on 2026-11-28** (re-reading held reserves is more machinery than the node
+   is worth), with the sentence reworded to say so: "A gadget you place reserves 1% less Fervour per point for each
+   other gadget you have active." `Cataclysm.WarTreesE4` measures it: the first gadget reserves in full, the second
+   1% per point less.
 2. **Scrap and Rebuild** (`Saboteur_basic_gadget_deep_003`), the gadget MOVE cooldown, since placing has no cooldown:
    "When a gadget is destroyed gain 5 Fervour per point and your next gadget move is ready 2 seconds sooner per point."
 3. **Hair Wire Expertise** (`Saboteur_basic_trap_mid_004`): "+8% trap arming speed per point for each unique trap type

@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -236,6 +237,53 @@ bool FCataclysmWarTreesE4ReinforcedAndScrapTest::RunTest(const FString&)
 	TestEqual(TEXT("one running: it is 4 s sooner"),
 			  Player.System->SkillGadgetMoveReadyAtSeconds.FindRef(ECataclysmAbilitySlot::Heavy), Now + 6.0f, 0.0001f);
 	TestEqual(TEXT("and nothing is held"), Player.System->PendingGadgetMoveCooldownCut, 0.0f, 0.0001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarTreesE4EfficientDesignTest,
+	"Cataclysm.WarTreesE4.EfficientDesignLeavesTheFirstGadgetsReserveWholeAndLowersTheSecondsByOnePercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Efficient Design (ruled 2026-11-28, read at placing): "A gadget you place reserves 1% less Fervour per point for each
+ * other gadget you have active". Its row at one point, `minion_reserve_percent_less` 1 naming `Type.Gadget` scaled by
+ * `gadgets_active`, asked by `UCataclysmCommand::ReserveFor` as `ACataclysmMinion::SkillGadgetReserveFor` asks it before
+ * the new gadget is made. With none standing a stated 100 is reserved whole; with one standing, 99.
+ */
+bool FCataclysmWarTreesE4EfficientDesignTest::RunTest(const FString&)
+{
+	using namespace CataclysmWarTreesE4Test;
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	FWarTreesE4Holder Player(World, FVector::ZeroVector);
+	if (!TestTrue(TEXT("set-up: a creature"), Player.IsUsable()))
+	{
+		return false;
+	}
+	const FGameplayTagContainer GadgetTags = ACataclysmMinion::TagsOfType(ACataclysmMinion::SkillGadgetTypeName);
+	FCataclysmStatModifier PerOther = E4Scaled(ECataclysmStatScale::PerGadgetActive, 1.0f, 1.0f);
+	PerOther.RequiredTags.AddTag(
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false));
+	Player.Lines.FindOrAdd(FName(UCataclysmCommand::MinionReservePercentLessStat)).Modifiers.Add(PerOther);
+	TMap<FName, FCataclysmStatInputs> Copy = Player.Lines;
+	Player.System->SetStatInputs(MoveTemp(Copy));
+	TestEqual(TEXT("the first gadget: none standing, a stated 100 reserved whole"),
+			  UCataclysmCommand::ReserveFor(Player.Holder, 100.0f, GadgetTags), 100.0f, 0.0001f);
+	ACataclysmMinion* First = ACataclysmMinion::Spawn(Player.Holder, FVector(300.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+													  /*bBurns=*/false, FString(ACataclysmMinion::SkillGadgetTypeName));
+	if (!TestTrue(TEXT("set-up: one gadget standing"), First && First->IsGadget()))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(First)) { First->Destroy(); } };
+	TestEqual(TEXT("the second gadget: one other standing, 1% less, 99"),
+			  UCataclysmCommand::ReserveFor(Player.Holder, 100.0f, GadgetTags), 99.0f, 0.0001f);
 	return true;
 }
 

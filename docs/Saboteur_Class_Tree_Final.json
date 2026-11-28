@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Efficient Design",
-        "description": "Each other active gadget reduces the Fervour your gadgets reserve by 1% per point.",
+        "description": "A gadget you place reserves 1% less Fervour per point for each other gadget you have active.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6

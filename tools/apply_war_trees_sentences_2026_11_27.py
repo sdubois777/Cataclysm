@@ -183,7 +183,7 @@ SENTENCES: tuple[Sentence, ...] = (
     Sentence("Efficient Design (coordinator, 2026-11-28)", "Saboteur", "basic_gadget_stem_003",
              "Each active gadget on the battlefield extends the active duration of all your other gadgets by 2 seconds "
              "per point.",
-             "Each other active gadget reduces the Fervour your gadgets reserve by 1% per point."),
+             "A gadget you place reserves 1% less Fervour per point for each other gadget you have active."),
     Sentence("Scrap and Rebuild (coordinator, 2026-11-28)", "Saboteur", "basic_gadget_deep_003",
              "When a gadget is destroyed gain +5 Fervour per point and reduce the deployment cooldown of your next "
              "gadget by 2 seconds per point.",
