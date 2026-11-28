@@ -284,8 +284,11 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: its magnitudes.
 #: 102 SINCE THE WAR TREES' ENGINE SLICE E1 (2026-11-27): R10 rewrote Open Wounds, whose old rider "Enemies with 5 or
 #: more bleed stacks" was ordinary English, not a magnitude.
-STRINGS_CONTAINING_THE_WORD = 102
-STRINGS_USING_IT_AS_A_MAGNITUDE = 50
+# 104 SINCE THE WAR TREES' RULED SENTENCES OF 2026-11-27: Flurry's (R11) and Spiteful's each say "more damage",
+# and both rows are More multipliers (nth_attack_more_damage, next_retaliation_more).
+STRINGS_CONTAINING_THE_WORD = 104
+# 52 SINCE 2026-11-27: Flurry's and Spiteful's ruled sentences, as STRINGS_CONTAINING_THE_WORD says.
+STRINGS_USING_IT_AS_A_MAGNITUDE = 52
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
 #: more". Issue #582.
@@ -362,7 +365,8 @@ BOTH_MAGNITUDE_WORDS = re.compile(
 #: Together, "one gadget ... that fires all their attacks with 10% more damage
 #: for each gadget in it" (the twelve approved options, written that day). It
 #: wants a separate multiplier: the merged gadget's damage grows with its count.
-NODES_RELYING_ON_THE_WIDENED_RULE = 20
+# 22 SINCE 2026-11-27: Flurry and Spiteful, as above.
+NODES_RELYING_ON_THE_WIDENED_RULE = 22
 
 
 def tree_path(tree_name: str) -> pathlib.Path:

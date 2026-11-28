@@ -9362,11 +9362,13 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 		// melee skill twice in a row removes the stacks." The first melee use raises neither: there was no last one.
 		if (!SkillInHandName.IsNone())
 		{
-			if (!LastMeleeSkillName.IsNone())
+			if (!LastMeleeSkillName.IsNone() && SkillInHandName == LastMeleeSkillName)
 			{
-				ActOnEvent(FName(SkillInHandName == LastMeleeSkillName ? TEXT("same_melee_skill_used")
-																		: TEXT("different_melee_skill_used")),
-						   SkillTags);
+				ActOnEvent(FName(TEXT("same_melee_skill_used")), SkillTags);
+			}
+			else if (!LastMeleeSkillName.IsNone())
+			{
+				ActOnEvent(FName(TEXT("different_melee_skill_used")), SkillTags);
 			}
 			LastMeleeSkillName = SkillInHandName;
 		}

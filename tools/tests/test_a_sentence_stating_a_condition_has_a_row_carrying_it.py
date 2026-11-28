@@ -98,6 +98,22 @@ EXPRESSED_ANOTHER_WAY = {
         "in_frenzy, which only a dual-wielding character enters",
     ("Berserker_dw_014", "0", "dual_wielding"):
         "in_frenzy, which only a dual-wielding character enters",
+    # THE WAR TREES' ENGINE SLICES E2 AND E3 (2026-11-27), each for the reason the four above give.
+    ("Berserker_dw_008", "0", "dual_wielding"):
+        "Feeding Frenzy's rows are under dual_wielding_outside_frenzy and in_frenzy, each only a dual wielder's",
+    ("Berserker_dw_012", "0", "dual_wielding"):
+        "Frenetic acts on frenzy_drained, which only Frenzy raises, and only a dual-wielding character enters Frenzy",
+    ("Berserker_dw_012", "0", "in_frenzy"):
+        "frenzy_drained is raised only by Frenzy's drain, so the row acts only in Frenzy",
+    ("Berserker_dw_013", "0", "dual_wielding"):
+        "Death Strike's rows carry dual_wielding_outside_frenzy and in_frenzy as their second conditions",
+    ("Berserker_dw_018", "0", "dual_wielding"):
+        "Knife Dance acts on frenzy_drained, which only a dual wielder's Frenzy raises",
+    ("Berserker_dw_ks_002", "0", "dual_wielding"):
+        "Unstoppable Force's rows are under in_frenzy and on frenzy_entered, each only a dual wielder's",
+    ("Berserker_trunk_012", "0", "class_resource_at_maximum"):
+        "Bloodied's 'rather than only when Fervour is full' names the rule its row replaces below 30% health "
+        "(berserking_on_every_melee_hit), not a condition on it",
     ("Berserker_twoh_011", "0", "wielding_two_handed_weapon"):
         "in_wrath, which only a character with a two-handed weapon enters (wrath_on_full_fervour)",
     ("Berserker_twoh_016", "0", "wielding_two_handed_weapon"):

@@ -24,6 +24,15 @@ SOURCE = (ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
 
 #: Which constant holds which name, as the engine defines them.
 CONSTANTS = {
+    # THE WAR TREES' ENGINE SLICES E2 AND E3 (2026-11-27): the mark and Rend's stack (placed), Flurry's every-Nth more,
+    # Momentum's cut to every cooldown, and three nearby actions (The Inevitable, Wrathful Presence, Seismic Slam).
+    "EnemyDamageTakenAction": "enemy_damage_taken",
+    "EnemyDamageReductionRemovedAction": "enemy_damage_reduction_removed",
+    "NthAttackMoreDamageAction": "nth_attack_more_damage",
+    "CooldownReduceAllPercentAction": "cooldown_reduce_all_percent",
+    "SmiteNearbyOfMaximumHealthAction": "smite_nearby_of_max_health",
+    "SmiteNearbyOfRecentDamageTakenAction": "smite_nearby_of_recent_damage_taken",
+    "SmiteLineByHitAction": "smite_line_by_hit",
     "NextSkillDamageAction": "next_skill_damage",
     "NextAttackDamageAction": "next_attack_damage",
     "NextSkillEffectivenessAction": "next_skill_effectiveness",
@@ -239,7 +248,9 @@ def test_the_generator_accepts_exactly_the_placed_names_the_engine_has() -> None
     # which raises what the attacker takes rather than removing anything.
     engine = {name for constant, name in engine_names().items()
               if constant.endswith("RemovedAction") or constant.endswith("RemovedNearbyAction")
-              or constant == "AttackerRetaliationTakenAction"}
+              or constant == "AttackerRetaliationTakenAction"
+              # AND THE MARK OF ISSUE #964, which raises what the enemy takes (the War trees' engine slice E2).
+              or constant == "EnemyDamageTakenAction"}
     assert set(gen.PLACED_ACTIONS) == engine
 
 
@@ -310,7 +321,11 @@ def test_the_generator_accepts_exactly_the_nearby_names_the_engine_has() -> None
     assert set(gen.NEARBY_ACTIONS) == {names["SmiteNearbyAction"],
                                        names["HealNearbyEnemiesAction"],
                                        names["SmiteNearbyByArmourAction"],
-                                       names["SmiteNearbyByHitAction"]}
+                                       names["SmiteNearbyByHitAction"],
+                                       # AND THE WAR TREES' THREE, engine slices E2 and E3 (2026-11-27).
+                                       names["SmiteNearbyOfMaximumHealthAction"],
+                                       names["SmiteNearbyOfRecentDamageTakenAction"],
+                                       names["SmiteLineByHitAction"]}
 
 
 def test_the_generator_accepts_exactly_the_remaining_damage_names_the_engine_has() -> None:
@@ -1583,7 +1598,9 @@ def test_avenging_deads_condition_is_judged_at_the_grant_and_hit_taken_carries_t
     assert re.search(r"&& IsJudgedWhereItsStackIsGranted\(AtTheEvent, \*Effect\)\)\s*\{\s*Stack\.Condition = "
                      r"AtTheEvent;\s*Stack\.ConditionValue = Effect->ConditionValue;", item)
     vitals = code_without_comments(SOURCE.parent / "CataclysmVitalAttributeSet.cpp")
-    assert "MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);" in vitals
+    # AND WHETHER THE HIT WAS BLOCKED, passed after the share since the War trees' engine slice E2 (2026-11-27).
+    assert re.search(r"MaximumHealthNow > 0\.0f \? HealthLostToTheBlow / MaximumHealthNow \* 100\.0f : -1\.0f,"
+                     r"\s*Outcome\.bBlocked\);", vitals)
 
 
 def test_marshal_shared_leech_and_bound_bones_are_read_where_they_act() -> None:

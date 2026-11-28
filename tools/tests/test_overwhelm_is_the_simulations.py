@@ -70,7 +70,11 @@ def test_a_creatures_blow_on_a_player_carries_it():
 
 def test_resolve_takes_it_beside_penetration_before_the_cap():
     text = (SOURCE / "AbilitySystem" / "CataclysmDamageCalculation.cpp").read_text(encoding="utf-8")
-    assert "Hit.ResistancePenetration + Hit.OverwhelmPoints, ResistanceCapOf(Defender));" in text
+    # AND A CRITICAL STRIKE'S OWN RESISTANCE PENETRATION BESIDE THEM, Glass Cannon (the War trees' engine slice E2,
+    # 2026-11-27), spelled out: the overwhelm is still beside the penetration and still before the cap.
+    assert re.search(r"Hit\.ResistancePenetration \+ Hit\.OverwhelmPoints"
+                     r"(?:\s*//[^\n]*\n\s*\+ \(Result\.bWasCritical \? Hit\.CriticalResistancePenetration : 0\.0f\))?"
+                     r",\s*ResistanceCapOf\(Defender\)\);", text)
     # ARMOUR TAKES IT THROUGH ONE LOCAL SINCE THE RAVAGER TREE REWORK OF
     # 2026-11-24: the whole of the blow's points, or half of them for a defender
     # holding Ironhide's `armor_overwhelm_halved` (the owner's ruling that day).
@@ -79,7 +83,10 @@ def test_resolve_takes_it_beside_penetration_before_the_cap():
     assert "ArmorReduction(Armor, Tier) - OverwhelmOnArmour" in text
     assert ("bOverwhelmHalvedOnArmour ? Hit.OverwhelmPoints * 0.5f : Hit.OverwhelmPoints"
             in text)
-    assert text.count("- Hit.OverwhelmPoints))") == 2, "evasion and block each take it off their chance"
+    # THE BLOCK'S SINCE THE WAR TREES' ENGINE SLICE E3 (2026-11-27) is taken off the asked chance in a local, so Eye of
+    # the Storm's floor can be held against the reduction: `AskedBlockChance - Hit.OverwhelmPoints);`.
+    assert text.count("- Hit.OverwhelmPoints))") == 1, "evasion takes it off its chance"
+    assert text.count("FMath::Max(0.0f, AskedBlockChance - Hit.OverwhelmPoints);") == 1, "and block takes it off its"
 
 
 def test_the_floor_panel_shows_it():

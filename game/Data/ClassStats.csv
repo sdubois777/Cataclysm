@@ -51,7 +51,6 @@ Shadow_movement_speed,Shadow,movement_speed,4.4,0.0
 Bulwark_max_health,Bulwark,max_health,140.0,21.0
 Bulwark_health_regen,Bulwark,health_regen,2.0,0.25
 Bulwark_armor,Bulwark,armor,30.0,4.0
-Bulwark_block_chance,Bulwark,block_chance,10.0,0.0
 Bulwark_damage_reduction,Bulwark,damage_reduction,3.0,0.05
 Bulwark_crowd_control_resistance,Bulwark,crowd_control_resistance,8.0,0.15
 Bulwark_movement_speed,Bulwark,movement_speed,3.9,0.0
@@ -62,5 +61,6 @@ Berserker_damage_reduction,Berserker,damage_reduction,1.0,0.02
 Berserker_movement_speed,Berserker,movement_speed,4.4,0.0
 Saboteur_max_health,Saboteur,max_health,95.0,14.0
 Saboteur_max_mana,Saboteur,max_mana,60.0,7.0
+Saboteur_damage_reduction,Saboteur,damage_reduction,1.0,0.02
 Saboteur_area_of_effect,Saboteur,area_of_effect,110.0,0.0
 Saboteur_movement_speed,Saboteur,movement_speed,4.5,0.0

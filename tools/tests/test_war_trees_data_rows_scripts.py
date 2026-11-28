@@ -32,10 +32,12 @@ def _all_rows():
 
 
 def test_there_are_seventy_five_rows_on_forty_three_nodes():
-    assert len(_all_rows()) == 75
-    assert len({node for node, _, _ in rows.NODES}) == len(rows.NODES) == 43
-    assert (len(rows.DATA_NODES), len(rows.E1_NODES)) == (23, 20)
-    assert sum(len(wanted) for _, _, wanted in rows.DATA_NODES) == 39
+    """The name is the first slice's; since engine slices E2, E3 and the riders (2026-11-27) it is 174 rows on 90."""
+    assert len(_all_rows()) == 174
+    assert len({node for node, _, _ in rows.NODES}) == len(rows.NODES) == 90
+    assert (len(rows.DATA_NODES), len(rows.E1_NODES), len(rows.E2_NODES), len(rows.E3_NODES)) == (23, 20, 26, 21)
+    assert [sum(len(wanted) for _, _, wanted in group)
+            for group in (rows.DATA_NODES, rows.E1_NODES, rows.E2_NODES, rows.E3_NODES)] == [39, 36, 57, 42]
 
 
 def test_the_nodes_split_by_tree():
@@ -90,13 +92,17 @@ def test_the_generated_csv_holds_every_row_once():
 
     with open(DATA / "PassiveEffects.csv", encoding="utf-8", newline="") as handle:
         written = [(row["Node"], row["Stat"], row["ValueKind"], number(row["ValuePerPoint"]), row["RequiredTags"],
-                    row["Condition"], row["Scale"], number(row["ScaleMaxSteps"]), row["Action"], row["ActionEvent"],
-                    number(row["StackSeconds"]), number(row["MinPoints"]), row["Ailment"])
+                    row["Condition"], number(row["ConditionValue"]), row["Scale"], number(row["ScaleMaxSteps"]),
+                    row["Action"], row["ActionEvent"], number(row["StackSeconds"]), number(row["MinPoints"]),
+                    row["Ailment"], row["Condition2"], number(row["MaxPoints"]))
                    for row in csv.DictReader(handle)]
     for node, row in _all_rows():
-        wanted = (node, row.stat or "", row.kind, float(row.value), row.tags or "", row.cond or "", row.scale or "",
-                  float(row.cap or 0), row.action or "", row.action_event or "", float(row.stack_seconds or 0),
-                  float(row.min_points or 0), row.ailment or "")
+        # WITH THE CONDITION VALUES, THE SECOND CONDITION AND THE UPPER LIMIT SINCE E2 (2026-11-27): The Inevitable's five
+        # rows differ only in their condition value, and Open Wound's only in their point limits.
+        wanted = (node, row.stat or "", row.kind, float(row.value), row.tags or "", row.cond or "",
+                  float(row.cond_value or 0), row.scale or "", float(row.cap or 0), row.action or "",
+                  row.action_event or "", float(row.stack_seconds or 0), float(row.min_points or 0), row.ailment or "",
+                  row.cond2 or "", float(row.max_points or 0))
         assert written.count(wanted) == 1, wanted
 
 
@@ -118,7 +124,7 @@ def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
 def test_the_script_writes_the_rows_once(tmp_path):
     copy = _workbook_without_the_rows(tmp_path)
     first = rows.apply(copy)
-    assert sum(1 for line in first if ": + " in line) == 75, first
+    assert sum(1 for line in first if ": + " in line) == 174, first
     second = rows.apply(copy)
     assert second[-1] == "every row is already written; nothing written", second
 
@@ -181,7 +187,8 @@ def test_the_sentence_script_writes_each_once_and_keeps_the_rest_of_the_file(tmp
     folder = _tree_files_before(tmp_path)
     before = (folder / "Bulwark_Class_Tree_Final.json").read_bytes()
     first = sentences.apply(folder)
-    assert first[-1] == "written" and sum(1 for line in first if line.endswith(": written")) == 5, first
+    # 26 SINCE THE RIDERS' SENTENCES (2026-11-27).
+    assert first[-1] == "written" and sum(1 for line in first if line.endswith(": written")) == 26, first
     after = (folder / "Bulwark_Class_Tree_Final.json").read_bytes()
     assert after == (sentences.DOCS / "Bulwark_Class_Tree_Final.json").read_bytes() != before
     assert sentences.apply(folder)[-1] == "every sentence is already written; nothing written"

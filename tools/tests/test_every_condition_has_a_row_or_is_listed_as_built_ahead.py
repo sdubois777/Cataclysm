@@ -67,12 +67,8 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: TWO JOINED AND LEFT THE SAME DAY in one change, `enemies_hit_at_most` and
 #: `opponent_is_crowd_controlled` for issue #1686, with their rows.
 BUILT_AHEAD_OF_THEIR_ROWS = {
-    # BUILT AHEAD BY THE WAR TREES' ENGINE SLICE E1 (2026-11-27), each for a node whose other half is a later slice of
-    # the same window: Flesh Fortress' "While you do not hold a shield" (R16) waits for slice E3's armour conversion, and
-    # Dead Weight's "while crowd controlled" (R27) for slice E2's blow sized by maximum health. Each leaves this list
-    # when that node's rows are written.
-    "not_holding_shield",
-    "while_crowd_controlled",
+    # `not_holding_shield` AND `while_crowd_controlled` WERE BUILT AHEAD BY THE WAR TREES' ENGINE SLICE E1 AND LEFT THE
+    # SAME DAY (2026-11-27), when Flesh Fortress' (R16) and Dead Weight's (R27) rows were written in slices E3 and E2.
     # NOT BUILT AHEAD BUT LEFT BEHIND, since the Demonic tree rework the project
     # owner approved on 2026-11-24. Each was the condition of one Masochist node
     # the rework gave a new job, and no other row names it: Cataclysmic

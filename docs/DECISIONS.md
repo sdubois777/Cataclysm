@@ -5,10 +5,13 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-11-27 — The War passive trees finished: every Berserker, Bulwark and Saboteur node does what its sentence says (window 1: the data rows, the rulings, and the engine slices E1 to E3)
 
 **Affects (so far; each slice adds its own):**
-- `tools/reapply_war_trees_data_rows_workbook.py`, new: 75 rows on 43 War nodes in `docs/All_Things_Cataclysm.xlsx`,
-  Passive Effects -- 39 on the data-only nodes and 36 on engine slice E1's -- with slice D's machinery
-  (`tools/reapply_war_data_rows_workbook.py`), run once from development's workbook. `game/Data/PassiveEffects.csv`
-  (1,082 rows). **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/reapply_war_trees_data_rows_workbook.py`, new: 174 rows on 90 War nodes in `docs/All_Things_Cataclysm.xlsx`,
+  Passive Effects -- 39 on the data-only nodes, 36 on engine slice E1's, 57 on E2's and 42 on E3's and the riders' --
+  with slice D's machinery (`tools/reapply_war_data_rows_workbook.py`, which now carries the Chance Percent column),
+  run once from the base's workbook (3c996f2ad; development has not changed it since). `game/Data/PassiveEffects.csv`
+  (1,181 rows). **The editor step must rebuild `DT_PassiveEffects`, `DT_PassiveNodes` and `DT_ClassStats`.**
+- `tools/reapply_war_class_stats_workbook.py`, new: the three War class stat lines, 16 rows of Class Stats
+  (`game/Data/ClassStats.csv`, 65 rows), mirrored in `sim/cataclysm_sim/classes.py` (issue #932).
 - `tools/apply_war_trees_sentences_2026_11_27.py`, new: the ruled sentences, by node id, in the War tree files.
   `docs/Bulwark_Class_Tree_Final.json` (R8, R9, R10, Outnumbered), `docs/Berserker_Class_Tree_Final.json` (R13) and
   `game/Data/PassiveNodes.csv`.
@@ -196,6 +199,153 @@ ruled sentences by the same script.
 - Iron Will counts the unconditional increases on the maximum health line; a conditioned one is left out.
 - Dancing Blades' and Relentless' "Dual wield only" is carried by `in_frenzy`: Frenzy begins only for a dual wielder.
 - The two "recently" scales' windows, 3 and 10 seconds, are the scales' own, each named by its one sentence.
+
+### ENGINE SLICE E2: ACTIONS, STACKS AND MARKS (the rest of the Berserker and Bulwark nodes)
+
+Each new name, what it asks, and what an unknown reading does. Every one is registered in `tools/generate_datatables.py`,
+which refuses a row naming anything else.
+
+| Name | Kind | What it does | Unknown or absent | Node(s) |
+|---|---|---|---|---|
+| `enemy_damage_taken` | placed stack | the struck enemy takes the value's per cent more damage for the row's seconds: the mark of issue #964 | an enemy with no ability system takes nothing | Open Wound |
+| `enemy_damage_reduction_removed` | placed stack | the struck enemy's damage reduction lowered by the value for the row's seconds | as above | Rend |
+| `strike_target_of_max_health` | action | a direct blow of the value's per cent of the wearer's maximum health on the event's enemy; rolls the row's Chance Percent last | no enemy in the event, nothing | Dead Weight, Immovable Object, Seismic Slam (Bulwark) |
+| `smite_nearby_of_max_health` | nearby action | the same on every enemy within the row's Event Value in metres; may run on `every_seconds`; rolls a chance | no radius is refused by the generator | The Inevitable, Seismic Slam (Bulwark) from 5 points |
+| `next_attack_bonus_of_max_health`, `next_attack_bonus_of_armor` | action | stores the value's per cent of the stat for the next attack, the larger of it and what is held | nought stored | Mountain's Wrath, Shield Slam |
+| `dual_wielding_outside_frenzy` | condition | two weapons held and not in Frenzy | unknown hands refuse | Death Strike |
+| `frenzy_drained` | event | raised for each 10 Fervour Frenzy's drain takes | - | Frenetic, Knife Dance |
+| `cooldown_reduce_all_percent` | action | every skill cooldown cut by the value's per cent | - | Momentum |
+| `strike_target_of_target_missing_health` | action | a direct blow of the value's per cent of the health the enemy is missing | - | Coup de Grace |
+| `knock_back_target` | action | the event's enemy knocked back the value in metres | - | Whirlwind |
+| `strike_nearest_near` | action | the nearest enemy struck the row's Event Value times at the value's per cent of weapon damage | - | Unstoppable Force |
+| `nth_attack_more_damage` | every-Nth action | every Nth attack deals the value's per cent more | - | Flurry (R11) |
+| `own_stacks_removed` | action | every own stack of the row's node removed | - | Killing Rhythm, Consecutive Blocks, Weaving |
+| `hit_taken_was_unblocked` | condition | the hit being announced landed, was not a tick and was not blocked | anything else refuses | Consecutive Blocks |
+| `next_retaliation_more` | action | the next retaliation payment deals the value's per cent more, the larger kept | - | Spiteful |
+| `execute_nearby_below` | action | every executable enemy within the Event Value in metres below the value's per cent of its health loses what it has left | never a Boss | Killing Blow |
+| `fervour_per_percent_of_max_health_leeched` | action | on `life_leeched`, Fervour of the value for each 1% of maximum health leeched, held to the maximum | no pool, nothing | Vampiric Fury |
+| `critical_penetration` | stat | resistance penetration added only once the blow has critically struck (asked before the roll, as `critical_armor_penetration` is) | nought | Glass Cannon |
+| `two_hits_taken_within_seconds` | condition | the last two landed hits taken, not ticks, came within the value's seconds | fewer than two refuses | Counter Stance |
+| `different_melee_skill_used`, `same_melee_skill_used` | events | raised after `melee_attack_use` against the last melee skill used; the first melee use raises neither | - | Weaving (R12) |
+| `smite_line_by_hit` | nearby action | a share of what the hit took on every enemy in a line the Event Value in metres long and 2 metres wide | no radius refused | Seismic Slam (Berserker) |
+
+**Chance Percent in the War rows.** `tools/reapply_war_data_rows_workbook.py`'s rows carry the sheet's Chance Percent
+column (`chance`), and the generator accepts it on `strike_target_of_max_health` and `smite_nearby_of_max_health`. A
+chance is per point: the tree multiplies it by the points spent.
+
+**Judgements of this slice**, each labelled as one:
+- Seismic Slam (Berserker)'s line is 8 metres long and 2 metres wide; the sentence states neither.
+- Weaving's stacks last 10 seconds, the window Killing Rhythm and Consecutive Blocks were given; the sentence states none.
+- Glass Cannon's two riders both read from 4 points: the overflow sentence follows "At 4 points:".
+
+### ENGINE SLICE E3: KEYSTONE RULES
+
+| Name | Kind | What it does | Node |
+|---|---|---|---|
+| `LargestOfItsRows` | pipeline rule | the two overleech stats take the largest row, not the sum (R14) | Open Wounds (Berserker) |
+| `berserking_spends_half`, `berserking_on_every_melee_hit` | stats | read by `FCataclysmBerserkerStates::SpendBerserking` | Berserker's Rage, Bloodied |
+| `crit_chance_past_cap_to_multiplier` | stat | every 2% of critical strike chance past 100 adds 1% to the multiplier; the chance kept is still held to its ceiling | Hair Trigger |
+| `max_health_from_other_sources` | scale | the `max_health` line evaluated with an empty state: every unconditional, unscaled row and never a scaled one, so never its own | Colossus (Bulwark, R3) |
+| `block_chance_floor` | stat | at the block step, a reduction cannot take the chance below the floor nor below what it was before it was reduced | Eye of the Storm |
+| `blocked_lethal_hit_survived_every_seconds`, `damage_immunity_after_blocked_lethal_hit_seconds`, `fervour_on_blocked_lethal_hit_survived` | stats | a blocked blow that would kill leaves 1 health, opens the immunity window and pays the Fervour; its own clock, judged before the Final Onslaught's save | The Last Bastion |
+| `combat_seconds_held`, `combat_seconds_fall_slower` | scale and stat | seconds of combat held: rising a second a second in combat, falling a second a second out of it (half under the flag), carried into the next combat | Grinding Advance |
+| `smite_nearby_of_recent_damage_taken` | nearby action | each second, the value's per cent of all damage taken in the last 5 seconds on every enemy within the larger of 4 metres and the retaliation radius | Wrathful Presence |
+
+**Flesh Fortress (R16) is data.** A conditioned `removed` row takes armour to nothing while no shield is held. The
+armour attribute is written from unconditioned rows only, so the `armor` scale its `max_health` row reads is the armour
+the character would have had.
+
+**Judgements, both accepted by the coordinating session on 2026-11-27:**
+- Eye of the Storm's floor holds against reductions only; it never raises a chance that was below 30 before anything
+  reduced it.
+- Grinding Advance's time in combat decays at 1 second a second, or 0.5 at 5 points, and carries into the next combat:
+  "lost 50% slower" means nothing if the stacks vanish when combat ends.
+
+**Colossus (Berserker, `Berserker_twoh_ks_001`) is NOT built in window 1.** It casts Earthquake (`War_Warhammer_Heavy`),
+which has no shape, and so nothing to cast: 53 of the 61 War skill rows have none. The coordinating session ruled on
+2026-11-27 that it waits for Earthquake, which belongs to the War weapon skills ([#2972](https://github.com/sdubois777/Cataclysm/issues/2972)).
+Once Earthquake has a shape, Colossus casts it through `UCataclysmTriggeredSkill::Trigger` as the owner ruled.
+
+### THE FIVE RIDERS, ruled by the coordinating session on 2026-11-27
+
+- **Unstoppable Force**: each strike is 100% of weapon damage. Accepted with the sentence as written.
+- **Unbreakable Will** (`next_attack_bonus_of_blocked_damage`, on `block`): the blocked damage is ADDED to the next-attack
+  store. "At 5 points: blocked damage is added at three times the rate." **The five-block streak was dropped**, for want
+  of a stack condition that reads across rows, and **this is a buff against the old text**, which tripled only after
+  five blocks in a row.
+- **Carnage** (`fervour_of_frenzy_drain_seconds`, on `kill` in Frenzy): Fervour equal to 1 second of Frenzy's drain per
+  point, **at most once every 1 second**, the row's Trigger Cooldown. Not uncapped: the coordinating session kept a limit
+  so a Frenzy cannot run without end once kills come fast enough. The generator accepts the cooldown.
+- **Spreading Thorns** (`retaliation_burst_on_kill`, on `kill`): a kill inside the retaliation radius bursts for 100% of
+  the wearer's most recent retaliation payment to one enemy, on every enemy within 4 metres of the slain one. **No burst
+  before the wearer has retaliated**; accepted.
+- **Phantom Blades** (`echo_strike_later`, on melee `hit_dealt`): one echo per melee hit, 60% of weapon damage on the same
+  enemy 0.75 seconds later. It rolls its own critical strike and leeches on its own, makes no Fervour, and makes no echo:
+  it is struck at event depth one, so no row acts on its hit. **No default Trigger Cooldown**, which would drop echoes
+  for hits closer than a quarter second apart.
+- **Blood for Blood** (`blood_for_blood_reflect_percent` = 50, read by `ReflectBloodForBlood`): a share of every blow
+  taken, not evaded, sent back to its attacker, never the character's own and never a retaliation blow; the share rises
+  by 1 for every 2% of maximum Fervour held, to 100. The reflected blow carries the cannot-be-mitigated flag, which
+  **also skips armour and damage reduction**, past the old sentence's "ignores resistances"; the sentence now says
+  "ignores resistances, armour and damage reduction". Accepted.
+
+### ISSUE #932: WHICH CLASS STAT LINE A CHARACTER STANDS ON
+
+`UCataclysmPlayerClassStats::ClassFor`, used by `FCataclysmPlayerBuild::NumbersOf`:
+1. `Cataclysm.PlayerClass` set by hand wins. Its default is now empty.
+2. Otherwise the class tree with the most points, every damage type's trees counted; a tie goes to the class whose node
+   comes first in the allocation.
+3. With no point spent, the first class the design lists for the damage type chosen at creation
+   (`UCataclysmCharacterCreation::ClassesFor`): the Bulwark for War.
+4. With neither, `StartingClassName` (Ravager), as before.
+
+When the answer changes, the next refresh recomputes every maximum and leaves the pools as they are
+(`ECataclysmPoolFill::LeaveAsTheyAre`), as a gear swap does. Points count whether or not a worn weapon reaches their
+tree: the class is what was chosen.
+
+**The three War class stat lines** (`tools/reapply_war_class_stats_workbook.py`, mirrored in
+`sim/cataclysm_sim/classes.py`), judgements under the owner's delegation of unstated numbers, as the Death lines were:
+
+| Stat | Bulwark | Berserker | Saboteur |
+|---|---|---|---|
+| Maximum health | 140 + 21 a level | 120 + 18 | 95 + 14 |
+| Health regeneration | 2 + 0.25 | - | - |
+| Maximum mana | - | - | 60 + 7 |
+| Armour | 30 + 4 | - | - |
+| Damage reduction | 3 + 0.05 | 1 + 0.02 | 1 + 0.02 |
+| Crowd control resistance | 8 + 0.15 | - | - |
+| Life leech | - | 1 + 0.02 | - |
+| Critical strike multiplier | - | 160 | - |
+| Area of effect | - | - | 110 |
+| Movement speed | 3.9 | 4.4 | 4.5 |
+
+**No evasion base for the Saboteur and no block base for the Bulwark**, though their trees raise both: no class has
+either. The Shadow's line was held to the evasion rule on 2026-11-24, and the four gems' tooltip of 2026-11-22 tells the
+player "No class has a base ..." for block chance and evasion, so a base on either line would make that tooltip false. A
+first draft of the Bulwark's line had block chance 10; `test_every_gem_names_a_stat_the_game_reads.py` caught it and it
+was taken out. The Saboteur's damage reduction is there because `Saboteur_basic_trunk_014` increases it and
+`test_no_node_is_worth_nothing_to_its_own_class` found that node worth nothing to its class without a base.
+
+### THE SENTENCES WRITTEN SINCE THE RULINGS PASS
+
+Each written to its node by `tools/apply_war_trees_sentences_2026_11_27.py`, word for word as below. The ruling each
+carries is named; the owner's two were relayed by the coordinating session, the rest are the coordinating session's
+own under the owner's delegation, 2026-11-27.
+
+- **Fortified Mind (coordinator, 2026-11-27)**, `Bulwark_basic_ic_t3_001`: "+3% Fervour generation from blocking per point. At 5 points: While at maximum Fervour, blocking deals damage equal to 3% of your Maximum HP back to the attacker."
+- **Shield Slam (coordinator, 2026-11-27)**, `Bulwark_basic_ic_t2_003`: "+2% damage per point for every 10% Block Chance you have. At 6 points: after you block, your next attack deals bonus damage equal to 5% of your Armor."
+- **Berserker's Rage (owner, 2026-11-27)**, `Berserker_twoh_ks_002`: "Two-handed weapons only. Berserking spends half your Fervour instead of all of it."
+- **Unstoppable Force (owner, 2026-11-27)**, `Berserker_dw_ks_002`: "Dual wield only. Killing an enemy while in Frenzy triggers one Frenetic strike. Additionally, entering Frenzy strikes the nearest enemy three times at full damage."
+- **Killing Blow (coordinator, 2026-11-27)**, `Berserker_twoh_015`: "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fervour, all enemies within 8 metres below 25% HP are instantly killed."
+- **Momentum (coordinator, 2026-11-27)**, `Berserker_twoh_002`: "Two-handed weapons only. Each consecutive melee hit on the same target increases your damage by 3% per point up to 5 consecutive hits. While in Wrath, this bonus is doubled. Switching targets resets the bonus."
+- **Unrelenting (coordinator, 2026-11-27)**, `Berserker_dw_015`: "Dual wield only. Killing an enemy refunds 10% of your maximum Fervour per point."
+- **Unbreakable Will (coordinator, 2026-11-27)**, `Bulwark_basic_ic_t1_003`: "+2% of blocked damage is added to your next attack per point. At 5 points: blocked damage is added at three times the rate."
+- **Carnage (coordinator, 2026-11-27)**, `Berserker_dw_017`: "Dual wield only. Killing an enemy while in Frenzy restores Fervour equal to 1 second of Frenzy's drain per point. This can happen at most once every 1 second."
+- **Spreading Thorns (coordinator, 2026-11-27)**, `Bulwark_basic_tw_t3_002`: "+1 meter to retaliation aura radius per point. At 4 points: Enemies killed within the aura explode, dealing 100% of your retaliation damage to every enemy within 4 meters."
+- **Phantom Blades (coordinator, 2026-11-27)**, `Berserker_dw_ks_003`: "Dual wield only. Each melee hit creates a phantasmal echo that strikes the same enemy 0.75 seconds later for 60% of the attack's damage. Echoes can trigger leech and critical strikes independently, do not generate Fervour and create no echoes."
+- **Blood for Blood (coordinator, 2026-11-27)**, `Bulwark_keystone_tw_final`: "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances, armour and damage reduction and cannot be blocked or evaded. The reflection percentage increases by 1% for every 2% of your maximum Fervour currently held, up to 100% at full Fervour."
+- **Spiteful (coordinator, 2026-11-27)**, `Bulwark_basic_tw_stem_003`: "+3% Fervour generated from taking hits per point. At 5 points: when your Fervour becomes full, your next retaliation deals 50% more damage."
+- **The Inevitable (coordinator, 2026-11-27)**, `Bulwark_keystone_jg_t3`: "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all enemies within 4 metres equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second."
 
 ### EVIDENCE
 

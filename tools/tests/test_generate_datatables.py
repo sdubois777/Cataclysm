@@ -3818,7 +3818,8 @@ class TestExecuteTarget:
         assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
 
     def test_execute_is_the_one_action_with_no_default_wait_and_may_state_one(self):
-        assert gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN == (gen.EXECUTE_TARGET_ACTION,)
+        # AND PHANTOM BLADES' ECHO SINCE 2026-11-27: one echo per melee hit, so no quarter-second wait between two.
+        assert gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN == (gen.EXECUTE_TARGET_ACTION, "echo_strike_later")
         assert gen.takes_a_trigger_cooldown(gen.EXECUTE_TARGET_ACTION)
 
     @pytest.mark.parametrize("stated", [0, 0.25, 10])

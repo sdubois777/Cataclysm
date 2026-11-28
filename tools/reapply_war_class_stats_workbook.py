@@ -32,17 +32,17 @@ ReapplyError = death.ReapplyError
 #: The War classes, in the order the design lists them (`UCataclysmCharacterCreation::ClassesByDamageType`).
 WAR_CLASSES = ("Bulwark", "Berserker", "Saboteur")
 
-#: (class, stat, level 1 base, gain per level). The Bulwark stands on health, armour, block and damage reduction; the
+#: (class, stat, level 1 base, gain per level). The Bulwark stands on health, armour and damage reduction; the
 #: Berserker on health, leech and critical strike multiplier and is quicker; the Saboteur on a larger area and speed,
-#: with less health and more mana for its devices. NO EVASION BASE FOR THE SABOTEUR, though its tree raises evasion: no
-#: class has one, the rule the Shadow's line was held to on 2026-11-24 (the gem check took a first Shadow evasion base
-#: out). Scaled against the six lines already in the sheet: the Bulwark below the Masochist's health and above the
+#: with less health, more mana for its devices and a little flat damage reduction, which Saboteur_basic_trunk_014
+#: increases. NO EVASION BASE FOR THE SABOTEUR AND NO BLOCK BASE FOR THE BULWARK, though their trees raise both: no
+#: class has either, the rule the Shadow's line was held to on 2026-11-24 (the gem check took a first Shadow evasion
+#: base out), and the four gems' tooltip of 2026-11-22 tells the player so ("No class has a base ..."). Scaled against the six lines already in the sheet: the Bulwark below the Masochist's health and above the
 #: Ravager's, the Saboteur between the Necromancer and the Shadow.
 CLASS_STATS: tuple[tuple[str, str, float, float], ...] = (
     ("Bulwark", "max_health", 140, 21),
     ("Bulwark", "health_regen", 2, 0.25),
     ("Bulwark", "armor", 30, 4),
-    ("Bulwark", "block_chance", 10, 0),
     ("Bulwark", "damage_reduction", 3, 0.05),
     ("Bulwark", "crowd_control_resistance", 8, 0.15),
     ("Bulwark", "movement_speed", 3.9, 0),
@@ -53,6 +53,7 @@ CLASS_STATS: tuple[tuple[str, str, float, float], ...] = (
     ("Berserker", "movement_speed", 4.4, 0),
     ("Saboteur", "max_health", 95, 14),
     ("Saboteur", "max_mana", 60, 7),
+    ("Saboteur", "damage_reduction", 1, 0.02),
     ("Saboteur", "area_of_effect", 110, 0),
     ("Saboteur", "movement_speed", 4.5, 0),
 )
@@ -84,6 +85,25 @@ def plan_class_stats(sheet, lines=CLASS_STATS) -> death.SheetPlan:
                       "Per Level": death._out(float(per_level))})
         report.append(f"{class_name} {stat}: base {base:g}, {per_level:g} a level, added")
     return death.SheetPlan(header, old, old + added, report, len(added))
+
+
+def take_out(path: pathlib.Path) -> None:
+    """Delete the War class lines from the workbook at `path`, refusing a sheet whose War lines are not exactly these.
+
+    For the tests that hold an earlier script to reproducing the committed sheets (`tools/tests/without_the_war_trees_rows.py`).
+    """
+    book = openpyxl.load_workbook(path)
+    sheet = book[CLASS_SHEET]
+    header, rows = death._read(sheet, death.CLASS_COLUMNS)
+    held = [(index, cells) for index, cells in enumerate(rows) if death._text(cells.get("Class")) in WAR_CLASSES]
+    found = {(death._text(c.get("Class")), death._text(c.get("Stat")), float(death._number(c.get("Base")) or 0),
+              float(death._number(c.get("Per Level")) or 0)) for _, c in held}
+    wanted = {(c, s, float(b), float(p)) for c, s, b, p in CLASS_STATS}
+    if found != wanted:
+        raise ReapplyError(f"{CLASS_SHEET!r} does not hold exactly the War class lines, so they cannot be taken out")
+    for index, _ in reversed(held):
+        sheet.delete_rows(index + 2, 1)
+    book.save(path)
 
 
 def apply(path: pathlib.Path = WORKBOOK, check_only: bool = False) -> list[str]:

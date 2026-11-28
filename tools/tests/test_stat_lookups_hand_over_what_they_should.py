@@ -881,14 +881,44 @@ INVENTORY = {
      'FName(UCataclysmRetaliation::PenetrationStat), FGameplayTagContainer(), 0.0f'):
         "Blood Oath's retaliation-only penetration (V2b, 2026-11-25), asked of the attacker of a blow stamped as "
         "retaliation; retaliation is not a skill and carries no tags, and the stat is stated under no condition",
+    # ETERNAL HUNGER'S CAP AND DECAY ARE NO LONGER ASKED HERE: since the War trees' engine slice E3 (2026-11-27,
+    # R14) each takes the largest of its rows (`LargestOfItsRows`), so Open Wounds' 30% beside Eternal Hunger's 100%
+    # is 100%, not 130%.
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
-     'FName(LeechOverhealAbsorbCapStat), FGameplayTagContainer(), 0.0f'):
-        "Eternal Hunger's cap (the War vow options' third slice, V3a, 2026-11-25), asked at a leech payment of health; "
-        "a heal is not a skill and carries no tags, and the stat is stated under no condition",
+     'FName(BloodForBloodReflectPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Blood for Blood's share (ruled 2026-11-27), asked for a blow taken; the reflection is not a skill and carries "
+        "no tags, and the stat is stated under no condition",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
-     'FName(LeechOverhealAbsorbDecayStat), FGameplayTagContainer(), 0.0f'):
-        "Eternal Hunger's decay (V3a, 2026-11-25), asked at a regeneration step; no blow and no skill are in hand, and "
-        "the stat is stated under no condition",
+     'FName(FCataclysmBerserkerStates::DrainPerSecondStat), FGameplayTagContainer(), 0.0f'):
+        "Carnage's seconds of Frenzy drain (ruled 2026-11-27), asked at a kill as FCataclysmBerserkerStates::DrainStep "
+        "asks it, with no tags",
+    # THE WAR TREES' ENGINE SLICES E2 AND E3 (2026-11-27).
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(BerserkingOnEveryMeleeHitStat), SkillTags, 0.0f'):
+        "Bloodied's flag, asked where Berserking is spent with the attack's tags; its condition (health below 30%) is "
+        "the character's own state",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmBerserkerStates.cpp',
+     'FName(BerserkingSpendsHalfStat), SkillTags, 0.0f'):
+        "Berserker's Rage's flag, the same ask; its condition (a two-handed weapon) is the character's own state",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(TEXT("crit_chance_past_cap_to_multiplier")), AssetTags, 0.0f'):
+        "Hair Trigger's flag, asked where a hit is priced with the skill's tags; it is stated under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UCataclysmDamageCalculation::CriticalPenetrationStat), AssetTags, 0.0f, -1.0f, FCataclysmBlowContext(), '
+     '-1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor(), '
+     'EnemiesStruckTogether'):
+        "Glass Cannon's critical resistance penetration, asked with every fact the critical armour penetration beside "
+        "it is asked with",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UGuarded::BlockedLethalHitSurvivedEverySecondsStat), FGameplayTagContainer(), 0.0f'):
+        "The Last Bastion's interval, asked where a lethal blow is saved; no skill is in hand, and the stat is stated "
+        "under no condition",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UGuarded::FervourOnBlockedLethalHitSurvivedStat), FGameplayTagContainer(), 0.0f'):
+        "The Last Bastion's Fervour, the same ask",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'FName(UGuarded::ImmuneAfterBlockedLethalHitSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "The Last Bastion's immunity, the same ask",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'FName(UGuarded::LethalHitSurvivedAboveHealthStat), FGameplayTagContainer(), 0.0f'):
         "Colossus Eternal's save (the War vow options' third slice, second half, V3b, 2026-11-25), asked at a lethal "

@@ -20,6 +20,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import apply_war_trees_sentences_2026_11_27 as sentences  # noqa: E402
+import reapply_war_class_stats_workbook as class_lines  # noqa: E402
 import reapply_war_trees_data_rows_workbook as rows  # noqa: E402
 
 DOCS = REPO_ROOT / "docs"
@@ -33,6 +34,8 @@ def docs() -> pathlib.Path:
     for tree in DOCS.glob("*_Class_Tree_*.json"):
         shutil.copyfile(tree, folder / tree.name)
     rows.take_out(folder / "All_Things_Cataclysm.xlsx")
+    # AND THE THREE WAR CLASS LINES (issue #932, 2026-11-27), which came after every earlier script's class lines.
+    class_lines.take_out(folder / "All_Things_Cataclysm.xlsx")
     sentences.take_out(folder)
     return folder
 
