@@ -1334,6 +1334,7 @@ protected:
 	 */
 	void ApplyStunTo(AActor* Self, AActor* Target, float DamageDealt) const;
 
+public:  // THE STATED AILMENT AND THE WAR WEAPON SKILLS' MARKS, public so `Cataclysm.WarSkills.` can lay them (issue #2972).
 	/**
 	 * Apply the ailment this skill's `Ailment=` names to one target, at magnitude one, through
 	 * `UCataclysmAilments::Apply`. Issue #2580, [N1]. Nothing for a skill naming none. A rider on HitTargets beside
@@ -1349,6 +1350,7 @@ protected:
 	 * row stating none, or a target missing or dead. Laid wherever the stated ailment is.
 	 */
 	void ApplyStatedHitMarksTo(AActor* Self, AActor* Target) const;
+protected:
 
 	/**
 	 * The riders `HitTargets` lays on every LANDED blow beyond its damage, its burn and its stated ailment: the
