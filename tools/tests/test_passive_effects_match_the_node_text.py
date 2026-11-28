@@ -1970,6 +1970,8 @@ CONDITION_WORDS = {
     #   Subjugator, Long Servitude      "enemies carrying your curse", a condition
     #     (Ritualist)                   the rework added to the game
     "seconds_after_hit_taken": ("after you are hit", "{value:g} second"),
+    # COUNTER STANCE'S "If you take two hits within 1 second", the War trees' engine slice E2 (2026-11-27).
+    "two_hits_taken_within_seconds": ("take two hits within", "{value:g} second"),
     # THE WAR ROWS OF SLICE D, plan_death_and_war.md, 2026-11-24: Punishing Blow's
     # "for 3 seconds after a successful block", On Your Toes' "for 3 seconds after
     # successfully evading", and "while above 50% Fervour" (Precision, Vital

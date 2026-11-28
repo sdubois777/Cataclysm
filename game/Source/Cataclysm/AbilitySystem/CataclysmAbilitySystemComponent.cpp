@@ -1308,6 +1308,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceSummon = SecondsSinceSummonUsed();
 	State.SecondsSinceEvade = SecondsSinceEvaded();
 	State.SecondsSinceHitTaken = SecondsSinceHitTaken();
+	State.SecondsBetweenLastTwoHitsTaken = SecondsBetweenLastTwoHitsTaken;
 	State.SecondsSinceClassResourceFull = SecondsSinceClassResourceFull();
 	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
 	State.SecondsSinceStruckABoss = SecondsSinceStruckABoss();
@@ -3987,6 +3988,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	DeathmarkedUntilSeconds = -1.0f;
 	LastHitTakenAtSeconds = -1.0f;
 	LastLandedHitTakenAtSeconds = -1.0f;
+	LastNonTickHitTakenAtSeconds = -1.0f;
+	SecondsBetweenLastTwoHitsTaken = -1.0f;
 	LastClassResourceFullAtSeconds = -1.0f;
 	LastClassResourceEmptyAtSeconds = -1.0f;
 	// THE BOSS WINDOW TOO, which issue #2010 added without adding it here, so a
@@ -4530,6 +4533,15 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded, const AActor* 
 	if (const UWorld* World = GetWorld())
 	{
 		LastHitTakenAtSeconds = World->GetTimeSeconds();
+		// AND THE GAP BETWEEN THE LAST TWO LANDED HITS THAT WERE NOT TICKS, for `two_hits_taken_within_seconds` (Counter
+		// Stance, the War trees' engine slice E2, 2026-11-27). Set before the rows below act, so the second hit counts.
+		if (bLanded && !bDamageOverTime)
+		{
+			SecondsBetweenLastTwoHitsTaken = LastNonTickHitTakenAtSeconds >= 0.0f
+				? LastHitTakenAtSeconds - LastNonTickHitTakenAtSeconds
+				: -1.0f;
+			LastNonTickHitTakenAtSeconds = LastHitTakenAtSeconds;
+		}
 		// AND THE LANDED BLOWS APART, for Thin Air's "Taking damage" (2026-11-25): an evaded blow is a hit and not damage.
 		if (bLanded)
 		{
@@ -6988,6 +7000,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::OwnStacksRemovedAction =
 	TEXT("own_stacks_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::NextRetaliationMoreAction =
 	TEXT("next_retaliation_more");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourPerPercentOfMaxHealthLeechedAction =
+	TEXT("fervour_per_percent_of_max_health_leeched");
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteNearbyBelowAction =
 	TEXT("execute_nearby_below");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
@@ -9639,8 +9653,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			// AND, FOR A ROW THAT COUNTS, ONLY ON THE Nth OF ITS EVENTS INSIDE ITS
 			// WINDOW. Issue #1833 group E part 3. Asked last, so only an event that
 			// could act is counted.
+			// AND A ROW WITH A CHANCE ROLLS LAST, so a failed roll starts no wait (Seismic Slam, the War trees' engine
+			// slice E2, 2026-11-27). A row with none always passes.
 			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey)
-				&& TriggerReady(Action) && CountedToNth(Action))
+				&& TriggerReady(Action) && CountedToNth(Action) && ChancePercentComesUp(Action.ChancePercent))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				ActOnNearby(Action, EventAmount);
@@ -9836,8 +9852,10 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			AActor* Other = const_cast<AActor*>(EventTarget);
 			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
 			const float Amount = MaximumHealthNow() * Action.Percent / 100.0f;
+			// AND A ROW WITH A CHANCE ROLLS LAST (Seismic Slam, the War trees' engine slice E2, 2026-11-27).
 			if (bLanded && Other && Self && Other != Self && Amount > 0.0f && !UCataclysmSkillEffects::IsDead(Other)
-				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action)
+				&& ChancePercentComesUp(Action.ChancePercent))
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				NoteTriggerFired(Action);
@@ -9868,6 +9886,33 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 					if (Health > 0.0f && Maximum > 0.0f && Health < Maximum * Action.Percent / 100.0f)
 					{
 						UCataclysmSkillEffects::ReduceHealthDirectly(Self, Near, Health);
+					}
+				}
+			}
+			continue;
+		}
+		// FERVOUR FOR EACH 1% OF MAXIMUM HEALTH THE EVENT CARRIED, never above the maximum: Vampiric Fury (the War trees'
+		// engine slice E2, 2026-11-27). Paid as every gain is, through `GainStated`, then held to the maximum, so neither
+		// the gain nor `class_resource_generation` takes the pool past it.
+		if (Action.bFervourPerPercentOfMaxHealth)
+		{
+			const float Maximum = MaximumHealthNow();
+			const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+			const FGameplayAttribute Top = UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+			if (bLanded && EventAmount > 0.0f && Maximum > 0.0f && Action.Percent > 0.0f && HasAttributeSetForAttribute(Pool)
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Before = GetNumericAttribute(Pool);
+				const float Ceiling = GetNumericAttribute(Top);
+				if (Before < Ceiling)
+				{
+					NoteTriggerFired(Action);
+					UCataclysmFervour::GainStated(
+						this, FMath::Min(Ceiling - Before, Action.Percent * EventAmount / Maximum * 100.0f));
+					if (GetNumericAttribute(Pool) > Ceiling)
+					{
+						SetNumericAttributeBase(Pool, Ceiling);
 					}
 				}
 			}

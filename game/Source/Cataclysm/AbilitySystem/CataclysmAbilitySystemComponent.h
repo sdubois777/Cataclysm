@@ -2124,6 +2124,8 @@ public:
 	static const TCHAR* OwnStacksRemovedAction;
 	/** `next_retaliation_more`. The War trees' engine slice E2 (2026-11-27). */
 	static const TCHAR* NextRetaliationMoreAction;
+	/** `fervour_per_percent_of_max_health_leeched`. The War trees' engine slice E2 (2026-11-27), Vampiric Fury. */
+	static const TCHAR* FervourPerPercentOfMaxHealthLeechedAction;
 	/** `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27). */
 	static const TCHAR* ExecuteNearbyBelowAction;
 
@@ -7621,6 +7623,10 @@ protected:
 	 * Negative means never, as above.
 	 */
 	float LastHitTakenAtSeconds = -1.0f;
+
+	/** When the last landed hit that was not a tick was taken, and the gap before it, or -1. Counter Stance (E2). */
+	float LastNonTickHitTakenAtSeconds = -1.0f;
+	float SecondsBetweenLastTwoHitsTaken = -1.0f;
 
 	/** When a blow that landed last reached this character, or -1. See `SecondsSinceLandedHitTaken`. */
 	float LastLandedHitTakenAtSeconds = -1.0f;

@@ -1131,6 +1131,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								  /*Target=*/GetOwningActor(),
 								  EnemiesStruckTogether)
 							: 0.0f;
+						// AND THE RESISTANCE A CRITICAL STRIKE IGNORES, the same way: Glass Cannon (the War trees' engine
+						// slice E2, 2026-11-27).
+						Hit.CriticalResistancePenetration = AskingToPenetrate
+							? AskingToPenetrate->StatForSkill(
+								  FName(UCataclysmDamageCalculation::CriticalPenetrationStat),
+								  AssetTags, 0.0f,
+								  /*SkillHealthCostPercent=*/-1.0f,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  Hit.OpponentDistanceMetres,
+								  UCataclysmSkillEffects::IsStaggered(GetOwningActor()),
+								  /*Target=*/GetOwningActor(),
+								  EnemiesStruckTogether)
+							: 0.0f;
 					}
 
 					// AND THE CRITICAL STRIKE, read here for that same reason.

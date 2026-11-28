@@ -83,6 +83,7 @@ namespace
 		{ TEXT("seconds_after_summon"),         ECataclysmStatCondition::WithinSecondsOfSummon },
 		{ TEXT("seconds_after_dodge"),          ECataclysmStatCondition::WithinSecondsOfEvade },
 		{ TEXT("seconds_after_hit_taken"),      ECataclysmStatCondition::WithinSecondsOfHitTaken },
+		{ TEXT("two_hits_taken_within_seconds"), ECataclysmStatCondition::TwoHitsTakenWithinSeconds },
 		{ TEXT("seconds_after_resource_full"),  ECataclysmStatCondition::WithinSecondsOfClassResourceFull },
 		{ TEXT("seconds_after_resource_empty"), ECataclysmStatCondition::WithinSecondsOfClassResourceEmpty },
 		{ TEXT("seconds_after_striking_a_boss"), ECataclysmStatCondition::WithinSecondsOfStrikingABoss },
@@ -622,6 +623,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfSummon:
 	case C::WithinSecondsOfEvade:
 	case C::WithinSecondsOfHitTaken:
+	case C::TwoHitsTakenWithinSeconds:
 	case C::WithinSecondsOfClassResourceFull:
 	case C::WithinSecondsOfClassResourceEmpty:
 	case C::WithinSecondsOfStrikingABoss:
@@ -936,6 +938,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// The same two rules again. Issue #1815.
 		return State.SecondsSinceHitTaken >= 0.0f
 			&& State.SecondsSinceHitTaken <= Value;
+
+	case ECataclysmStatCondition::TwoHitsTakenWithinSeconds:
+		// The same two rules, on the gap between the last two hits. The War trees' engine slice E2 (Counter Stance).
+		return State.SecondsBetweenLastTwoHitsTaken >= 0.0f
+			&& State.SecondsBetweenLastTwoHitsTaken <= Value;
 
 	case ECataclysmStatCondition::WithinSecondsOfClassResourceFull:
 		// The same two rules again. Issue #1815.

@@ -90,11 +90,14 @@ TRIGGER_COOLDOWN = "Trigger Cooldown"
 EVENT_VALUE = "Event Value"
 AILMENT = "Ailment"
 DAMAGE_SHARE = "Damage Share"
+#: The chance per point an action row pays, the Death trees' column (slice C6b3), read by War rows since the War trees'
+#: engine slice E2 (2026-11-27, Seismic Slam). Added last, after the eight the passive row port added.
+CHANCE_PERCENT = "Chance Percent"
 PORT_EIGHT = (FRACTION_OF, SCALE_OFFSET, EVERY_SECONDS, EVERY_NTH, TRIGGER_COOLDOWN, EVENT_VALUE, AILMENT, DAMAGE_SHARE)
 #: The columns this script adds to the sheet when it lacks one an appended row uses, in the order they are added. The two
 #: condition columns go together, so a row's second condition never lands without its value's column.
 ADDABLE_COLUMNS = (PER_POINT_FROM, CONDITION_2, CONDITION_VALUE_2, ACTION_EVENT, STACK_SECONDS, ACTION, MAX_POINTS,
-                   *PORT_EIGHT)
+                   *PORT_EIGHT, CHANCE_PERCENT)
 ReapplyError = helpers.ReapplyError
 
 @dataclasses.dataclass(frozen=True)
@@ -127,6 +130,7 @@ class Row:
     event_value: float | None = None
     ailment: str | None = None
     damage_share: float | None = None
+    chance: float | None = None
 
     def key(self) -> tuple:
         def num(value):
@@ -138,7 +142,8 @@ class Row:
                 self.action_event or None, num(self.stack_seconds) or None, self.action or None,
                 num(self.max_points) or None, self.fraction_of or None, num(self.scale_offset) or None,
                 num(self.every_seconds) or None, num(self.every_nth) or None, num(self.trigger_cooldown) or None,
-                num(self.event_value) or None, self.ailment or None, num(self.damage_share) or None)
+                num(self.event_value) or None, self.ailment or None, num(self.damage_share) or None,
+                num(self.chance) or None)
 
 
 R = Row
@@ -242,7 +247,7 @@ def row_from_cells(cells: dict[str, object]) -> Row:
                scale_offset=number(cells.get(SCALE_OFFSET)), every_seconds=number(cells.get(EVERY_SECONDS)),
                every_nth=number(cells.get(EVERY_NTH)), trigger_cooldown=number(cells.get(TRIGGER_COOLDOWN)),
                event_value=number(cells.get(EVENT_VALUE)), ailment=text(cells.get(AILMENT)),
-               damage_share=number(cells.get(DAMAGE_SHARE)))
+               damage_share=number(cells.get(DAMAGE_SHARE)), chance=number(cells.get(CHANCE_PERCENT)))
 
 
 def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
@@ -259,7 +264,8 @@ def cells_from_row(node: str, label: str, row: Row) -> dict[str, object]:
             STACK_SECONDS: out(row.stack_seconds), ACTION: row.action, MAX_POINTS: out(row.max_points),
             FRACTION_OF: row.fraction_of, SCALE_OFFSET: out(row.scale_offset), EVERY_SECONDS: out(row.every_seconds),
             EVERY_NTH: out(row.every_nth), TRIGGER_COOLDOWN: out(row.trigger_cooldown),
-            EVENT_VALUE: out(row.event_value), AILMENT: row.ailment, DAMAGE_SHARE: out(row.damage_share)}
+            EVENT_VALUE: out(row.event_value), AILMENT: row.ailment, DAMAGE_SHARE: out(row.damage_share),
+            CHANCE_PERCENT: out(row.chance)}
 
 
 def _what(row: Row) -> str:

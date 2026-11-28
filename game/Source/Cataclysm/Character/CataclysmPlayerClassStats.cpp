@@ -1372,6 +1372,8 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("fervour_on_blocked_lethal_hit_survived"),
 		// And Grinding Advance's 5-point flag, read by UCataclysmAbilitySystemComponent::CombatSecondsHeld. War trees E3.
 		TEXT("combat_seconds_fall_slower"),
+		// And Glass Cannon's critical resistance penetration, asked where a hit is priced. War trees E2.
+		TEXT("critical_penetration"),
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),

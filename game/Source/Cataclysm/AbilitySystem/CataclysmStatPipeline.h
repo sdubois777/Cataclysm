@@ -413,6 +413,15 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Within Seconds Of A Hit Taken"),
 
 	/**
+	 * The last two hits the character took -- landed, not ticks -- came within `Value` seconds of each other: Counter
+	 * Stance's "If you take two hits within 1 second, this bonus is doubled". The War trees' engine slice E2 (2026-11-27).
+	 * Read from `SecondsBetweenLastTwoHitsTaken`; fewer than two hits taken, -1, refuses. It says nothing of how long ago;
+	 * a row pairs it with `WithinSecondsOfHitTaken`.
+	 */
+	TwoHitsTakenWithinSeconds
+		UMETA(DisplayName = "Two Hits Taken Within Seconds"),
+
+	/**
 	 * The character's class resource BECAME full within the last
 	 * `ConditionValue` seconds. Issue #1815.
 	 *
@@ -3546,6 +3555,9 @@ struct CATACLYSM_API FCataclysmStatConditions
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceHitTaken = -1.0f;
 
+	/** Seconds between the last two landed hits taken that were not ticks, or -1. `TwoHitsTakenWithinSeconds`. E2. */
+	float SecondsBetweenLastTwoHitsTaken = -1.0f;
+
 	/**
 	 * Seconds since the character's class resource became full. Issue #1815.
 	 * Negative means neither known nor ever, as above.
@@ -5632,6 +5644,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * more damage" (the coordinating session's reading).
 	 */
 	bool bNextRetaliationMore = false;
+
+	/**
+	 * The class resource raised by `Percent` for each 1% of maximum health the event's amount is, never above the pool's
+	 * maximum: `fervour_per_percent_of_max_health_leeched`. The War trees' engine slice E2 (2026-11-27), Vampiric Fury's
+	 * "Life leech now also restores Fervour at a rate of 1 Fervour per 2% of maximum HP leeched. Fervour cannot be
+	 * restored above maximum by this effect", on `life_leeched`, whose amount is the health the leech promises.
+	 */
+	bool bFervourPerPercentOfMaxHealth = false;
 
 	/**
 	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed

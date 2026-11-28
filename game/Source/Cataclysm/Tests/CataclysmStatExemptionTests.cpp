@@ -8634,6 +8634,43 @@ namespace CataclysmStatExemptionTest
 					  HoldingHeld > PlainHeld + 1.0f);
 	}
 
+	/**
+	 * `critical_penetration`, asked in `UCataclysmVitalAttributeSet` where resistance penetration is and added in
+	 * `UCataclysmDamageCalculation::Resolve` only once the blow has critically struck. The War trees' engine slice E2
+	 * (2026-11-27), Glass Cannon. Two attackers critically strike, at a multiplier of 100 so the crit changes nothing, a
+	 * defender with 50 of every resistance; the one carrying 50 meets none and deals twice as much.
+	 */
+	void ProbeCriticalPenetration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll AlwaysCritical(0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Piercing(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 50.0f);
+		for (FScopedFighter* Striker : {&Plain, &Piercing})
+		{
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritMultiplierAttribute(), 100.0f);
+		}
+		GrantFlat(Piercing.Actor, UCataclysmDamageCalculation::CriticalPenetrationStat, 50.0f);
+		const FCataclysmDamageResult Kept = OneBlow(Plain, Defender);
+		const FCataclysmDamageResult Pierced = OneBlow(Piercing, Defender);
+		if (!Test.TestTrue(TEXT("both blows critically struck and dealt something"),
+				Kept.bWasCritical && Pierced.bWasCritical && Kept.DealtToHealth > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("critical_penetration is read: the critical blow meets no resistance and deals twice as much"),
+					   Pierced.DealtToHealth / Kept.DealtToHealth, 2.0f, 0.01f);
+	}
+
 	// ------------------------------------------------------------------------
 	// THE SEVEN THE SHIPPED PASSIVES CONDITION THAT WERE READ AND NOT RUN.
 	// Issue #2236. Each was listed in `READ_FROM_THE_CODE_AND_NOT_PROBED` in
@@ -16911,6 +16948,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_immunity_after_blocked_lethal_hit_seconds"), &ProbeBlockedLethalHitSurvived},
 			{TEXT("fervour_on_blocked_lethal_hit_survived"), &ProbeBlockedLethalHitSurvived},
 			{TEXT("combat_seconds_fall_slower"), &ProbeCombatSecondsFallSlower},
+			{TEXT("critical_penetration"), &ProbeCriticalPenetration},
 			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			// THE FERVOUR SPENDS, 2026-11-25.
 			{TEXT("fervour_cost_per_negated_block"), &ProbeCostPerNegatedBlock},

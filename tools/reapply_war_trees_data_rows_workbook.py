@@ -385,6 +385,34 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Bulwark_keystone_tw_t3", "Wrathful Presence",
      (R(None, "", 5, action="smite_nearby_of_recent_damage_taken", action_event="every_seconds",
        every_seconds=1, event_value=4),)),
+    # SEISMIC SLAM (Bulwark): "+4% chance per point for melee attacks to deal bonus flat damage equal to 1% of your
+    # Maximum HP. At 5 points: This bonus damage hits all enemies within 2 meters." One roll: the strike on the target
+    # below 5 points (Max Points is exclusive), the 2 metre nova from 5, each a chance per point (Per Point From 1).
+    ("Bulwark_basic_jg_t2_003", "Seismic Slam",
+     (R(None, "", 1, tags=MELEE, action="strike_target_of_max_health", action_event="hit_dealt", chance=4,
+        max_points=5),
+      R(None, "", 1, tags=MELEE, action="smite_nearby_of_max_health", action_event="hit_dealt", chance=4,
+        event_value=2, min_points=5, per_point_from=1))),
+    # GLASS CANNON: "+8% critical strike multiplier per point on melee attacks. At 4 points: Your critical melee strikes
+    # ignore 20% of enemy resistances. Each point of Fervour above your normal maximum (from any source) increases your
+    # critical strike multiplier by an additional 0.5% per point invested here." Both riders read from 4 points.
+    ("Berserker_crit_003", "Glass Cannon",
+     (R("crit_multiplier", "flat", 8, tags=MELEE),
+      R("critical_penetration", "flat", 20, tags=MELEE, min_points=4),
+      R("crit_multiplier", "flat", 0.5, scale="fervour_overflow_stacks", step=1, min_points=4, per_point_from=1))),
+    # VAMPIRIC FURY: "Life leech now also restores Fervour at a rate of 1 Fervour per 2% of maximum HP leeched. Fervour
+    # cannot be restored above maximum by this effect." 0.5 for each 1%.
+    ("Berserker_leech_ks_001", "Vampiric Fury",
+     (R(None, "", 0.5, action="fervour_per_percent_of_max_health_leeched", action_event="life_leeched"),)),
+    # COUNTER STANCE: "+4% damage per point for 3 seconds after taking a hit. At 6 points: If you take two hits within 1
+    # second, this bonus is doubled."
+    ("Bulwark_basic_ic_t1_001", "Counter Stance",
+     (R("attack_damage", "increased", 4, cond="seconds_after_hit_taken", cond_value=3),
+      R("spell_damage", "increased", 4, cond="seconds_after_hit_taken", cond_value=3),
+      R("attack_damage", "increased", 4, cond="seconds_after_hit_taken", cond_value=3,
+        cond2="two_hits_taken_within_seconds", cond_value2=1, min_points=6, per_point_from=1),
+      R("spell_damage", "increased", 4, cond="seconds_after_hit_taken", cond_value=3,
+        cond2="two_hits_taken_within_seconds", cond_value2=1, min_points=6, per_point_from=1))),
 )
 
 #: Every node this script writes.

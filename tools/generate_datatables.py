@@ -5710,6 +5710,9 @@ CONDITIONS = {
     # same question as `seconds_after_foreign_damage`, which asks about the
     # Cataclysm type and is reached only when something actually got through.
     "seconds_after_hit_taken": (0.0, 60.0, "a number of seconds"),
+    # AND "If you take two hits within 1 second" is `two_hits_taken_within_seconds` with a value of 1: the last two landed
+    # hits taken, not ticks, came that close together. Counter Stance, the War trees' engine slice E2 (2026-11-27).
+    "two_hits_taken_within_seconds": (0.0, 10.0, "a number of seconds"),
 
     # "When your class resource is full, gain 10%-20% damage reduction for 3
     # seconds" is `seconds_after_resource_full` with 3. Issue #1815.
@@ -7342,12 +7345,17 @@ def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
     # AND TWICE ANSWERED'S ACTION, the Death trees' slice C6b4 (2026-11-25), as
     # ruled; AND THE STRIKE ON THE STRONGEST NEAR, for the Soul Collector's
     # Gleaning (issue #2951, 2026-11-27). Nothing else reads a chance.
-    if action not in (CLASS_RESOURCE_POOL, NEXT_HIT_CRITICAL_TWICE_ACTION, STRIKE_STRONGEST_NEAR_ACTION):
+    # AND THE WAR TREES' TWO SIZED BY MAXIMUM HEALTH, engine slice E2 (2026-11-27): Seismic Slam's "+4% chance per point
+    # for melee attacks to deal bonus flat damage equal to 1% of your Maximum HP", on the target and, from 5 points, on
+    # every enemy within 2 metres.
+    chanced = (CLASS_RESOURCE_POOL, NEXT_HIT_CRITICAL_TWICE_ACTION, STRIKE_STRONGEST_NEAR_ACTION,
+               STRIKE_TARGET_OF_MAX_HEALTH_ACTION, "smite_nearby_of_max_health")
+    if action not in chanced:
         raise DataError(
             f"Passive Effects row {index}: {node} states a Chance Percent of "
             f"{written!r} on {'the action ' + repr(action) if action else 'a stat row'}. "
             f"A chance is read by a {CLASS_RESOURCE_POOL!r} row and the actions "
-            f"{NEXT_HIT_CRITICAL_TWICE_ACTION!r} and {STRIKE_STRONGEST_NEAR_ACTION!r} only.")
+            f"{', '.join(repr(each) for each in chanced[1:])} only.")
     if not 0.0 < value <= 100.0:
         raise DataError(
             f"Passive Effects row {index}: {node} has a Chance Percent of "
@@ -8885,6 +8893,9 @@ OWN_STACKS_REMOVED_ACTION = "own_stacks_removed"
 #: AND `next_retaliation_more`: the next retaliation payment deals the value's per cent more, up to
 #: `MAX_SIZED_BY_A_STAT_PERCENT`, the larger of it and what is held. Spiteful. On any event the game fires.
 NEXT_RETALIATION_MORE_ACTION = "next_retaliation_more"
+#: AND `fervour_per_percent_of_max_health_leeched`: the class resource raised by the value for each 1% of maximum health
+#: the event carried, never above the pool's maximum. Vampiric Fury, on `life_leeched`. The War trees' engine slice E2.
+FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION = "fervour_per_percent_of_max_health_leeched"
 #: AND `execute_nearby_below`: every enemy within the row's Event Value in metres (required, up to
 #: `MAX_SMITE_NEARBY_BY_HIT_METRES`) below the value's per cent of its maximum health, that may be executed, loses the
 #: health it has left. Killing Blow. On any event the game fires.
@@ -8941,6 +8952,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS
             or action == STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION or action == KNOCK_BACK_TARGET_ACTION
             or action == NEXT_RETALIATION_MORE_ACTION
+            or action == FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION
             # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
             # a second" is its Trigger Cooldown (V4b, 2026-11-25).
             or action == COUNTERFIRE_ACTION
@@ -9556,7 +9568,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         return
     if action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
                   KNOCK_BACK_TARGET_ACTION, OWN_STACKS_REMOVED_ACTION, NEXT_RETALIATION_MORE_ACTION,
-                  EXECUTE_NEARBY_BELOW_ACTION) \
+                  EXECUTE_NEARBY_BELOW_ACTION, FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION) \
             or action in NEXT_ATTACK_BONUS_ACTIONS:
         _check_sized_by_a_stat_action(index, who, action, event, fraction_of, kind, raw, headers)
         return
@@ -10726,6 +10738,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != KNOCK_BACK_TARGET_ACTION \
                 and action != OWN_STACKS_REMOVED_ACTION \
                 and action != NEXT_RETALIATION_MORE_ACTION \
+                and action != FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION \
                 and action != EXECUTE_NEARBY_BELOW_ACTION \
                 and action not in NEXT_ATTACK_BONUS_ACTIONS \
                 and action != EXECUTE_TARGET_ACTION \
@@ -11127,7 +11140,8 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} knocks back {low:g} to {high:g} metres. It is above 0 and "
                 f"up to {MAX_KNOCK_BACK_METRES:g}.")
     elif action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
-                    NEXT_RETALIATION_MORE_ACTION, EXECUTE_NEARBY_BELOW_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS:
+                    NEXT_RETALIATION_MORE_ACTION, EXECUTE_NEARBY_BELOW_ACTION,
+                    FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS:
         if not (0 < low <= MAX_SIZED_BY_A_STAT_PERCENT and 0 < high <= MAX_SIZED_BY_A_STAT_PERCENT):
             raise DataError(
                 f"Enchantment Effects row {index}: {name} is {low:g} to {high:g} per cent of a stat of the "

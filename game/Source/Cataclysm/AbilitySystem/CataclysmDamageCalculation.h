@@ -94,6 +94,14 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	float CriticalArmorPenetration = 0.0f;
 
 	/**
+	 * The resistance a critical strike ignores on top of `ResistancePenetration`, added only once the blow has critically
+	 * struck: `critical_penetration`, Glass Cannon's "Your critical melee strikes ignore 20% of enemy resistances". The
+	 * War trees' engine slice E2 (2026-11-27). A stat of its own for `CriticalArmorPenetration`'s reason.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float CriticalResistancePenetration = 0.0f;
+
+	/**
 	 * Whether this blow cannot be dodged at all.
 	 *
 	 * A PROPERTY OF THE BLOW AND NOT OF THE DEFENDER, which is what makes it
@@ -1035,6 +1043,9 @@ public:
 	 * so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
 	 */
 	static const TCHAR* CriticalArmorPenetrationStat;
+
+	/** `critical_penetration`, carried on `FCataclysmIncomingHit::CriticalResistancePenetration`. War trees E2. */
+	static const TCHAR* CriticalPenetrationStat;
 
 	/**
 	 * The stat saying this character's melee attacks cannot be evaded. Issue

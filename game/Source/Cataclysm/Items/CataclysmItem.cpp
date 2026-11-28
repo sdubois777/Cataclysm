@@ -1802,6 +1802,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// AND WHETHER IT EXECUTES EVERY ENEMY NEAR AND LOW, the same slice (Killing Blow).
 					Action.bExecuteNearbyBelow = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::ExecuteNearbyBelowAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT RAISES FERVOUR BY THE SHARE OF MAXIMUM HEALTH LEECHED, the same slice (Vampiric Fury).
+					Action.bFervourPerPercentOfMaxHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FervourPerPercentOfMaxHealthLeechedAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT STORES MORE FOR THE NEXT RETALIATION, the same slice (Spiteful).
 					Action.bNextRetaliationMore = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::NextRetaliationMoreAction, ESearchCase::IgnoreCase);

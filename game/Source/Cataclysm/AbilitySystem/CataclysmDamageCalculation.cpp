@@ -107,6 +107,7 @@ const TCHAR* UCataclysmDamageCalculation::ArmorOverwhelmHalvedStat =
 	TEXT("armor_overwhelm_halved");
 const TCHAR* UCataclysmDamageCalculation::CriticalArmorPenetrationStat =
 	TEXT("critical_armor_penetration");
+const TCHAR* UCataclysmDamageCalculation::CriticalPenetrationStat = TEXT("critical_penetration");
 const TCHAR* UCataclysmDamageCalculation::MeleeEvasionSuppressedStat =
 	TEXT("melee_evasion_suppressed");
 const TCHAR* UCataclysmDamageCalculation::EvasionAgainstAreaPercentStat =
@@ -1150,7 +1151,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			+ InheritedResistance(Inherited, Hit.DamageType, Tier),
 		// AND THE OVERWHELM BESIDE THE PENETRATION, before the cap, which is where the design's damage order puts it "at
 		// the same point and for the same reason". Issue #2824, slice b.
-		Hit.ResistancePenetration + Hit.OverwhelmPoints, ResistanceCapOf(Defender));
+		Hit.ResistancePenetration + Hit.OverwhelmPoints
+			// AND A CRITICAL STRIKE'S OWN, Glass Cannon (the War trees' engine slice E2, 2026-11-27).
+			+ (Result.bWasCritical ? Hit.CriticalResistancePenetration : 0.0f),
+		ResistanceCapOf(Defender));
 	const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;
 	if (bMeetsDefences)
 	{
