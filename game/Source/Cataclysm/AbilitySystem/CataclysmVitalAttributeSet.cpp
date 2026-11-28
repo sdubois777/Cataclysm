@@ -1779,6 +1779,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						bSavedFromALethalBlow = true;
 						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
 					}
+					// THE LAST BASTION'S BLOCKED SAVE (the War trees' engine slice E3, 2026-11-27): a blocked blow only, with
+					// its own clock, before the Final Onslaught's so that save's cooldown is not spent on a blow this takes.
+					else if (Resolved.bBlocked && EmptiesHealthLessTheDelayedShare() && Guarded->MaySurviveBlockedLethalHit()
+						&& Guarded->StatForSkill(FName(UGuarded::BlockedLethalHitSurvivedEverySecondsStat),
+												 FGameplayTagContainer(), 0.0f)
+							   > 0.0f)
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+						Guarded->NoteBlockedLethalHitSurvived(
+							Guarded->StatForSkill(FName(UGuarded::BlockedLethalHitSurvivedEverySecondsStat),
+												  FGameplayTagContainer(), 0.0f),
+							Guarded->StatForSkill(FName(UGuarded::ImmuneAfterBlockedLethalHitSecondsStat),
+												  FGameplayTagContainer(), 0.0f));
+						UCataclysmFervour::GainStated(
+							Guarded, Guarded->StatForSkill(FName(UGuarded::FervourOnBlockedLethalHitSurvivedStat),
+														   FGameplayTagContainer(), 0.0f));
+					}
 					else if (Every > 0.0f && Guarded->MaySurviveLethalHit() && EmptiesHealthLessTheDelayedShare())
 					{
 						bSavedFromALethalBlow = true;

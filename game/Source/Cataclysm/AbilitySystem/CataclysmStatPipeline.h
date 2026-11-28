@@ -3289,6 +3289,16 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Percent Of Increased Maximum Health"),
 
 	/**
+	 * `Value` per `ScaleStep` points of MAXIMUM HEALTH FROM OTHER SOURCES: Colossus (R3), "+10 flat Maximum HP per point
+	 * for every 1,000 Maximum HP you have from other sources". The War trees' engine slice E3 (2026-11-27). Read from
+	 * `MaximumHealthFromOtherSources`, which `CurrentConditions` fills -- only for a component some row of which asks --
+	 * from the `max_health` line evaluated with an empty state: every unconditional, unscaled row, and never a scaled
+	 * one, so a row of this scale is never in what it reads. A conditioned addition is left out, as Iron Will's is.
+	 */
+	PerPointOfMaximumHealthFromOtherSources
+		UMETA(DisplayName = "Per Point Of Maximum Health From Other Sources"),
+
+	/**
 	 * `Value` per hostile character the character STRUCK IN THE LAST 3 SECONDS: Dancing Blades, "each unique enemy you
 	 * have hit in the last 3 seconds drains 2 additional Fervour per second". The War trees' slice E1 (2026-11-27). Read
 	 * from `EnemiesStruckRecently`, which `WithEnemiesInReach` counts when a row asks: every hostile within
@@ -3850,6 +3860,9 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	/** Increased maximum health, in per cent, for `PerPercentOfIncreasedMaximumHealth`, or -1 unread. War trees E1. */
 	float IncreasedMaximumHealthPercent = -1.0f;
+
+	/** Maximum health from other sources, for `PerPointOfMaximumHealthFromOtherSources`, or -1 unread. War trees E3. */
+	float MaximumHealthFromOtherSources = -1.0f;
 
 	/** Hostiles this character struck in the last 3 seconds, for `PerEnemyStruckRecently`, or -1 unread. War trees E1. */
 	int32 EnemiesStruckRecently = -1;

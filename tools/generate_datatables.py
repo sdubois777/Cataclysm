@@ -6785,6 +6785,10 @@ SCALES = {
     "increased_max_health": (0.0, 1000.0, "a percentage of increased maximum health"),
     "enemies_struck_recently": (0.0, 10.0, "a number of enemies"),
     "enemies_that_struck_you_recently": (0.0, 10.0, "a number of enemies"),
+    # AND "for every 1,000 Maximum HP you have from other sources" is `max_health_from_other_sources` with a step of
+    # 1,000 (Colossus, R3), the War trees' engine slice E3 (2026-11-27): the `max_health` line's unconditional, unscaled
+    # rows, so never its own.
+    "max_health_from_other_sources": (0.0, 1000000.0, "maximum health"),
 
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish
@@ -13290,6 +13294,9 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # AND BERSERKER'S RAGE'S HALF POOL under "Two-handed weapons only", the same slice and asker;
     # `ProbeConditionedBerserkingSpendsHalf`.
     "berserking_spends_half": ASKER_PASSES_NOTHING_MORE,
+    # AND EYE OF THE STORM'S BLOCK FLOOR under "While 3 or more enemies are within 3 meters", the same slice, asked by
+    # `UCataclysmDamageCalculation::Resolve` at the block step as `block_chance` is; `ProbeConditionedBlockChanceFloor`.
+    "block_chance_floor": ASKER_PASSES_A_BLOW_TAKEN,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,

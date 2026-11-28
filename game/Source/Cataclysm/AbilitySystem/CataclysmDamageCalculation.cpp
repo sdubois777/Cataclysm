@@ -41,6 +41,7 @@ const TCHAR* UCataclysmDamageCalculation::BlockDamageReductionStat =
 const TCHAR* UCataclysmDamageCalculation::BlockNegationChanceStat =
 	TEXT("block_negation_chance");
 const TCHAR* UCataclysmDamageCalculation::EveryBlockNegatesStat = TEXT("every_block_negates");
+const TCHAR* UCataclysmDamageCalculation::BlockChanceFloorStat = TEXT("block_chance_floor");
 const TCHAR* UCataclysmDamageCalculation::SpellAbsorbChanceStat = TEXT("spell_absorb_chance");
 const TCHAR* UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat =
 	TEXT("minion_defences_percent_of_yours");
@@ -973,8 +974,19 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// time decides both.
 		//
 		// LESS THE OVERWHELM, held at nought. Issue #2824, slice b, ruling Q7.
-		if (Roll < FMath::Max(0.0f, DefenderStat(Defender, TEXT("block_chance"), Combat->GetBlockChance(), BlowOf(Hit))
-										 - Hit.OverwhelmPoints))
+		//
+		// AND NO LOWER THAN EYE OF THE STORM'S FLOOR (the War trees' engine slice E3, 2026-11-27): the floor, or what the
+		// chance was before anything reduced it -- the larger of the asked chance and the attribute -- whichever is less.
+		const float AskedBlockChance =
+			DefenderStat(Defender, TEXT("block_chance"), Combat->GetBlockChance(), BlowOf(Hit));
+		float BlockChance = FMath::Max(0.0f, AskedBlockChance - Hit.OverwhelmPoints);
+		const float BlockFloor = DefenderStat(Defender, BlockChanceFloorStat, 0.0f, BlowOf(Hit));
+		if (BlockFloor > 0.0f)
+		{
+			BlockChance = FMath::Max(
+				BlockChance, FMath::Min(BlockFloor, FMath::Max(AskedBlockChance, Combat->GetBlockChance())));
+		}
+		if (Roll < BlockChance)
 		{
 			Result.bBlocked = true;
 			const float Pinned = CVarBlockNegationRoll.GetValueOnAnyThread();

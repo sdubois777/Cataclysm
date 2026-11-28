@@ -1809,6 +1809,18 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 								   .SumOfIncreases)
 			: 0.0f;
 	}
+	// AND THE MAXIMUM HEALTH FROM OTHER SOURCES, only when some row asks, for `max_health_from_other_sources` (Colossus,
+	// R3). The War trees' slice E3 (2026-11-27). The line evaluated with an empty state, so no scaled row -- this scale's
+	// own included -- is in it.
+	if (bSomeRowAsksMaximumHealthFromOtherSources)
+	{
+		const FCataclysmStatInputs* Health = StatInputs.Find(FName(TEXT("max_health")));
+		State.MaximumHealthFromOtherSources = Health
+			? FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(Health->Base, Health->Modifiers,
+																FGameplayTagContainer(), FCataclysmStatConditions())
+								   .Final)
+			: 0.0f;
+	}
 	State.HitInHandCritical = HitBeingAnnouncedCritical;
 
 	// AND HOW MANY HANDS THE EQUIPPED WEAPON TAKES. Issue #1515, for
@@ -3055,6 +3067,12 @@ const TCHAR* UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat
 	TEXT("lethal_hit_survived_every_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::ImmuneAfterLethalHitSecondsStat =
 	TEXT("damage_immunity_after_lethal_hit_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::BlockedLethalHitSurvivedEverySecondsStat =
+	TEXT("blocked_lethal_hit_survived_every_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::ImmuneAfterBlockedLethalHitSecondsStat =
+	TEXT("damage_immunity_after_blocked_lethal_hit_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourOnBlockedLethalHitSurvivedStat =
+	TEXT("fervour_on_blocked_lethal_hit_survived");
 
 bool UCataclysmAbilitySystemComponent::MayShoulderThrough(const AActor* Enemy) const
 {
@@ -3109,6 +3127,32 @@ void UCataclysmAbilitySystemComponent::NoteLethalHitSurvived(float IntervalSecon
 	LethalHitSurvivalNextAllowedSeconds = Now + IntervalSeconds;
 	DamageImmuneUntilSeconds =
 		ImmuneSeconds > 0.0f ? Now + ImmuneSeconds : -1.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::MaySurviveBlockedLethalHit() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	return BlockedLethalHitSurvivalNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= BlockedLethalHitSurvivalNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteBlockedLethalHitSurvived(float IntervalSeconds, float ImmuneSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	BlockedLethalHitSurvivalNextAllowedSeconds = Now + IntervalSeconds;
+	if (ImmuneSeconds > 0.0f)
+	{
+		DamageImmuneUntilSeconds = FMath::Max(DamageImmuneUntilSeconds, Now + ImmuneSeconds);
+	}
 }
 
 bool UCataclysmAbilitySystemComponent::MayFollowThrough() const
@@ -5293,15 +5337,14 @@ void UCataclysmAbilitySystemComponent::RemoveOwnStacksOf(const FString& Node)
 void UCataclysmAbilitySystemComponent::NoteWhatTheRowsAsk()
 {
 	bSomeRowAsksIncreasedMaximumHealth = false;
+	bSomeRowAsksMaximumHealthFromOtherSources = false;
 	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
 	{
 		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
 		{
-			if (Row.Scale == ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth)
-			{
-				bSomeRowAsksIncreasedMaximumHealth = true;
-				return;
-			}
+			bSomeRowAsksIncreasedMaximumHealth |= Row.Scale == ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth;
+			bSomeRowAsksMaximumHealthFromOtherSources |=
+				Row.Scale == ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources;
 		}
 	}
 }

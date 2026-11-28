@@ -3960,6 +3960,22 @@ public:
 	bool MaySurviveLethalHit() const;
 
 	/**
+	 * The Last Bastion's three figures, the War trees' engine slice E3 (2026-11-27): "When you block an attack that would
+	 * have killed you, instead survive at 1 HP, gain 100 Fervour, and become immune to damage for 2 seconds. Can only
+	 * trigger once every 120 seconds." The first is the 120, and above zero means the save is held; the second is the 2;
+	 * the third the 100. A blocked blow, not a tick, judged before the Final Onslaught's save, with a clock of its own.
+	 */
+	static const TCHAR* BlockedLethalHitSurvivedEverySecondsStat;
+	static const TCHAR* ImmuneAfterBlockedLethalHitSecondsStat;
+	static const TCHAR* FervourOnBlockedLethalHitSurvivedStat;
+
+	/** Whether a blocked lethal hit may be survived now: the shape of `MaySurviveLethalHit`, with its own clock. */
+	bool MaySurviveBlockedLethalHit() const;
+
+	/** Record that a blocked lethal hit was survived: the next waits `IntervalSeconds`, immune for `ImmuneSeconds`. */
+	void NoteBlockedLethalHitSurvived(float IntervalSeconds, float ImmuneSeconds);
+
+	/**
 	 * Record that a lethal hit was survived: the next waits `IntervalSeconds`,
 	 * and no damage is taken for `ImmuneSeconds` from now.
 	 */
@@ -7066,6 +7082,9 @@ protected:
 	/** See `SpendNextRetaliationMorePercent`. The War trees' engine slice E2 (2026-11-27). */
 	float NextRetaliationMorePercent = 0.0f;
 
+	/** When the next blocked lethal hit may be survived, or -1 for never survived one. The Last Bastion (E3). */
+	float BlockedLethalHitSurvivalNextAllowedSeconds = -1.0f;
+
 	/**
 	 * Whether some row in `StatInputs` is scaled by `increased_max_health`, set by `NoteWhatTheRowsAsk` whenever the
 	 * inputs are written. `CurrentConditions` sums the increases only then, because it runs on every stat asked. The War
@@ -7073,7 +7092,10 @@ protected:
 	 */
 	bool bSomeRowAsksIncreasedMaximumHealth = false;
 
-	/** Sets `bSomeRowAsksIncreasedMaximumHealth` from `StatInputs`. */
+	/** The same for `max_health_from_other_sources` (Colossus, R3). The War trees' slice E3 (2026-11-27). */
+	bool bSomeRowAsksMaximumHealthFromOtherSources = false;
+
+	/** Sets `bSomeRowAsksIncreasedMaximumHealth` and `bSomeRowAsksMaximumHealthFromOtherSources` from `StatInputs`. */
 	void NoteWhatTheRowsAsk();
 
 	/** See `LastShieldRechargeRate`. */

@@ -8454,6 +8454,141 @@ namespace CataclysmStatExemptionTest
 					  With.DealtToHealth > Without.DealtToHealth * 1.1f);
 	}
 
+	/**
+	 * One blow of 1000 at a defender whose block chance attribute is 50 and whose `block_chance` line is 50 less 80%,
+	 * so 10, with the block roll pinned at 20 by the caller. Returns whether it was blocked. War trees E3.
+	 */
+	bool BlockedUnderAFloor(UWorld* World, FScopedFighter& Defender, TMap<FName, FCataclysmStatInputs>&& Extra)
+	{
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 50.0f);
+		FCataclysmStatModifier Less;
+		Less.Bucket = ECataclysmStatBucket::More;
+		Less.Source = ECataclysmModifierSource::Enchantment;
+		Less.Value = -80.0f;
+		FCataclysmStatInputs& Chance = Extra.FindOrAdd(FName(TEXT("block_chance")));
+		Chance.Base = 50.0f;
+		Chance.Modifiers.Add(Less);
+		Cast<UCataclysmAbilitySystemComponent>(Defender.AbilitySystem)->SetStatInputs(MoveTemp(Extra));
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Result);
+		return Result.bBlocked;
+	}
+
+	/**
+	 * `block_chance_floor`, read by `UCataclysmDamageCalculation::Resolve` at the block step. The War trees' engine slice
+	 * E3 (2026-11-27), Eye of the Storm. A chance reduced from 50 to 10 misses a roll of 20; with a floor of 30 it is
+	 * held at 30 and blocks.
+	 */
+	void ProbeBlockChanceFloor(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 20.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Floored(World, /*AttackDamage=*/0.0f);
+		TMap<FName, FCataclysmStatInputs> Floor;
+		FCataclysmStatModifier Thirty;
+		Thirty.Value = 30.0f;
+		Floor.FindOrAdd(FName(UCataclysmDamageCalculation::BlockChanceFloorStat)).Modifiers.Add(Thirty);
+		Test.TestFalse(TEXT("control: a chance reduced to 10 does not block a roll of 20"),
+					   BlockedUnderAFloor(World, Plain, {}));
+		Test.TestTrue(TEXT("block_chance_floor is read: held at 30, it blocks the roll of 20"),
+					  BlockedUnderAFloor(World, Floored, MoveTemp(Floor)));
+	}
+
+	/**
+	 * `block_chance_floor` under a condition. The War trees' engine slice E3, shipped under `enemies_in_reach_at_least`
+	 * (Eye of the Storm); a Fervour condition stands for it, on a defender holding 50 of 100.
+	 */
+	void ProbeConditionedBlockChanceFloor(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 20.0f);
+		const auto Floored = [World](float AbovePercent)
+		{
+			FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+			GiveAFervourPool(Defender);
+			Defender.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+			TMap<FName, FCataclysmStatInputs> Floor;
+			FCataclysmStatModifier Thirty;
+			Thirty.Value = 30.0f;
+			Thirty.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			Thirty.ConditionValue = AbovePercent;
+			Floor.FindOrAdd(FName(UCataclysmDamageCalculation::BlockChanceFloorStat)).Modifiers.Add(Thirty);
+			return BlockedUnderAFloor(World, Defender, MoveTemp(Floor));
+		};
+		Test.TestFalse(TEXT("block_chance_floor under a refused condition: the reduced chance misses"), Floored(60.0f));
+		Test.TestTrue(TEXT("and under one that holds, the floor blocks"), Floored(30.0f));
+	}
+
+	/**
+	 * The Last Bastion's three figures, read where a lethal blow is saved (`UCataclysmVitalAttributeSet`). The War trees'
+	 * engine slice E3 (2026-11-27). A blow of 100,000 that is blocked would still kill a defender of 10,000 health; one
+	 * holding the save is left at 1 health, gains 100 Fervour and is immune to damage. A second blocked lethal blow at
+	 * once is not saved: the clock is 120 seconds. The plain defender dies.
+	 */
+	void ProbeBlockedLethalHitSurvived(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 0.0f);
+		FScopedFighter Attacker(World, /*AttackDamage=*/100000.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Holding);
+		for (FScopedFighter* Defender : {&Plain, &Holding})
+		{
+			Defender->AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 100.0f);
+		}
+		GrantFlats(Holding.Actor, {{FName(UCataclysmAbilitySystemComponent::BlockedLethalHitSurvivedEverySecondsStat), 120.0f},
+								   {FName(UCataclysmAbilitySystemComponent::ImmuneAfterBlockedLethalHitSecondsStat), 2.0f},
+								   {FName(UCataclysmAbilitySystemComponent::FervourOnBlockedLethalHitSurvivedStat), 100.0f}});
+		const auto Strike = [&Attacker](FScopedFighter& Defender)
+		{
+			FCataclysmDamageResult Result;
+			UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+											 FCataclysmHitDelivery(), &Result);
+			return Result;
+		};
+		const FCataclysmDamageResult OnPlain = Strike(Plain);
+		const FCataclysmDamageResult OnHolding = Strike(Holding);
+		UCataclysmAbilitySystemComponent* Saved = Cast<UCataclysmAbilitySystemComponent>(Holding.AbilitySystem);
+		if (!Test.TestTrue(TEXT("both blows were blocked"), OnPlain.bBlocked && OnHolding.bBlocked) || !Saved)
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: the plain defender is killed"),
+					   Plain.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("blocked_lethal_hit_survived_every_seconds is read: the holder is left at 1 health"),
+					   Holding.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()), 1.0f, 0.001f);
+		Test.TestEqual(TEXT("fervour_on_blocked_lethal_hit_survived is read: 100 Fervour gained"),
+					   Holding.AbilitySystem->GetNumericAttribute(
+						   UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()),
+					   100.0f, 0.001f);
+		Test.TestTrue(TEXT("damage_immunity_after_blocked_lethal_hit_seconds is read: the holder is immune to damage"),
+					  Saved->IsDamageImmune());
+		Test.TestFalse(TEXT("and the save waits its 120 seconds"), Saved->MaySurviveBlockedLethalHit());
+	}
+
 	// ------------------------------------------------------------------------
 	// THE SEVEN THE SHIPPED PASSIVES CONDITION THAT WERE READ AND NOT RUN.
 	// Issue #2236. Each was listed in `READ_FROM_THE_CODE_AND_NOT_PROBED` in
@@ -14261,6 +14396,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_enemy_hit"), &ProbeConditionedFervourPerEnemyHit},
 			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			{TEXT("berserking_spends_half"), &ProbeConditionedBerserkingSpendsHalf},
+			{TEXT("block_chance_floor"), &ProbeConditionedBlockChanceFloor},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -16725,6 +16861,10 @@ namespace CataclysmStatExemptionTest
 			// THE WAR TREES' ENGINE SLICE E3 (2026-11-27).
 			{TEXT("berserking_spends_half"), &ProbeBerserkingSpendsHalf},
 			{TEXT("crit_chance_past_cap_to_multiplier"), &ProbeCritChancePastCapToMultiplier},
+			{TEXT("block_chance_floor"), &ProbeBlockChanceFloor},
+			{TEXT("blocked_lethal_hit_survived_every_seconds"), &ProbeBlockedLethalHitSurvived},
+			{TEXT("damage_immunity_after_blocked_lethal_hit_seconds"), &ProbeBlockedLethalHitSurvived},
+			{TEXT("fervour_on_blocked_lethal_hit_survived"), &ProbeBlockedLethalHitSurvived},
 			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			// THE FERVOUR SPENDS, 2026-11-25.
 			{TEXT("fervour_cost_per_negated_block"), &ProbeCostPerNegatedBlock},
@@ -17009,10 +17149,10 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
 	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
 	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
-	// FORTY-SEVEN SINCE THE WAR TREES' ENGINE SLICES E1 TO E3 (2026-11-27): E1's three immunities, unmitigated
-	// retaliation and the retaliation radius, E2's full-circle swing and Fervour per enemy hit, and E3's Bloodied and
-	// Berserker's Rage.
-	if (!TestEqual(TEXT("the forty-seven probes are all here"), ConditionedProbes().Num(), 47))
+	// FORTY-EIGHT SINCE THE WAR TREES' ENGINE SLICES E1 TO E3 (2026-11-27): E1's three immunities, unmitigated
+	// retaliation and the retaliation radius, E2's full-circle swing and Fervour per enemy hit, and E3's Bloodied,
+	// Berserker's Rage and Eye of the Storm.
+	if (!TestEqual(TEXT("the forty-eight probes are all here"), ConditionedProbes().Num(), 48))
 	{
 		return false;
 	}

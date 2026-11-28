@@ -353,6 +353,27 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # HAIR TRIGGER: "Critical strike chance past 100% is converted to critical strike multiplier at a 2:1 ratio." Every 2%
     # of chance past 100 adds 1% to the multiplier; the chance itself is still held to its ceiling.
     ("Berserker_crit_ks_002", "Hair Trigger", (R("crit_chance_past_cap_to_multiplier", "flat", 1),)),
+    # COLOSSUS (R3): "+10 flat Maximum HP per point for every 1,000 Maximum HP you have from other sources."
+    ("Bulwark_basic_jg_stem_004", "Colossus",
+     (R("max_health", "flat", 10, scale="max_health_from_other_sources", step=1000),)),
+    # FLESH FORTRESS (R16): "While you do not hold a shield: your Armor is 0, you gain 1% increased Maximum HP for every
+    # 50 Armor you would have had, and you gain 50% increased Fervour from all sources." The removal is conditioned, so
+    # the armour attribute the `armor` scale reads -- written from unconditioned rows only -- is what it would have been.
+    ("Bulwark_keystone_tw_t2", "Flesh Fortress",
+     (R("armor", "removed", 1, cond="not_holding_shield"),
+      R("max_health", "increased", 1, cond="not_holding_shield", scale="armor", step=50),
+      R("class_resource_generation", "increased", 50, cond="not_holding_shield"))),
+    # EYE OF THE STORM: "While 3 or more enemies are within 3 meters, you gain 10 Fervour per second and your Block
+    # Chance cannot be reduced below 30%."
+    ("Bulwark_keystone_ic_t3", "Eye of the Storm",
+     (R("fervour_per_second", "flat", 10, cond="enemies_in_reach_at_least", cond_value=3, reach=3),
+      R("block_chance_floor", "flat", 30, cond="enemies_in_reach_at_least", cond_value=3, reach=3))),
+    # THE LAST BASTION: "When you block an attack that would have killed you, instead survive at 1 HP, gain 100 Fervour,
+    # and become immune to damage for 2 seconds. Can only trigger once every 120 seconds."
+    ("Bulwark_keystone_ic_final", "The Last Bastion",
+     (R("blocked_lethal_hit_survived_every_seconds", "flat", 120),
+      R("damage_immunity_after_blocked_lethal_hit_seconds", "flat", 2),
+      R("fervour_on_blocked_lethal_hit_survived", "flat", 100))),
 )
 
 #: Every node this script writes.

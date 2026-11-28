@@ -2586,6 +2586,8 @@ SCALE_WORDS = {
     "enemies_struck_recently": (("each unique enemy you have hit",), None, "each unique enemy"),
     "enemies_that_struck_you_recently": (("each unique enemy that has hit you",), None, "each unique enemy"),
     "bleeding_enemies_in_reach": (("each bleeding enemy within",), None, "each bleeding enemy"),
+    # ENGINE SLICE E3 (2026-11-27): Colossus's "for every 1,000 Maximum HP you have from other sources" (R3).
+    "max_health_from_other_sources": (("for every", "maximum hp you have from other sources"), "{value:,g}", None),
 
     # A READING OF A STAT RATHER THAN OF A STATE. Issue #1045. Glutton reads
     # "for every 1% of life leech you have", and naming the stat is what stops

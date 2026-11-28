@@ -71,6 +71,14 @@ SENTENCES: tuple[Sentence, ...] = (
              "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP as flat damage. "
              "Requires 20,000 Maximum HP to activate.",
              "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP."),
+    Sentence("R3", "Bulwark", "basic_jg_stem_004",
+             "+200 flat HP per point for every 10,000 Maximum HP you have. Requires 10,000 Maximum HP to activate.",
+             "+10 flat Maximum HP per point for every 1,000 Maximum HP you have from other sources."),
+    Sentence("R16", "Bulwark", "keystone_tw_t2",
+             "Convert all of your Armor into flat HP. For every 1% Armor lost this way, gain 3% Maximum HP. You can no "
+             "longer equip shields. Gain 50% increased Fervour from all sources.",
+             "While you do not hold a shield: your Armor is 0, you gain 1% increased Maximum HP for every 50 Armor you "
+             "would have had, and you gain 50% increased Fervour from all sources."),
     Sentence("R27", "Bulwark", "basic_jg_t1_003",
              "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: Taking a crowd "
              "control effect retaliates with 500 flat damage.",

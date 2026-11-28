@@ -1364,6 +1364,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("berserking_on_every_melee_hit"),
 		// And Hair Trigger's chance past 100% to multiplier, read where a hit is priced (UCataclysmVitalAttributeSet).
 		TEXT("crit_chance_past_cap_to_multiplier"),
+		// And Eye of the Storm's block floor, read at the block step (UCataclysmDamageCalculation), and The Last
+		// Bastion's three figures, read where a lethal blow is saved (UCataclysmVitalAttributeSet). War trees E3.
+		TEXT("block_chance_floor"),
+		TEXT("blocked_lethal_hit_survived_every_seconds"),
+		TEXT("damage_immunity_after_blocked_lethal_hit_seconds"),
+		TEXT("fervour_on_blocked_lethal_hit_survived"),
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),

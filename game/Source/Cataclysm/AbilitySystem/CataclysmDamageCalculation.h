@@ -775,6 +775,14 @@ public:
 	static const TCHAR* EveryBlockNegatesStat;
 
 	/**
+	 * `block_chance_floor`: Eye of the Storm's "your Block Chance cannot be reduced below 30%". The War trees' engine
+	 * slice E3 (2026-11-27). Read at the block step: a reduction -- the attacker's overwhelm, or a row that lowers the
+	 * chance below the block chance attribute -- cannot take the chance below this, nor below what the chance was before
+	 * it was reduced. It never raises a chance that was low before anything reduced it.
+	 */
+	static const TCHAR* BlockChanceFloorStat;
+
+	/**
 	 * The chance, in per cent, that a SPELL that hits the defender is absorbed and deals nothing. Ruled 2026-10-06:
 	 * "Spells that hit you have a 15%-30% chance to be absorbed dealing no damage". On the DEFENDER, no gameplay
 	 * attribute, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. See `SpellIsAbsorbed`.
