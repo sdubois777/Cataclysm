@@ -74,7 +74,21 @@ stops generation (`EMPIRE_TREE_DECORATION_KINDS`). The file's `viewport` (the bu
   builder's capstone 20, so the corner capstones reach under the names; the names are drawn over them, as the builder
   draws them.
 
-**Not built or run when this was written.** The run table follows when the window runs.
+**Built and run in window emp-w1, 2026-11-27, at c064d1f5** (this branch with development 4f22dac96 merged, and the
+asset commit the editor step made); nothing has been seen in play:
+
+| Step | Printed |
+| :-- | :-- |
+| Compile: the branch, each changed `.cpp` alone, the unity files again | all three `Build: Succeeded`, 0 compiler warning or error lines |
+| Editor step | `DT_EmpireTreeDecorations.uasset` and `datatable_asset_sources.json`, committed alone as c064d1f5 |
+| `Cataclysm.EmpireTreeScreen.` alone | `14 tests performed, 14 succeeded, 0 failed` |
+| The whole Unreal suite | `6131 tests performed, 6131 succeeded, 0 failed. 62 skipped part of what they check`; `895 written and deleted, 0 left behind`, the 2 above the base's 893 written by #2962's `InAHordeDungeonAnEchoComesForThePlayerFromAfarAndElsewhereItWaits` |
+| Python | `9735 passed, 10 skipped`; the JUnit file: tests 9745, failures 0, errors 0, skipped 10; `ruff check .` clean |
+| C++ guard proof, three breaks in one call, prefix `Cataclysm.EmpireTreeScreen.` | `PROVED: with the break in: 14 tests performed, 11 succeeded, 3 failed: EveryViewDrawsEveryNodeAndEveryEdgeAndNoMarksOverlap, NodesKeepTheTreeFilesPositionsInEveryView, TheWholeTreesViewHoldsItsOutermostRing \| restored: 14 tests performed, 14 succeeded, 0 failed` |
+
+The three breaks: `NodeCentreOnPanel` placing the Architect branch's nodes 1.2 times further out across;
+`FitToBranch` fitting the whole tree without the builder's rings; `MarkScaleFor` never returning below 1. The three
+named failures are exactly the three predicted.
 
 ---
 
