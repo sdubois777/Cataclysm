@@ -34,7 +34,7 @@ Decisions made outside the Google Drive documents, newest first.
   points: Gadgets can attack enemies through terrain within their range" has no row, because gadgets already ignore
   terrain: nothing in the code checks line of sight. The coordinating session accepted that note.
 - **SIX JUDGEMENTS OF THE WRITING SESSION**, each labelled again where it is built:
-  - Rapid Deployment cuts only what the player pays. Overcharge and Overclock still count the full 2 Fervour per point,
+  - Rapid Deployment cuts only what the player pays (ACCEPTED by the coordinating session on 2026-11-28). Overcharge and Overclock still count the full 2 Fervour per point,
     so buying the cost cut does not shrink their bonuses. A pool too short to pay empowers with the share actually paid.
   - Coordinated Strike's "+8% bonus damage per point" makes the gadget's shot 1 + 8% per point of its normal shot. It
     answers the player's own hits only, never a device's or a minion's hit.
@@ -50,6 +50,10 @@ Decisions made outside the Google Drive documents, newest first.
 **The coordinating session, 2026-11-28, on the window 2 plan (seven readings):**
 1. **Efficient Design** (`Saboteur_basic_gadget_stem_003`): "Each other active gadget reduces the Fervour your gadgets
    reserve by 1% per point." It counts toward the 75% reservation cap.
+   **How the code counts "other":** a gadget's reserve is read once, when it is placed, before the new gadget
+   exists (`ACataclysmMinion::PlaceSkillGadget` calls `SkillGadgetReserveFor` before `Spawn`). So `gadgets_active` then
+   counts only the gadgets already standing, and a first gadget gets no reduction. A gadget placed later does not
+   lower the reserve of one already standing, because nothing re-reads a reserve that is already held.
 2. **Scrap and Rebuild** (`Saboteur_basic_gadget_deep_003`), the gadget MOVE cooldown, since placing has no cooldown:
    "When a gadget is destroyed gain 5 Fervour per point and your next gadget move is ready 2 seconds sooner per point."
 3. **Hair Wire Expertise** (`Saboteur_basic_trap_mid_004`): "+8% trap arming speed per point for each unique trap type
