@@ -2,6 +2,50 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-28 — A walk resumed from a save loads paused, through the game's own pause, until the player presses a key or button (#2970)
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp`: `HoldUntilFirstInput`, `ReleaseTheHold`,
+  `PressEndsTheHold`, `IsHeldUntilFirstInput`, and the first lines of `InputKey`.
+- `game/Source/Cataclysm/Save/CataclysmSaveLoad.h` and `.cpp`: `FCataclysmLoadReport::bResumedAWalk` and
+  `bHeldUntilFirstInput`; `FCataclysmSaveLoad::CharacterAndRun` asks for the hold.
+- `game/Source/Cataclysm/Interface/CataclysmHUD.h` and `.cpp`: `DrawResumeHoldLine`.
+- `game/Source/Cataclysm/Tests/CataclysmResumeHoldTests.cpp`, and one test in `CataclysmSaveLoadTests.cpp`.
+
+**The problem.** Continuing a character whose walk was saved mid-floor put it back among the creatures that stood
+around it, and they attacked at once. On 2026-11-27 a copy of the owner's character resumed on floor 2 of 8 of a Horde
+dungeon with 439 creatures standing, took 107 hits in about 12 seconds and died.
+
+**The owner's rulings, verbatim.** 2026-11-27: "yes, it should probably give you a few seconds, or until you press any
+button before enemies aggro on you again". Then, the same day: "it will also need to freeze all of your minions until
+you press a button as well. Maybe just make them load in paused?"
+
+**What was built.** When `FCataclysmSaveLoad::CharacterAndRun` enters a dungeon again at its saved floor
+(`ACataclysmDungeonGameMode::ResumeEmpireDungeon` succeeds), it asks the game's controller for
+`HoldUntilFirstInput`, last, after the placement. That pauses through `APlayerController::SetPause`, the pause Esc
+uses, so creatures, the player's minions, cooldowns, damage over time and every dungeon timer stop together. No pause
+screen is shown; the heads-up display draws "Press any key or button to resume" in the middle of the screen. The first
+press of a key or button, read in `InputKey`, ends the hold and the world runs. Both ways a load runs go through
+`CharacterAndRun`: the select screen's Continue (`ACataclysmGameMode::LoadThePendingCharacter`) and the console
+command `Cataclysm.LoadCharacter`.
+
+**Judgements, not ruled:**
+- **No time limit.** The first ruling named "a few seconds" as the other choice; the second ruling's pause has no
+  limit, so a player who stepped away is still safe.
+- **The press that ends the hold does nothing else.** `InputKey` takes every event while held, so the first key does
+  not also cast a skill into the creatures beside the player, and Esc does not also open the pause screen.
+- **What counts as a press:** a press of any keyboard key, mouse button or gamepad button, Esc included. Not a
+  release, a repeat, the mouse wheel, or an analogue axis such as the mouse moving or a stick.
+- **Not held:** a load outside a dungeon, entering a new floor or a new dungeon, and a character the placement leaves
+  dead, whose death would otherwise wait for a key.
+- **A click that an interface widget takes does not end the hold**, most likely, because the widget handles the click
+  before `InputKey` sees it; a key press still does. No full screen opens on a resume. The floor's modifier panel is put
+  up when the floor starts, and whether it takes clicks was not checked.
+
+**Not compiled and not run when this was written.**
+
+---
+
 ## 2026-11-27 — The game holds every loaded object of the Paragon art packs for the rest of the session, which stops the packaged game's crash when a Paragon creature is drawn again after a garbage collection (#2968)
 
 **Affects:**

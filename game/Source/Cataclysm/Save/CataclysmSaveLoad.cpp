@@ -8,6 +8,8 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayerController.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSurge.h"
 #include "Engine/World.h"
@@ -323,9 +325,10 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 		{
 			// THE DUNGEON ENTERED AGAIN AT THE SAVED FLOOR, then the floor's creatures and drops put back onto what
 			// it built. Asked of nothing that can refuse: every refusal of `ResumeEmpireDungeon` is asked above.
-			if (!DungeonMode->ResumeEmpireDungeon(SavedRun->CurrentDungeonId, SavedRun->Floor.Floor,
-												  SavedRun->Floor.bOnTheDarkFloor, SavedRun->Floor.DarkFloorFellFrom,
-												  &SavedRun->Walk))
+			Report.bResumedAWalk = DungeonMode->ResumeEmpireDungeon(SavedRun->CurrentDungeonId, SavedRun->Floor.Floor,
+																	SavedRun->Floor.bOnTheDarkFloor,
+																	SavedRun->Floor.DarkFloorFellFrom, &SavedRun->Walk);
+			if (!Report.bResumedAWalk)
 			{
 				UE_LOG(LogCataclysm, Error, TEXT("Cataclysm.LoadCharacter: dungeon %d could not be entered again at "
 												 "floor %d after every check for it had passed."),
@@ -436,6 +439,20 @@ FCataclysmLoadReport FCataclysmSaveLoad::CharacterAndRun(UWorld& World, ACatacly
 	if (!bPlaced)
 	{
 		Character.ApplyChosenClassStats(); // A load with no saved pools: full at the loaded level.
+	}
+
+	// A RESUMED WALK IS PAUSED UNTIL THE PLAYER'S FIRST PRESS. Issue #2970, the project owner, 2026-11-27: "Maybe just
+	// make them load in paused?" LAST, after the placement, so nothing above runs in a paused world. ONLY A WALK RESUMED
+	// INSIDE A DUNGEON: a load in the capital, entering a new floor and entering a new dungeon are not held. NOT A
+	// CHARACTER THE PLACEMENT LEFT DEAD, whose death would otherwise wait for a key. Only the game's own controller
+	// holds; a test scene's plain `APlayerController` does not.
+	if (Report.bResumedAWalk && !UCataclysmSkillEffects::IsDead(&Character))
+	{
+		if (ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(Character.GetController()))
+		{
+			Report.bHeldUntilFirstInput = true;
+			Controller->HoldUntilFirstInput();
+		}
 	}
 
 	if (SavedRun)

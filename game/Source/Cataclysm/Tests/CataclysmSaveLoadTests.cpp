@@ -61,7 +61,9 @@
 #include "Player/CataclysmPlayLoopLog.h"
 #include "Player/CataclysmCapitalGameMode.h"
 #include "Player/CataclysmGameMode.h"
+#include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
+#include "GameFramework/GameModeBase.h"
 #include "Save/CataclysmSaveApply.h"
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveLoad.h"
@@ -1170,6 +1172,140 @@ bool FCataclysmSaveLoadDungeonTest::RunTest(const FString&)
 	TestEqual(TEXT("no part of a day"), PartialDay, Saved.PartialDay, 0.0001f);
 	TestEqual(TEXT("and the walk owes the days it owed"), DaysOwed, Saved.DaysOwed);
 	TestEqual(TEXT("the character's place, health and potions came back"), Held, Saved.Held);
+	return true;
+}
+
+namespace CataclysmSaveLoadTest
+{
+	/**
+	 * Puts the game's own controller on the scene's character, in place of the plain one `MakeScene` gives it, and the
+	 * engine's own game mode into the world, which the engine's pause asks (`CataclysmPauseTests.cpp` says why a test
+	 * world needs one). The dungeon game mode stays a spawned actor, as `MakeDungeonScene` leaves it. Issue #2970.
+	 */
+	ACataclysmPlayerController* GiveTheGamesController(FLoadScene& Scene)
+	{
+		FURL WithTheEnginesGameMode;
+		WithTheEnginesGameMode.AddOption(TEXT("game=/Script/Engine.GameModeBase"));
+		Scene.World->SetGameMode(WithTheEnginesGameMode);
+
+		ACataclysmPlayerController* Controller = Scene.World->SpawnActor<ACataclysmPlayerController>();
+		if (!Controller)
+		{
+			return nullptr;
+		}
+		Controller->SetActorTickEnabled(false);
+		Controller->SetPlayerState(Scene.State);
+		Controller->Possess(Scene.Character); // Takes the character from the plain controller.
+		return Controller;
+	}
+}
+
+/**
+ * A walk resumed from a save is paused until the player's first press, and a load outside a dungeon is not. Issue #2970.
+ * The project owner, 2026-11-27: "Maybe just make them load in paused?" Prints "RESUME HELD".
+ *
+ * THE CONTROLS: the load outside a dungeon, with the same controller, resumes no walk and holds nothing; and before the dungeon
+ * load the world runs. THE PRESS is a click, sent where the game viewport delivers one; after it the world runs.
+ * `Cataclysm.ResumeHold.TheHoldPausesTheWorldUntilAPressAndTheWorldRunsAfterIt` shows a held world's clocks stand still.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveLoadResumeHeldTest,
+	"Cataclysm.SaveLoad.AWalkResumedFromASaveIsPausedUntilTheFirstPress",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveLoadResumeHeldTest::RunTest(const FString&)
+{
+	using namespace CataclysmSaveLoadTest;
+
+	// CONTROL: A LOAD OUTSIDE A DUNGEON, with the game's controller.
+	bool bOutsideResumed = true;
+	bool bOutsideHeld = true;
+	bool bOutsidePaused = true;
+	{
+		FSaved SavedOutside;
+		ON_SCOPE_EXIT { SavedOutside.Forget(); };
+		if (!SaveACharacter(*this, /*bDies=*/false, SavedOutside))
+		{
+			return false;
+		}
+		FLoadScene Outside = MakeScene();
+		ACataclysmPlayerController* OutsideController = Outside.IsUsable() ? GiveTheGamesController(Outside) : nullptr;
+		if (!TestTrue(TEXT("set-up: the loading world outside a dungeon was built, with the game's controller"),
+					  Outside.IsUsable() && OutsideController && Outside.World->GetAuthGameMode()))
+		{
+			if (Outside.World)
+			{
+				Outside.World->DestroyWorld(false);
+			}
+			return false;
+		}
+		ON_SCOPE_EXIT { Outside.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*Outside.World, *Outside.Character,
+																				 SavedOutside.CharacterId);
+		TestEqual(TEXT("set-up: the load outside a dungeon put the character back"), static_cast<int32>(Report.Outcome),
+				  static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+		bOutsideResumed = Report.bResumedAWalk;
+		bOutsideHeld = Report.bHeldUntilFirstInput || OutsideController->IsHeldUntilFirstInput();
+		bOutsidePaused = Outside.World->IsPaused();
+	}
+
+	// THE WALK SAVED INSIDE A DUNGEON.
+	FSavedInADungeon Saved;
+	ON_SCOPE_EXIT { Saved.Forget(); };
+	if (!SaveInADungeon(*this, /*bDies=*/false, /*bWithTheGuide=*/false, /*Floor=*/2, Saved))
+	{
+		return false;
+	}
+	FDungeonScene Scene = MakeDungeonScene();
+	ACataclysmPlayerController* Controller = Scene.IsUsable() ? GiveTheGamesController(Scene.Base) : nullptr;
+	if (!TestTrue(TEXT("set-up: the loading dungeon world was built, with the game's controller"),
+				  Scene.IsUsable() && Controller && Scene.Base.World->GetAuthGameMode()))
+	{
+		if (Scene.Base.World)
+		{
+			Scene.Base.World->DestroyWorld(false);
+		}
+		return false;
+	}
+	ON_SCOPE_EXIT { Scene.Base.World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+	UWorld* World = Scene.Base.World;
+
+	const bool bRanBefore = !World->IsPaused();
+	const FCataclysmLoadReport Report = FCataclysmSaveLoad::CharacterAndRun(*World, *Scene.Base.Character,
+																			 Saved.CharacterId);
+	const bool bHeld = Controller->IsHeldUntilFirstInput();
+	const bool bPaused = World->IsPaused();
+
+	const bool bClickTaken =
+		Controller->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::LeftMouseButton, IE_Pressed, 1.0f));
+	const bool bHeldAfter = Controller->IsHeldUntilFirstInput();
+	const bool bPausedAfter = World->IsPaused();
+
+	AddInfo(FString::Printf(TEXT("RESUME HELD: load outside a dungeon resumed a walk %s, held %s, paused %s; dungeon load %s (%s), "
+								 "floor %d (saved %d); ran before %s; resumed a walk %s, held %s (report %s), paused %s; "
+								 "click taken %s, held after %s, paused after %s"),
+							bOutsideResumed ? TEXT("YES") : TEXT("no"), bOutsideHeld ? TEXT("YES") : TEXT("no"),
+							bOutsidePaused ? TEXT("YES") : TEXT("no"), FCataclysmSaveLoad::Describe(Report.Outcome),
+							*Report.Why, Scene.Mode->FloorNumber, Saved.Floor, bRanBefore ? TEXT("yes") : TEXT("NO"),
+							Report.bResumedAWalk ? TEXT("yes") : TEXT("NO"), bHeld ? TEXT("yes") : TEXT("NO"),
+							Report.bHeldUntilFirstInput ? TEXT("yes") : TEXT("NO"), bPaused ? TEXT("yes") : TEXT("NO"),
+							bClickTaken ? TEXT("yes") : TEXT("NO"), bHeldAfter ? TEXT("YES") : TEXT("no"),
+							bPausedAfter ? TEXT("YES") : TEXT("no")));
+
+	TestFalse(TEXT("CONTROL: a load outside a dungeon resumes no walk"), bOutsideResumed);
+	TestFalse(TEXT("CONTROL: and holds nothing"), bOutsideHeld);
+	TestFalse(TEXT("CONTROL: and leaves the world running"), bOutsidePaused);
+	TestTrue(TEXT("CONTROL: the dungeon world ran before its load"), bRanBefore);
+	TestEqual(TEXT("the dungeon load put the character and its run back"), static_cast<int32>(Report.Outcome),
+			  static_cast<int32>(ECataclysmLoadOutcome::Loaded));
+	TestEqual(TEXT("on the floor it was saved on"), Scene.Mode->FloorNumber, Saved.Floor);
+	TestTrue(TEXT("the load says it resumed a walk"), Report.bResumedAWalk);
+	TestTrue(TEXT("and that it held it"), Report.bHeldUntilFirstInput);
+	TestTrue(TEXT("the controller holds the walk until a press"), bHeld);
+	TestTrue(TEXT("and the world is paused"), bPaused);
+	TestTrue(TEXT("the click is taken"), bClickTaken);
+	TestFalse(TEXT("and ends the hold"), bHeldAfter);
+	TestFalse(TEXT("and the world runs"), bPausedAfter);
 	return true;
 }
 

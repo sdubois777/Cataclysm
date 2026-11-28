@@ -46,6 +46,20 @@ struct CATACLYSM_API FCataclysmLoadReport
 
 	/** Where the record says the character stood, when `bPutWhereSaved`. */
 	FVector SavedLocation = FVector::ZeroVector;
+
+	/**
+	 * Whether the load entered a dungeon again at the floor it was saved on (`ACataclysmDungeonGameMode::
+	 * ResumeEmpireDungeon` succeeded): a walk resumed. False in the capital, with no run record, and on a refusal.
+	 * Issue #2970.
+	 */
+	bool bResumedAWalk = false;
+
+	/**
+	 * Whether the load asked the game's controller to pause the resumed walk until the first press
+	 * (`ACataclysmPlayerController::HoldUntilFirstInput`). False when no walk was resumed, when the placement left the
+	 * character dead, and when the character's controller is not the game's. Issue #2970.
+	 */
+	bool bHeldUntilFirstInput = false;
 };
 
 /**
