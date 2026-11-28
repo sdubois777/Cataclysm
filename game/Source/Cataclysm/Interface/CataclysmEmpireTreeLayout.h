@@ -65,6 +65,24 @@ public:
 	 *  (`UCataclysmPassiveTreeLayout::MarkSizePx`), whose kinds the empire tree's file writes in the same words. */
 	static FVector2D MarkSizeFor(const FCataclysmEmpireTreeNodeRow& Row);
 
+	/** The colour a node's mark is drawn in, by its kind: an ordinary node grey, a keystone a lighter blue-grey, a
+	 *  capstone gold -- the colours of the preview the owner approved on 2026-11-27, read as sRGB. */
+	static FLinearColor MarkColourFor(const FCataclysmEmpireTreeNodeRow& Row);
+
+	/** The screen's background: the preview's near-black, opaque, so the empire map does not show through. */
+	static FLinearColor BackdropColour();
+
+	/** The clear space round the whole tree's view, in panel units: less than `UCataclysmPassiveTreeLayout::FitMarginPx`,
+	 *  which leaves room for a node's name beside it, because the whole tree's outermost things are its rings, lines
+	 *  and labels. A branch's view keeps the class tree's margin. At 1280 by 720 the class tree's margin left the ring
+	 *  about 376 pixels across (the packaged game, 2026-11-27). */
+	static constexpr float WholeTreeFitMarginPx = 24.0f;
+
+	/** The thinnest a ring or a line is drawn, in panel units. Two, not one and a half: at a 720 pixel high window
+	 *  Slate draws a panel unit two thirds of a pixel, and a piece one pixel wide turned exactly upright on a whole
+	 *  pixel's edge was drawn as nothing in the packaged game (the vertical quadrant line, 2026-11-27). */
+	static constexpr float ThinnestDecorationPx = 2.0f;
+
 	/**
 	 * The largest the whole tree's marks may be drawn without two overlapping: `UCataclysmPassiveTreeLayout::MarkScaleFor`'s
 	 * rule over the empire tree's rows -- a pair clear on either axis misses, each mark's own size counted, the smallest
@@ -96,8 +114,8 @@ public:
 	 *  is 4/3 of a pixel, so three quarters of the size in pixels, and never below 1. */
 	static int32 LabelFontSize(float FontSize, float Zoom);
 
-	/** How thick a ring or a line is drawn on the panel: its thickness at the zoom, and never thinner than one and a
-	 *  half pixels, so a ring drawn 1 unit thick at a fitted zoom of about 0.4 is still seen. */
+	/** How thick a ring or a line is drawn on the panel: its thickness at the zoom, and never thinner than
+	 *  `ThinnestDecorationPx`, so a ring drawn 1 unit thick at a fitted zoom of about 0.4 is still seen. */
 	static float DecorationThicknessPx(float Thickness, float Zoom);
 
 	/**

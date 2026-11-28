@@ -142,6 +142,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Creation")
 	void SetDimmed(bool bInDimmed);
 
+	/**
+	 * Draw the button's body as a flat square of this colour, for a tree's mark.
+	 *
+	 * THE EMPIRE TREE SCREEN'S MARKS, 2026-11-27: the button style's own grey drew every node alike, and the preview the
+	 * owner approved draws an ordinary node, a keystone and a capstone in three colours. The label keeps its state
+	 * colours (`SetDimmed`, chosen). A button never told this keeps the Widget Blueprint's style. SAFE TO CALL BEFORE
+	 * THE WIDGET IS CONSTRUCTED, like `SetChoice`.
+	 */
+	void SetMarkColour(const FLinearColor& Colour);
+
+	/** The colour `SetMarkColour` last gave, and whether it was ever given. For tests. */
+	const FLinearColor& GetMarkColour() const { return MarkColour; }
+	bool HasMarkColour() const { return bHasMarkColour; }
+
 	/** Whether the label is drawn dimmed by `SetDimmed`. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	bool IsDimmed() const { return bDimmed; }
@@ -221,6 +235,10 @@ private:
 	bool bChosen = false;
 	bool bAvailable = true;
 	bool bDimmed = false;
+
+	/** What `SetMarkColour` was last told, and whether it was told at all. */
+	FLinearColor MarkColour = FLinearColor::White;
+	bool bHasMarkColour = false;
 
 	/** What `SetLabelScale` was last told. */
 	float LabelScale = 1.0f;

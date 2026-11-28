@@ -2,6 +2,38 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The empire upgrade tree screen as the packaged game draws it: an opaque near-black background, each kind of mark in its own colour, no ring or line thinner than 2 units, and the whole tree fitted with a 24 unit margin
+
+**Affects:**
+- `game/Source/Cataclysm/Interface/CataclysmEmpireTreeLayout.h` and `.cpp`: `MarkColourFor`, `BackdropColour`,
+  `WholeTreeFitMarginPx` (24), `ThinnestDecorationPx` (2).
+- `game/Source/Cataclysm/Interface/CataclysmEmpireTreeWidget.h` and `.cpp`: the `Backdrop` border bound and made opaque;
+  each node's button given its kind's colour; the whole view fitted at the new margin.
+- `game/Source/Cataclysm/Interface/CataclysmChoiceButton.h` and `.cpp`: `SetMarkColour`, which only the empire tree
+  calls. The class tree screen's buttons are unchanged.
+- `game/Source/Cataclysm/Interface/CataclysmPassiveTreeLayout.h` and `.cpp`: `ZoomToFit` with a margin of the caller's.
+
+**Why.** The coordinating session packaged development 3c996f2ad and opened the screen in a 1280 by 720 window
+(`.claude/windows/emp_ingame/` on the worktree that made this change). Against the preview the owner approved in the
+entry below ("Yes! That looks beautiful"), four things differed. Each was measured from the screenshot before anything
+was changed:
+
+| What the screenshot showed | What it was | What changed |
+| :-- | :-- | :-- |
+| The empire map's city boxes under the rings | The shared panel colour, linear (0.039, 0.059, 0.071) at 0.94 opacity, which is sRGB (55, 68, 75); the screenshot's background is (56, 69, 75). The map shows through the other 6% | This screen's backdrop is the preview's sRGB (14, 16, 22), opaque. Every other screen keeps the shared panel |
+| No vertical quadrant line, and a green horizontal one | The horizontal line's middle row is (92, 105, 173), blue; the green beside it is the JPEG's. The vertical line drew no pixel. No UI scale rule is set, so at 720 pixels high a panel unit is about two thirds of a pixel and the 1.5 unit minimum was one pixel: a judgement, not proved, is that a one pixel piece turned exactly upright on a whole pixel's edge covers no pixel's centre | No ring or line thinner than 2 units. **Only the packaged game can show the line now draws**; the tests run with no renderer |
+| Every node light grey, of every kind | The button style's own grey, about (188, 188, 188), whatever the kind or state; "cannot buy yet" colours only the label, and a node holding no points has none | A node's button is a flat square in its kind's preview colour: ordinary (110, 120, 135), keystone (150, 160, 175), capstone (200, 176, 120). The label keeps the state's colour |
+| The ring about 376 pixels across in a 720 pixel window | The whole view fitted the line ends (800 from the middle) inside the class tree's 90 unit margin, in a panel about 790 units high once the title, the list, Respec and Close have theirs | The whole view's margin is 24 units: the ring about 686 units, 87% of the panel's height. A branch's view keeps 90, which leaves room for a hovered node's name |
+
+**Judgements, not read off the preview.** The preview's colours were its script's own, and are now the game's. The
+state of a node stays where it was, on its label, rather than in a second colour on the mark. The preview filled about
+80% of its picture's height because the picture had no title or buttons; the screen cannot, and 87% of the panel is
+what the 24 unit margin gives.
+
+**Not built or run when this was written.**
+
+---
+
 ## 2026-11-27 — The empire upgrade tree screen draws the whole tree at once, as the owner built it: every node at its file position, the builder's rings, lines and labels, and each node a mark
 
 **Affects:**
@@ -62,7 +94,8 @@ stops generation (`EMPIRE_TREE_DECORATION_KINDS`). The file's `viewport` (the bu
 
 - **A ring is drawn as straight pieces**, one for every 8 units of radius, 24 to 96, because UMG has no circle: the
   largest ring's pieces are about 48 units long. A ring or line is never drawn thinner than 1.5 pixels, so the builder's
-  1-unit lines are seen at a fitted zoom of about 0.45.
+  1-unit lines are seen at a fitted zoom of about 0.45. (2 units since the entry above, which the packaged game showed
+  was needed.)
 - **A label's size follows the zoom**, as the builder's does, so the words keep their place against the rings: a 15-unit
   quadrant name is about 7 pixels at the fitted zoom, and readable zoomed in.
 - **An edge is the class screen's 10 px, scaled with the marks**, so it keeps its proportion to the marks it joins.

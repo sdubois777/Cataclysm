@@ -144,6 +144,12 @@ FVector2D UCataclysmPassiveTreeLayout::NameCaptionPosition(FVector2D MarkCentre,
 float UCataclysmPassiveTreeLayout::ZoomToFit(const FCataclysmTreeExtent& Extent,
 											 FVector2D CanvasSize)
 {
+	return ZoomToFit(Extent, CanvasSize, FitMarginPx);
+}
+
+float UCataclysmPassiveTreeLayout::ZoomToFit(const FCataclysmTreeExtent& Extent,
+											 FVector2D CanvasSize, float MarginPx)
+{
 	if (!Extent.bAny)
 	{
 		return ClampZoom(1.0f);
@@ -152,8 +158,8 @@ float UCataclysmPassiveTreeLayout::ZoomToFit(const FCataclysmTreeExtent& Extent,
 	// WHAT IS LEFT ONCE THE MARGIN HAS BEEN TAKEN OFF BOTH SIDES. A node is
 	// drawn centred on its position, so without the margin half of the outermost
 	// node on each side would sit off the panel.
-	const FVector2D Room(CanvasSize.X - FitMarginPx * 2.0,
-						 CanvasSize.Y - FitMarginPx * 2.0);
+	const FVector2D Room(CanvasSize.X - MarginPx * 2.0,
+						 CanvasSize.Y - MarginPx * 2.0);
 
 	// A PANEL WITH NO ROOM LEFT IS NOT THE SAME AS A TREE WITH NO SIZE, and
 	// reading them as one thing was a real fault a test caught. A panel smaller

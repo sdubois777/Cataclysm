@@ -2,6 +2,7 @@
 
 #include "Interface/CataclysmEmpireTreeWidget.h"
 #include "Cataclysm.h"
+#include "Components/Border.h"
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
@@ -332,6 +333,13 @@ void UCataclysmEmpireTreeWidget::NativeConstruct()
 		TitleLabel->SetText(Title);
 	}
 
+	// OPAQUE, IN THE PREVIEW'S NEAR-BLACK: the shared panel colour lets the empire map show through at 6%, and its city
+	// boxes read through the rings (the packaged game, 2026-11-27).
+	if (Backdrop)
+	{
+		Backdrop->SetBrushColor(UCataclysmEmpireTreeLayout::BackdropColour());
+	}
+
 	if (RespecButton)
 	{
 		RespecButton->OnClicked.AddUniqueDynamic(this, &UCataclysmEmpireTreeWidget::HandleRespecClicked);
@@ -602,6 +610,8 @@ void UCataclysmEmpireTreeWidget::DescribeNodeButton(UCataclysmChoiceButton& Butt
 	Button.SetChoice(Node, FText::FromString(UCataclysmPassiveTreeLayout::MarkCaption(Points, Row->MaxPoints)), Points > 0,
 					 true);
 	Button.SetDimmed(!Refusal.IsEmpty() && !bAwaitsChoice);
+	// THE MARK IN ITS KIND'S COLOUR, as the approved preview draws it; the label keeps the state's colour.
+	Button.SetMarkColour(UCataclysmEmpireTreeLayout::MarkColourFor(*Row));
 	Button.SetToolTipText(FText::FromString(bAwaitsChoice ? FString() : Refusal));
 }
 
@@ -642,7 +652,9 @@ void UCataclysmEmpireTreeWidget::FitToBranch()
 	}
 	const FVector2D Size = CanvasSize();
 	Focus = Extent.Centre();
-	Zoom = UCataclysmPassiveTreeLayout::ZoomToFit(Extent, Size);
+	Zoom = ShownBranch == UCataclysmEmpireTreeLayout::WholeTreeView
+		? UCataclysmPassiveTreeLayout::ZoomToFit(Extent, Size, UCataclysmEmpireTreeLayout::WholeTreeFitMarginPx)
+		: UCataclysmPassiveTreeLayout::ZoomToFit(Extent, Size);
 	FittedAgainst = Size;
 	PlaceGraph();
 }

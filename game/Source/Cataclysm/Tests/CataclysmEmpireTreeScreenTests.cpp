@@ -454,9 +454,13 @@ bool FCataclysmEmpireTreeScreenPositionsTest::RunTest(const FString&)
 
 /**
  * The whole tree's view holds the builder's outermost ring, which is wider than the nodes: the four points where the
- * 740 ring meets the axes are inside the panel, no nearer its edge than the fit margin less a pixel. THE CONTROL: the
- * nodes alone reach 630 below the middle and the ring 740, so a view fitted to the nodes alone puts the ring's lowest
- * point about 57 pixels past the margin. Prints "RING".
+ * 740 ring meets the axes are inside the panel, no nearer its edge than the whole view's margin less a pixel. THE
+ * CONTROL: the nodes alone reach 630 below the middle and the ring 740, so a view fitted to the nodes alone puts the
+ * ring's lowest point past the margin.
+ *
+ * AND THE RING FILLS THE PANEL a 1280 by 720 window gives it, about 1824 by 790 of Slate's units: at least 85% of its
+ * height across. THE CONTROL: the class tree's 90 unit margin, which the whole view used until the packaged game showed
+ * the ring 376 pixels across in a 720 pixel window (2026-11-27), leaves it about 71%. Prints "RING".
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenRingTest,
 	"Cataclysm.EmpireTreeScreen.TheWholeTreesViewHoldsItsOutermostRing",
@@ -474,7 +478,7 @@ bool FCataclysmEmpireTreeScreenRingTest::RunTest(const FString&)
 	Screen->SetPanelSizeForTests(Panel);
 	Screen->ShowBranch(UCataclysmEmpireTreeLayout::WholeTreeView);
 
-	const double Margin = UCataclysmPassiveTreeLayout::FitMarginPx - 1.0;
+	const double Margin = UCataclysmEmpireTreeLayout::WholeTreeFitMarginPx - 1.0;
 	TArray<FString> Parts;
 	for (const FVector2D& Point : {FVector2D(740.0, 0.0), FVector2D(-740.0, 0.0), FVector2D(0.0, 740.0), FVector2D(0.0, -740.0)})
 	{
@@ -492,6 +496,106 @@ bool FCataclysmEmpireTreeScreenRingTest::RunTest(const FString&)
 	TestTrue(FString::Printf(TEXT("CONTROL: fitted to the nodes alone, the ring's lowest point would be at %.1f, past %.1f"),
 							 Lowest.Y, Panel.Y - Margin),
 			 Lowest.Y > Panel.Y - Margin);
+
+	// THE RING FILLS A 1280 BY 720 WINDOW'S PANEL: its diameter on the panel, against the panel's height.
+	const FVector2D Window(1824.0, 790.0);
+	Screen->SetPanelSizeForTests(Window);
+	Screen->ShowBranch(TEXT("Architect"));
+	Screen->ShowBranch(UCataclysmEmpireTreeLayout::WholeTreeView);
+	const double Across = 2.0 * 740.0 * Screen->GetZoom();
+	const FCataclysmTreeExtent Whole = UCataclysmEmpireTreeLayout::WithDecorations(
+		UCataclysmEmpireTreeLayout::ExtentOf(Nodes, UCataclysmEmpireTreeLayout::WholeTreeView),
+		UCataclysmEmpireTree::LoadDecorationTable());
+	const double AcrossAtTheClassMargin = 2.0 * 740.0 * UCataclysmPassiveTreeLayout::ZoomToFit(Whole, Window);
+	AddInfo(FString::Printf(TEXT("RING: at %.0f by %.0f the ring is %.1f across, %.1f%% of the height; at the class tree's "
+								 "margin %.1f, %.1f%%"),
+							Window.X, Window.Y, Across, 100.0 * Across / Window.Y, AcrossAtTheClassMargin,
+							100.0 * AcrossAtTheClassMargin / Window.Y));
+	TestTrue(TEXT("at a 1280 by 720 window's panel the ring is at least 85% of its height across"),
+			 Across >= 0.85 * Window.Y);
+	TestTrue(TEXT("CONTROL: at the class tree's margin it would be less"), AcrossAtTheClassMargin < 0.85 * Window.Y);
+
+	// THE LINES' TIPS STAY ON THE PANEL: the panel clips what is past its edge.
+	for (const FVector2D& Tip : {FVector2D(800.0, 0.0), FVector2D(-800.0, 0.0), FVector2D(0.0, 800.0), FVector2D(0.0, -800.0)})
+	{
+		const FVector2D At = UCataclysmPassiveTreeLayout::ScreenPositionFor(Tip, Screen->GetFocus(), Screen->GetZoom(), Window);
+		TestTrue(FString::Printf(TEXT("the line's tip (%.0f, %.0f) is on the panel, at (%.1f, %.1f)"), Tip.X, Tip.Y, At.X, At.Y),
+				 At.X >= 0.0 && At.X <= Window.X && At.Y >= 0.0 && At.Y <= Window.Y);
+	}
+	return true;
+}
+
+/**
+ * Each kind of node is drawn in its own colour, the colours of the preview the owner approved on 2026-11-27: an ordinary
+ * node grey, a keystone a lighter blue-grey, a capstone gold. The screen gives a node's button its kind's colour, and the
+ * label keeps the state's colour. And the screen's background is the preview's near-black, opaque. THE CONTROL: a button
+ * the screen never described keeps the Widget Blueprint's style, which drew every node of the packaged game alike.
+ * Prints "MARKS".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEmpireTreeScreenMarkColoursTest,
+	"Cataclysm.EmpireTreeScreen.EachKindOfMarkIsDrawnInItsOwnColour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEmpireTreeScreenMarkColoursTest::RunTest(const FString&)
+{
+	using namespace CataclysmEmpireTreeScreenTest;
+
+	FTreeScreenScene Scene = MakeScene(/*bSoloSelfFound*/ false, /*bWithARun*/ false);
+	ON_SCOPE_EXIT
+	{
+		if (Scene.World)
+		{
+			Scene.World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+		}
+	};
+	const UDataTable* Nodes = UCataclysmEmpireTree::LoadNodeTable();
+	UCataclysmEmpireTreeWidget* Screen = MakeScreen(Scene);
+	if (!TestTrue(TEXT("set-up: the scene was built"), Scene.IsUsable()) || !TestNotNull(TEXT("set-up: the node table"), Nodes)
+		|| !TestNotNull(TEXT("set-up: the screen"), Screen))
+	{
+		return false;
+	}
+
+	// ONE NODE OF EACH KIND, read from the table: the first keystone, and the named ordinary node and capstone.
+	FName Keystone;
+	for (const TPair<FName, uint8*>& Pair : Nodes->GetRowMap())
+	{
+		const FCataclysmEmpireTreeNodeRow* Row = reinterpret_cast<const FCataclysmEmpireTreeNodeRow*>(Pair.Value);
+		if (Row && UCataclysmPassiveTreeLayout::MarkFor(Row->Kind) == ECataclysmTreeMark::Keystone)
+		{
+			Keystone = Pair.Key;
+			break;
+		}
+	}
+	if (!TestFalse(TEXT("set-up: the tree has a keystone"), Keystone.IsNone()))
+	{
+		return false;
+	}
+
+	TMap<FName, FColor> Drawn;
+	TArray<FString> Parts;
+	const TPair<FName, FColor> Expected[] = {
+		{StructuralIntegrity, FColor(110, 120, 135)}, {Keystone, FColor(150, 160, 175)}, {Foundations, FColor(200, 176, 120)}};
+	for (const TPair<FName, FColor>& Each : Expected)
+	{
+		UCataclysmChoiceButton* Button = NewObject<UCataclysmChoiceButton>();
+		Screen->DescribeNodeButtonForTests(*Button, Each.Key);
+		const FColor Colour = Button->GetMarkColour().ToFColor(/*bSRGB=*/true);
+		Drawn.Add(Each.Key, Colour);
+		Parts.Add(FString::Printf(TEXT("%s %s"), *Each.Key.ToString(), *Colour.ToHex()));
+		TestTrue(FString::Printf(TEXT("%s's button is given a mark colour"), *Each.Key.ToString()), Button->HasMarkColour());
+		TestEqual(FString::Printf(TEXT("%s is drawn in the preview's colour for its kind"), *Each.Key.ToString()), Colour,
+				  Each.Value);
+	}
+	AddInfo(FString::Printf(TEXT("MARKS: %s"), *FString::Join(Parts, TEXT("; "))));
+	TestNotEqual(TEXT("a capstone and a keystone read as different kinds"), Drawn.FindRef(Foundations), Drawn.FindRef(Keystone));
+	TestNotEqual(TEXT("and a keystone and an ordinary node"), Drawn.FindRef(Keystone), Drawn.FindRef(StructuralIntegrity));
+
+	TestEqual(TEXT("the background is the preview's near-black"),
+			  UCataclysmEmpireTreeLayout::BackdropColour().ToFColor(/*bSRGB=*/true), FColor(14, 16, 22, 255));
+
+	UCataclysmChoiceButton* NeverDescribed = NewObject<UCataclysmChoiceButton>();
+	TestFalse(TEXT("CONTROL: a button the screen never described has no mark colour"), NeverDescribed->HasMarkColour());
 	return true;
 }
 
@@ -578,8 +682,11 @@ bool FCataclysmEmpireTreeScreenDecorationsTest::RunTest(const FString&)
 			  FLinearColor::White);
 	TestEqual(TEXT("a 15 unit label at a zoom of 0.4 is 6 pixels, 5 of Slate's points"),
 			  UCataclysmEmpireTreeLayout::LabelFontSize(15.0f, 0.4f), 5);
-	TestEqual(TEXT("a ring 1 unit thick is never thinner than 1.5 pixels"),
-			  UCataclysmEmpireTreeLayout::DecorationThicknessPx(1.0f, 0.4f), 1.5f);
+	// TWO, SINCE THE PACKAGED GAME DREW NO UPRIGHT LINE AT 1.5 (2026-11-27): see `ThinnestDecorationPx`.
+	TestEqual(TEXT("a ring 1 unit thick is never thinner than 2 panel units"),
+			  UCataclysmEmpireTreeLayout::DecorationThicknessPx(1.0f, 0.4f), 2.0f);
+	TestEqual(TEXT("and a thick one keeps its thickness at the zoom"),
+			  UCataclysmEmpireTreeLayout::DecorationThicknessPx(10.0f, 0.4f), 4.0f);
 	return true;
 }
 
