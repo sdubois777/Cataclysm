@@ -5540,6 +5540,17 @@ public:
 	float SecondsInCombat() const;
 
 	/**
+	 * Seconds of combat held, for `combat_seconds_held` (Grinding Advance, the War trees' engine slice E3, 2026-11-27):
+	 * what was carried into this combat plus how long it has lasted while in combat; out of combat, what was held when it
+	 * lapsed less a second for each second since -- half a second under `combat_seconds_fall_slower` -- and never below
+	 * nought. Nought for a character never in combat, -1 with no world.
+	 */
+	float CombatSecondsHeld() const;
+
+	/** `combat_seconds_fall_slower`, Grinding Advance's 5-point flag. Read unconditioned, with no tags. War trees E3. */
+	static const TCHAR* CombatSecondsFallSlowerStat;
+
+	/**
 	 * How long the character has been out of combat, in seconds, or -1 when it
 	 * is in combat or cannot be read. Issue #1815. With no combat event since
 	 * its spawn or revival, it counts from that.
@@ -7084,6 +7095,9 @@ protected:
 
 	/** When the next blocked lethal hit may be survived, or -1 for never survived one. The Last Bastion (E3). */
 	float BlockedLethalHitSurvivalNextAllowedSeconds = -1.0f;
+
+	/** The seconds of combat held when the current combat began. See `CombatSecondsHeld`. War trees E3. */
+	float CombatSecondsCarriedIn = 0.0f;
 
 	/**
 	 * Whether some row in `StatInputs` is scaled by `increased_max_health`, set by `NoteWhatTheRowsAsk` whenever the

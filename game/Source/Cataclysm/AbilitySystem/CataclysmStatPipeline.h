@@ -3299,6 +3299,17 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Point Of Maximum Health From Other Sources"),
 
 	/**
+	 * `Value` per `ScaleStep` SECONDS OF COMBAT HELD: Grinding Advance, "+1% damage reduction per point for every 10
+	 * seconds in continuous combat (multiplicative), stacking up to 5 times. At 5 points: Combat duration stacks are lost
+	 * 50% slower when leaving combat." The War trees' engine slice E3 (2026-11-27). Read from `CombatSecondsHeld`
+	 * (`UCataclysmAbilitySystemComponent::CombatSecondsHeld`): it rises a second a second in combat, falls a second a
+	 * second out of it -- half that under `combat_seconds_fall_slower` -- and what is left carries into the next combat.
+	 * The falling is a judgement: "lost 50% slower" means nothing if the stacks vanish when combat ends.
+	 */
+	PerSecondOfCombatHeld
+		UMETA(DisplayName = "Per Second Of Combat Held"),
+
+	/**
 	 * `Value` per hostile character the character STRUCK IN THE LAST 3 SECONDS: Dancing Blades, "each unique enemy you
 	 * have hit in the last 3 seconds drains 2 additional Fervour per second". The War trees' slice E1 (2026-11-27). Read
 	 * from `EnemiesStruckRecently`, which `WithEnemiesInReach` counts when a row asks: every hostile within
@@ -3863,6 +3874,9 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	/** Maximum health from other sources, for `PerPointOfMaximumHealthFromOtherSources`, or -1 unread. War trees E3. */
 	float MaximumHealthFromOtherSources = -1.0f;
+
+	/** Seconds of combat held, for `PerSecondOfCombatHeld`, or -1 unread. War trees E3 (Grinding Advance). */
+	float CombatSecondsHeld = -1.0f;
 
 	/** Hostiles this character struck in the last 3 seconds, for `PerEnemyStruckRecently`, or -1 unread. War trees E1. */
 	int32 EnemiesStruckRecently = -1;

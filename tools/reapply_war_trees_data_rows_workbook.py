@@ -374,6 +374,11 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
      (R("blocked_lethal_hit_survived_every_seconds", "flat", 120),
       R("damage_immunity_after_blocked_lethal_hit_seconds", "flat", 2),
       R("fervour_on_blocked_lethal_hit_survived", "flat", 100))),
+    # GRINDING ADVANCE: "+1% damage reduction per point for every 10 seconds in continuous combat (multiplicative),
+    # stacking up to 5 times. At 5 points: Combat duration stacks are lost 50% slower when leaving combat."
+    ("Bulwark_basic_jg_t3_002", "Grinding Advance",
+     (R("damage_reduction", "more", 1, scale="combat_seconds_held", step=10, cap=5),
+      R("combat_seconds_fall_slower", "flat", 1, min_points=5))),
 )
 
 #: Every node this script writes.

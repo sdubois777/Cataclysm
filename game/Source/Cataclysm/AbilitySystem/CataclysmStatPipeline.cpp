@@ -232,6 +232,7 @@ namespace
 		{ TEXT("target_health_missing"), ECataclysmStatScale::PerPercentOfTargetHealthMissing },
 		{ TEXT("increased_max_health"), ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth },
 		{ TEXT("max_health_from_other_sources"), ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources },
+		{ TEXT("combat_seconds_held"), ECataclysmStatScale::PerSecondOfCombatHeld },
 		{ TEXT("enemies_struck_recently"), ECataclysmStatScale::PerEnemyStruckRecently },
 		{ TEXT("enemies_that_struck_you_recently"), ECataclysmStatScale::PerEnemyThatStruckYouRecently },
 		{ TEXT("remains_in_reach"),    ECataclysmStatScale::PerOwnRemainsInReach },
@@ -2440,6 +2441,16 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			return 0.0f;
 		}
 		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(State.IncreasedMaximumHealthPercent / Modifier.ScaleStep));
+	}
+
+	// SECONDS OF COMBAT HELD IN WHOLE STEPS, the shape of the seconds in combat one. The War trees' slice E3.
+	case ECataclysmStatScale::PerSecondOfCombatHeld:
+	{
+		if (State.CombatSecondsHeld < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(State.CombatSecondsHeld / Modifier.ScaleStep));
 	}
 
 	// MAXIMUM HEALTH FROM OTHER SOURCES IN WHOLE STEPS, the shape of the maximum health one. The War trees' slice E3.

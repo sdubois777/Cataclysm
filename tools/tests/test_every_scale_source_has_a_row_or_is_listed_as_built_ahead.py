@@ -225,8 +225,9 @@ KNOWN_USED = "debuffs_carried"
 #: `bleeding_enemies_in_reach`, `class_resource_held_percent`, `target_health_missing`, `increased_max_health`,
 #: `enemies_struck_recently` and `enemies_that_struck_you_recently`. 58 sources; `damage_reduction` is still the one
 #: no row names.
-#: AND 58 WHEN ENGINE SLICE E3 JOINED (2026-11-27): `max_health_from_other_sources`, Colossus's (R3). 59 sources.
-EXPECTED_NAMED_BY_A_ROW = 58
+#: AND 58 WHEN ENGINE SLICE E3 JOINED (2026-11-27): `max_health_from_other_sources`, Colossus's (R3), and 59 with
+#: `combat_seconds_held`, Grinding Advance's. 60 sources.
+EXPECTED_NAMED_BY_A_ROW = 59
 
 
 def scales_named_by_a_row() -> set[str]:

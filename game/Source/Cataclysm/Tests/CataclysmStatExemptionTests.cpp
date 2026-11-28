@@ -8589,6 +8589,51 @@ namespace CataclysmStatExemptionTest
 		Test.TestFalse(TEXT("and the save waits its 120 seconds"), Saved->MaySurviveBlockedLethalHit());
 	}
 
+	/**
+	 * `combat_seconds_fall_slower`, read by `UCataclysmAbilitySystemComponent::CombatSecondsHeld`. The War trees' engine
+	 * slice E3 (2026-11-27), Grinding Advance. Two characters each take one combat event and the world runs on past the
+	 * lapse; the seconds held fall half as fast for the one holding the flag, so it holds more.
+	 */
+	void ProbeCombatSecondsFallSlower(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlat(Holding.Actor, TEXT("combat_seconds_fall_slower"), 1.0f);
+		UCataclysmAbilitySystemComponent* PlainSystem = Cast<UCataclysmAbilitySystemComponent>(Plain.AbilitySystem);
+		UCataclysmAbilitySystemComponent* HoldingSystem = Cast<UCataclysmAbilitySystemComponent>(Holding.AbilitySystem);
+		if (!PlainSystem || !HoldingSystem)
+		{
+			return;
+		}
+		PlainSystem->NoteHitDealt();
+		HoldingSystem->NoteHitDealt();
+		// TEN SECONDS IN COMBAT: an event each second keeps the combat going.
+		for (int32 Second = 0; Second < 10; ++Second)
+		{
+			World->TimeSeconds += 1.0f;
+			PlainSystem->NoteHitDealt();
+			HoldingSystem->NoteHitDealt();
+		}
+		// THEN OUT OF COMBAT: the 3 second lapse and 4 more.
+		for (int32 Second = 0; Second < 7; ++Second)
+		{
+			World->TimeSeconds += 1.0f;
+		}
+		const float PlainHeld = PlainSystem->CombatSecondsHeld();
+		const float HoldingHeld = HoldingSystem->CombatSecondsHeld();
+		Test.TestTrue(*FString::Printf(TEXT("control: out of combat, the plain character's seconds held fell: %.2f"),
+					  PlainHeld), PlainHeld >= 0.0f && PlainHeld < 12.0f);
+		Test.TestTrue(*FString::Printf(TEXT("combat_seconds_fall_slower is read: the holder keeps more, %.2f against %.2f"),
+									   HoldingHeld, PlainHeld),
+					  HoldingHeld > PlainHeld + 1.0f);
+	}
+
 	// ------------------------------------------------------------------------
 	// THE SEVEN THE SHIPPED PASSIVES CONDITION THAT WERE READ AND NOT RUN.
 	// Issue #2236. Each was listed in `READ_FROM_THE_CODE_AND_NOT_PROBED` in
@@ -16865,6 +16910,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("blocked_lethal_hit_survived_every_seconds"), &ProbeBlockedLethalHitSurvived},
 			{TEXT("damage_immunity_after_blocked_lethal_hit_seconds"), &ProbeBlockedLethalHitSurvived},
 			{TEXT("fervour_on_blocked_lethal_hit_survived"), &ProbeBlockedLethalHitSurvived},
+			{TEXT("combat_seconds_fall_slower"), &ProbeCombatSecondsFallSlower},
 			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			// THE FERVOUR SPENDS, 2026-11-25.
 			{TEXT("fervour_cost_per_negated_block"), &ProbeCostPerNegatedBlock},

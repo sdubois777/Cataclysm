@@ -1356,6 +1356,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND THE SABOTEUR'S "UNDER ATTACK", 2026-11-25: since one of this character's gadgets took a landed blow.
 	State.SecondsSinceGadgetStruck = SecondsSinceGadgetStruck();
 	State.SecondsInCombat = SecondsInCombat();
+	// AND THE SECONDS OF COMBAT HELD, for `combat_seconds_held` (Grinding Advance, the War trees' engine slice E3).
+	State.CombatSecondsHeld = CombatSecondsHeld();
 	State.SecondsOutOfCombat = SecondsOutOfCombat();
 
 	// AND WHETHER A CHANNELLED SKILL OF ITS OWN IS RUNNING, AND FOR HOW LONG.
@@ -4661,9 +4663,43 @@ void UCataclysmAbilitySystemComponent::NoteCombatEvent()
 	if (LastCombatEventAtSeconds < 0.0f
 		|| Now - LastCombatEventAtSeconds > CombatLapseSeconds)
 	{
+		// WHAT IS STILL HELD FROM THE LAST COMBAT IS CARRIED INTO THIS ONE, asked before the clocks move (Grinding
+		// Advance, the War trees' engine slice E3).
+		CombatSecondsCarriedIn = FMath::Max(0.0f, CombatSecondsHeld());
 		CombatStartedAtSeconds = Now;
 	}
 	LastCombatEventAtSeconds = Now;
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::CombatSecondsFallSlowerStat = TEXT("combat_seconds_fall_slower");
+
+float UCataclysmAbilitySystemComponent::CombatSecondsHeld() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return -1.0f;
+	}
+	if (LastCombatEventAtSeconds < 0.0f || CombatStartedAtSeconds < 0.0f)
+	{
+		return 0.0f;
+	}
+	const float InCombat = SecondsInCombat();
+	if (InCombat >= 0.0f)
+	{
+		return CombatSecondsCarriedIn + InCombat;
+	}
+	// OUT OF COMBAT: what was held when the combat lapsed, falling. THE FLAG IS READ WITHOUT A STATE, so asking it never
+	// asks `CurrentConditions`, which asks this.
+	const float AtLapse =
+		CombatSecondsCarriedIn + FMath::Max(0.0f, LastCombatEventAtSeconds + CombatLapseSeconds - CombatStartedAtSeconds);
+	const FCataclysmStatInputs* Slower = StatInputs.Find(FName(CombatSecondsFallSlowerStat));
+	const float Rate = Slower
+			&& UCataclysmStatPipeline::Evaluate(0.0f, Slower->Modifiers, FGameplayTagContainer()).Final > 0.0f
+		? 0.5f
+		: 1.0f;
+	const float Since = FMath::Max(0.0f, World->GetTimeSeconds() - LastCombatEventAtSeconds - CombatLapseSeconds);
+	return FMath::Max(0.0f, AtLapse - Rate * Since);
 }
 
 float UCataclysmAbilitySystemComponent::SecondsInCombat() const

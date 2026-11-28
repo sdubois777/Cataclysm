@@ -6789,6 +6789,9 @@ SCALES = {
     # 1,000 (Colossus, R3), the War trees' engine slice E3 (2026-11-27): the `max_health` line's unconditional, unscaled
     # rows, so never its own.
     "max_health_from_other_sources": (0.0, 1000000.0, "maximum health"),
+    # AND "for every 10 seconds in continuous combat" WHEN ITS STACKS ARE "lost 50% slower when leaving combat" is
+    # `combat_seconds_held` (Grinding Advance), the same slice: seconds held, rising in combat and falling out of it.
+    "combat_seconds_held": (0.0, 600.0, "a number of seconds"),
 
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish
