@@ -2,7 +2,6 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-<<<<<<< HEAD
 ## 2026-11-27 — The empire upgrade tree screen draws the whole tree at once, as the owner built it: every node at its file position, the builder's rings, lines and labels, and each node a mark
 
 **Affects:**
@@ -76,7 +75,9 @@ stops generation (`EMPIRE_TREE_DECORATION_KINDS`). The file's `viewport` (the bu
   draws them.
 
 **Not built or run when this was written.** The run table follows when the window runs.
-=======
+
+---
+
 ## 2026-11-27 — An aura reserves maximum mana while it is on and drains none: 50 at skill level 1, lowered by the skill's level and by three new reserve stats, the summed percent held at 75% for mana and Fervour alike
 
 **Affects:**
@@ -337,7 +338,6 @@ reach an aura, which costs nothing.
   NoReductionTakesAReserveBelowOnePoint, AnAuraReservesHealthWhenTheManaPoolBecameHealth | restored: 20 tests performed,
   20 succeeded, 0 failed". The eight are exactly the eight predicted; the source hash was the same before and after.
 - **Nothing has been seen in play.**
->>>>>>> origin/development
 
 ---
 
