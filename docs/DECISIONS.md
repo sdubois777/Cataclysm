@@ -42,7 +42,20 @@ command `Cataclysm.LoadCharacter`.
   before `InputKey` sees it; a key press still does. No full screen opens on a resume. The floor's modifier panel is put
   up when the floor starts, and whether it takes clicks was not checked.
 
-**Not compiled and not run when this was written.**
+**Window resume-w1, 2026-11-28, at 1dda47127** (329a1d0a4 with development 54892742d merged in), every figure registered
+with the coordinating session before the run:
+
+| Step | Registered | Printed |
+| :-- | :-- | :-- |
+| Three compiles: as committed, the five changed `.cpp` files each alone, the unity files again | succeed | all `Build: Succeeded`, 0 compiler warning or error lines; build 2 compiled the five files alone |
+| `Cataclysm.ResumeHold.` alone | 3 | `3 tests performed, 3 succeeded, 0 failed` |
+| The whole Unreal suite | 6151, 63 skipped halves, 898 saves | `6151 tests performed, 6151 succeeded, 0 failed`, 63 skipped halves; `898 written and deleted, 0 left behind` |
+| Python beside it, `python -u -m pytest --junit-xml=...` | no failure | `9763 passed, 10 skipped`; JUnit tests 9773, failures 0, errors 0, skipped 10; `ruff check .` clean |
+| C++ guard proof (a): the save loader's hold condition inverted | 1 named failure, then 1 of 1 | `PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed: AWalkResumedFromASaveIsPausedUntilTheFirstPress \| restored: 1 tests performed, 1 succeeded, 0 failed` |
+| C++ guard proof (b): ending the hold unpauses only while the pause screen is wanted | 2 named failures, then 3 of 3 | `PROVED: with the break in: 3 tests performed, 1 succeeded, 2 failed: EscDuringTheHoldEndsItAndPutsUpNoPauseScreen, TheHoldPausesTheWorldUntilAPressAndTheWorldRunsAfterIt \| restored: 3 tests performed, 3 succeeded, 0 failed` |
+
+**Not shown by any test:** the line drawn on the screen, a real key reaching `InputKey` through the game viewport, and
+whether the floor's modifier panel takes a click. The coordinating session checks the first two in the packaged game.
 
 ---
 
