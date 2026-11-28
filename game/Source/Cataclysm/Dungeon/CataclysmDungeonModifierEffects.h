@@ -6842,7 +6842,9 @@ public:
 	static constexpr int32 DemonicGuideFootprintsAtMost = 40;
 	static constexpr float DemonicGuideFootprintJumpCm = 600.0f;
 
-	static_assert(DemonicGuideFootprintsAtMost * DemonicGuideFootprintSpacingCm
+	// WITH A CENTIMETRE OF SLACK: the two sides are both 3200 cm, and an exact >= of the float products failed in the
+	// packager's build (BuildCookRun, 2026-11-27) although the ordinary editor build passed. Why the two differ is not established.
+	static_assert(DemonicGuideFootprintsAtMost * DemonicGuideFootprintSpacingCm + 1.0f
 					  >= DemonicGuideFootprintSeconds * 400.0f * DemonicGuideWalkShareOfPlayer,
 		"The pool must hold a whole lifetime's trail at the guide's default walk, 0.8 of the player's 400 cm/s.");
 

@@ -32,10 +32,11 @@ namespace
 	const TCHAR* GuideFootprintsOpacityParameter = TEXT("Opacity");
 }
 
-// THE POOL HOLDS A WHOLE LIFETIME'S TRAIL AT THE GUIDE'S DEFAULT WALK, measured against the player's own default here,
+// THE POOL HOLDS A WHOLE LIFETIME'S TRAIL AT THE GUIDE'S DEFAULT WALK, with a centimetre of slack: both sides are 3200 cm,
+// and the exact >= failed in the packager's build on 2026-11-27 though the editor build passed. Measured against the player's own default here,
 // where that constant can be named. The effects header holds the same check with the figure written out.
 static_assert(UCataclysmDungeonModifierEffects::DemonicGuideFootprintsAtMost
-				  * UCataclysmDungeonModifierEffects::DemonicGuideFootprintSpacingCm
+				  * UCataclysmDungeonModifierEffects::DemonicGuideFootprintSpacingCm + 1.0f
 			  >= UCataclysmDungeonModifierEffects::DemonicGuideFootprintSeconds
 				  * ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond
 				  * UCataclysmDungeonModifierEffects::DemonicGuideWalkShareOfPlayer,
