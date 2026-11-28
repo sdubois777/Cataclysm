@@ -240,6 +240,48 @@ public:
 	float SummonersGadgetStat(const TCHAR* Stat) const;
 
 	/**
+	 * THE WAR TREES' WINDOW 2 (2026-11-28), A GADGET'S OWN READINGS AND STATE. `FillGadgetReadings` writes this gadget's
+	 * health share, its empowered and overclocked Fervour, the seconds since it fell below a quarter of its health and
+	 * whether Jury Rigged saved it into `State`; its summoner's ability system calls it while this gadget's stat is asked.
+	 */
+	void FillGadgetReadings(struct FCataclysmStatConditions& State) const;
+
+	/**
+	 * Empower this gadget with `NominalFervour` (Overcharge): the summoner pays it less `gadget_empower_cost_less`, or
+	 * nothing when `bFree`, and the gadget counts the whole nominal figure (a judgement: the cost is what Rapid Deployment
+	 * lowers, not the bonus). Its maximum health and health are raised by `HealthPercentPerFervour` for each Fervour.
+	 * Returns what the summoner paid.
+	 */
+	float Empower(float NominalFervour, float HealthPercentPerFervour, bool bFree);
+
+	/** Begin Overclock's drain: `NominalFervour` over `Seconds`, paid as `Empower` pays, counted as it is drained. */
+	void BeginOverclock(float NominalFervour, float Seconds, bool bFree);
+
+	/**
+	 * Jury Rigged's save, asked where a blow would destroy this gadget: when its summoner holds
+	 * `gadget_survives_lethal_once` and it has not been saved this placing, it is now, and the blow leaves it 1 HP.
+	 */
+	bool TryJuryRig();
+
+	/** The stats window 2 reads off the summoner for its gadgets, by name. */
+	static const TCHAR* GadgetEmpowerCostLessStat;
+	static const TCHAR* GadgetEmpowerFreeEverySecondsStat;
+	static const TCHAR* GadgetSurvivesLethalOnceStat;
+	static const TCHAR* GadgetRegenPercentAboveHalfStat;
+
+	/** Overclock's step, the fall below a quarter, and Persistent Systems' regeneration, run by `GadgetStep`. */
+	void StepGadgetReadings(float StepSeconds);
+
+	float EmpoweredFervour = 0.0f;
+	float OverclockFervourDrained = 0.0f;
+	float OverclockFervourLeft = 0.0f;
+	float OverclockSecondsLeft = 0.0f;
+	float OverclockPaidShare = 1.0f;
+	float FellBelowQuarterAtSeconds = -1.0f;
+	bool bWasBelowQuarter = false;
+	bool bJuryRigged = false;
+
+	/**
 	 * How far past its reach a body may measure and still be within it, in centimetres. A body placed at exactly
 	 * the reach can measure a hair beyond it in floating point; this is far inside the 2 cm the brain already
 	 * allows a creature in contact (`ACataclysmEnemyController::ContactToleranceCm`).

@@ -1083,6 +1083,11 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// AND HOW LONG IT HAS STOOD AND WHETHER IT IS THE COMMANDER'S BIGGEST PERMANENT MINION, for Old Bones and First Among
 	// the Dead (the Death line's finishing slice B, 2026-11-26).
 	UCataclysmNecromancerArmy::FillAskingMinionState(State, Self, AskingMinion);
+	// AND A GADGET ASKING, ITS OWN READINGS (the War trees' window 2, 2026-11-28).
+	if (const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(AskingMinion))
+	{
+		Gadget->FillGadgetReadings(State);
+	}
 	// AND, FOR A MINION SLICE B'S FILL GAVE NO AGE, ITS TIME SINCE IT WAS MADE: slice C's figure for Swollen, AFTER the
 	// fill, which writes the age from when the minion came under command only while the age is still unset. Before the
 	// bundle (window dfb-w1) slice C's line ran first and always won, so Old Bones never read a back-dated command time.
@@ -1960,6 +1965,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		State.MinionSecondsActive = PricedFor->GetGameTimeSinceCreation();
 		State.bIsMoving = false;
 		State.SecondsSinceMoved = PricedFor->SecondsSinceSkillGadgetPlaced();
+		// AND ITS OWN READINGS (the War trees' window 2, 2026-11-28).
+		PricedFor->FillGadgetReadings(State);
 	}
 
 	// THE CLASS RESOURCE'S MAXIMUM WITH ITS ROWS THAT HOLD NOW, IN ONE PASS, LAST BUT ONE. The War vow options' second
@@ -7073,6 +7080,31 @@ const TCHAR* UCataclysmAbilitySystemComponent::FervourOfFrenzyDrainSecondsAction
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationBurstOnKillAction = TEXT("retaliation_burst_on_kill");
 const TCHAR* UCataclysmAbilitySystemComponent::EchoStrikeLaterAction = TEXT("echo_strike_later");
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetsPulledToPlacedAction = TEXT("gadgets_pulled_to_placed");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetEmpoweredAction = TEXT("gadget_empowered");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetOverclockedAction = TEXT("gadget_overclocked");
+
+bool UCataclysmAbilitySystemComponent::IsEmpowermentFree(const AActor* Gadget)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Gadget)
+	{
+		return false;
+	}
+	if (FreeEmpowerGadget.Get() == Gadget)
+	{
+		return true;
+	}
+	const float Every = StatForSkill(FName(ACataclysmMinion::GadgetEmpowerFreeEverySecondsStat),
+									 FGameplayTagContainer(), 0.0f);
+	const float Now = World->GetTimeSeconds();
+	if (Every <= 0.0f || (NextFreeEmpowerAtSeconds >= 0.0f && Now < NextFreeEmpowerAtSeconds))
+	{
+		return false;
+	}
+	NextFreeEmpowerAtSeconds = Now + Every;
+	FreeEmpowerGadget = Gadget;
+	return true;
+}
 const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfBlockedDamageAction =
 	TEXT("next_attack_bonus_of_blocked_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::BloodForBloodReflectPercentStat = TEXT("blood_for_blood_reflect_percent");
@@ -10116,6 +10148,27 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						UCataclysmSkillEffects::ApplyDirectDamage(
 							Self, Near, LastRetaliationTaken * Action.Percent / 100.0f, Burst);
 					}
+				}
+			}
+			continue;
+		}
+		// THE GADGET JUST PLACED, EMPOWERED OR OVERCLOCKED: Overcharge and Overclock (the War trees' window 2, 2026-11-28).
+		if (Action.bGadgetEmpowered || Action.bGadgetOverclocked)
+		{
+			ACataclysmMinion* Placed = Cast<ACataclysmMinion>(const_cast<AActor*>(EventTarget));
+			if (bLanded && Placed && Placed->IsGadget() && Action.Percent > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				const bool bFree = IsEmpowermentFree(Placed);
+				if (Action.bGadgetEmpowered)
+				{
+					Placed->Empower(Action.Percent, Action.EventValue, bFree);
+				}
+				else
+				{
+					Placed->BeginOverclock(Action.Percent, Action.EventValue, bFree);
 				}
 			}
 			continue;

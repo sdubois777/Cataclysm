@@ -1847,6 +1847,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					// AND FORWARD OPERATING BASE'S PULL, the War trees' window 2 (2026-11-28).
 					Action.bGadgetsPulledToPlaced = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::GadgetsPulledToPlacedAction, ESearchCase::IgnoreCase);
+					// AND OVERCHARGE AND OVERCLOCK, the same window.
+					Action.bGadgetEmpowered = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetEmpoweredAction, ESearchCase::IgnoreCase);
+					Action.bGadgetOverclocked = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetOverclockedAction, ESearchCase::IgnoreCase);
 					if (bArmourRemovedNearby)
 					{
 						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;

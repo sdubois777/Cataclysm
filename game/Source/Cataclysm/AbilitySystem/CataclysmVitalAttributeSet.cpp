@@ -1910,6 +1910,22 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					}
 				}
 
+				// AND JURY RIGGED: A GADGET A BLOW WOULD DESTROY IS LEFT 1 HP, ONCE A PLACING (the War trees' window 2,
+				// 2026-11-28). A tick too, as "would be destroyed" is about being destroyed. Its bonus rows read the save.
+				if (!bSavedFromALethalBlow && !Guarded->IsDamageImmune()
+					&& !Guarded->IsImmuneToDamageType(Hit.DamageType) && GetHealth() > 0.0f
+					&& Resolved.DealtToHealth >= GetHealth() && EmptiesHealthLessTheDelayedShare())
+				{
+					if (ACataclysmMinion* Rigged = Cast<ACataclysmMinion>(CataclysmDefendingBody(*this)))
+					{
+						if (Rigged->TryJuryRig())
+						{
+							bSavedFromALethalBlow = true;
+							Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+						}
+					}
+				}
+
 				// AND DEATH'S UNDYING WILL ON A WEARER THAT IS NOT A CREATURE, the player one Wearer of the Dead lent it:
 				// the owner's ruling of 2026-11-26, "you come back once with less health and more damage". Issue #2899.
 				// AFTER EVERY SAVE ABOVE, a judgement: it is the rising after a death each of them would have prevented,

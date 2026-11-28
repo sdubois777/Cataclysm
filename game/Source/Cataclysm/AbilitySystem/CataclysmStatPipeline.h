@@ -678,6 +678,14 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Player Stationary For Seconds"),
 
 	/**
+	 * THE GADGET WHOSE STAT IS ASKED FELL BELOW A QUARTER OF ITS HEALTH NO MORE THAN `Value` SECONDS AGO: Last Stand
+	 * Protocol's "When a gadget is reduced below 25% HP, it gains ... for 5 seconds". The War trees' window 2
+	 * (2026-11-28). Read from `SecondsSinceGadgetFellBelowQuarter`; never fallen, or no gadget named, -1, refuses.
+	 */
+	SecondsAfterGadgetFellBelowQuarter
+		UMETA(DisplayName = "Seconds After Gadget Fell Below Quarter"),
+
+	/**
 	 * The blow in hand was dealt after the character moved AT LEAST THAT FAR since
 	 * its own last attack. Issue #41, slice 2.
 	 *
@@ -2335,6 +2343,14 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	HitTakenWasUnblocked
 		UMETA(DisplayName = "Hit Taken Was Unblocked"),
+
+	/**
+	 * THE GADGET WHOSE STAT IS ASKED WAS SAVED BY JURY RIGGED AND IS BELOW FULL HEALTH: Jury Rigged's "+100% damage and
+	 * +100% attack speed until repaired to full HP" (ruled 2026-11-27: while below full health). The War trees' window 2
+	 * (2026-11-28). Read from `bGadgetReprieved` and `GadgetHealthPercent`; with no gadget named, unknown, it refuses.
+	 */
+	GadgetReprievedBelowFullHealth
+		UMETA(DisplayName = "Gadget Reprieved Below Full Health"),
 };
 
 /**
@@ -3362,6 +3378,14 @@ enum class ECataclysmStatScale : uint8
 	PerSecondPlayerStationary
 		UMETA(DisplayName = "Per Second Player Stationary"),
 
+	/** `Value` per `ScaleStep` Fervour the gadget asked was EMPOWERED WITH at its placing (Overcharge), window 2. */
+	PerFervourGadgetEmpowered
+		UMETA(DisplayName = "Per Fervour Gadget Empowered"),
+
+	/** `Value` per `ScaleStep` Fervour OVERCLOCK HAS DRAINED into the gadget asked, window 2. */
+	PerFervourGadgetOverclocked
+		UMETA(DisplayName = "Per Fervour Gadget Overclocked"),
+
 	/**
 	 * `Value` per hostile character the character STRUCK IN THE LAST 3 SECONDS: Dancing Blades, "each unique enemy you
 	 * have hit in the last 3 seconds drains 2 additional Fervour per second". The War trees' slice E1 (2026-11-27). Read
@@ -4329,6 +4353,18 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	/** How many distinct kinds of trap stand, a slot each, or -1 unread. Hair Wire Expertise (window 2). */
 	int32 TrapKindsActive = -1;
+
+	/**
+	 * THE GADGET WHOSE STAT IS ASKED, its own readings, filled by `ACataclysmMinion::FillGadgetReadings` while one is
+	 * named (its blow priced, its attack speed asked, or a War machine asking): its health share in per cent, the Fervour
+	 * it was empowered with and Overclock has drained into it, the seconds since it fell below a quarter of its health,
+	 * and whether Jury Rigged saved it. -1 (or 0 for the flag) with none named. The War trees' window 2 (2026-11-28).
+	 */
+	float GadgetHealthPercent = -1.0f;
+	float GadgetEmpoweredFervour = -1.0f;
+	float GadgetOverclockFervour = -1.0f;
+	float SecondsSinceGadgetFellBelowQuarter = -1.0f;
+	bool bGadgetReprieved = false;
 
 	/**
 	 * Seconds since the character last attacked. Issue #41, slice 2.
@@ -5749,6 +5785,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bGadgetsPulledToPlaced = false;
 
 	/**
+	 * The gadget the event names empowered with `Percent` Fervour, its health raised by `EventValue` per cent for each:
+	 * `gadget_empowered`, on `gadget_placed`. Overcharge, the War trees' window 2 (2026-11-28).
+	 */
+	bool bGadgetEmpowered = false;
+
+	/** The same gadget overclocked: `Percent` Fervour drained over `EventValue` seconds: `gadget_overclocked`. Overclock. */
+	bool bGadgetOverclocked = false;
+
+	/**
 	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed
 	 * (`UCataclysmAbilitySystemComponent::CanBeExecuted`: alive, no Boss, damage reaches it), loses the health it has left:
 	 * `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27), Killing Blow's "when you attack at maximum
@@ -6662,7 +6707,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-twenty-sixth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-twenty-ninth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -6679,7 +6724,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * SIXTY-THREE OF THE HUNDRED-AND-TWENTY-FIVE COMPARE NOTHING. They are the case labels
+	 * SIXTY-FOUR OF THE HUNDRED-AND-TWENTY-EIGHT COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

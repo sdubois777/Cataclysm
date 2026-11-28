@@ -6694,6 +6694,88 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and under one that holds, doubled"), Reach(30.0f), 2.0f, 0.0001f);
 	}
 
+	/**
+	 * `minion_attack_speed` under a condition, asked by `UCataclysmCommand::AttackIntervalScaleFor` with the summoner's
+	 * state: Last Stand Protocol and Jury Rigged, the War trees' window 2 (2026-11-28). TWO SUMMONERS, each holding 50
+	 * Fervour and +100% under "class resource above" a share: above 60% refuses and above 30% holds, so the second's
+	 * interval is half the first's.
+	 */
+	void ProbeConditionedMinionAttackSpeed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const auto Interval = [World](float AbovePercent)
+		{
+			FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
+			GiveAFervourPool(Holder);
+			Holder.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+			FCataclysmStatModifier Faster;
+			Faster.Bucket = ECataclysmStatBucket::Increased;
+			Faster.Source = ECataclysmModifierSource::PassiveKeystone;
+			Faster.Value = 100.0f;
+			Faster.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			Faster.ConditionValue = AbovePercent;
+			TMap<FName, FCataclysmStatInputs> Lines;
+			Lines.FindOrAdd(FName(TEXT("minion_attack_speed"))).Modifiers.Add(Faster);
+			Cast<UCataclysmAbilitySystemComponent>(Holder.AbilitySystem)->SetStatInputs(MoveTemp(Lines));
+			ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+				Holder.Actor, FVector(3.0f * M, 0, 0), /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+			const float Scale = Imp ? UCataclysmCommand::AttackIntervalScaleFor(Imp, nullptr) : -1.0f;
+			if (IsValid(Imp))
+			{
+				Imp->Destroy();
+			}
+			return Scale;
+		};
+		const float Refused = Interval(60.0f);
+		const float Holds = Interval(30.0f);
+		if (!Test.TestTrue(TEXT("minion_attack_speed: both intervals are positive"), Refused > 0.0f && Holds > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("minion_attack_speed under a condition that holds halves the interval of one refused"),
+					   Holds / Refused, 0.5f, 0.001f);
+	}
+
+	/**
+	 * `minion_reserve_percent_less` scaled, asked by `UCataclysmCommand::ReserveFor` with the state: Efficient Design's
+	 * "by 1% per point" for each other active gadget, the War trees' window 2 (2026-11-28). ONE SUMMONER, 50 per own
+	 * stack: an imp's 10 is reserved whole before the stack and 5 with it.
+	 */
+	void ProbeScaledMinionReservePercentLess(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		const FName Key(TEXT("Probe_minion_reserve_percent_less"));
+		FCataclysmStatModifier PerStack;
+		PerStack.Bucket = ECataclysmStatBucket::Flat;
+		PerStack.Source = ECataclysmModifierSource::PassiveKeystone;
+		PerStack.Value = 50.0f;
+		PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+		PerStack.ScaleStep = 1.0f;
+		PerStack.ScaleMaxSteps = 1;
+		PerStack.StackKey = Key;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.FindOrAdd(FName(UCataclysmCommand::MinionReservePercentLessStat)).Modifiers = {PerStack};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		const FGameplayTagContainer ImpTags = ACataclysmMinion::TagsOfType(TEXT("Imp"));
+		Test.TestEqual(TEXT("minion_reserve_percent_less: before the stack an imp reserves its 10"),
+					   UCataclysmCommand::ReserveFor(Summoner.Actor, 10.0f, ImpTags), 10.0f, 0.0001f);
+		Summoner.AbilitySystem->GrantOwnStack(Key, /*WindowSeconds=*/60.0f, /*Cap=*/1);
+		Test.TestEqual(TEXT("and with it 5, so ReserveFor asks it with the state"),
+					   UCataclysmCommand::ReserveFor(Summoner.Actor, 10.0f, ImpTags), 5.0f, 0.0001f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -6720,6 +6802,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_second"),         &ProbeScaledFervourPerSecond},
 			{TEXT("trap_arming_speed"),          &ProbeScaledTrapArmingSpeed},
 			{TEXT("minion_range"),               &ProbeScaledMinionRange},
+			// AND EFFICIENT DESIGN'S RESERVE, window 2 (2026-11-28).
+			{TEXT("minion_reserve_percent_less"), &ProbeScaledMinionReservePercentLess},
 			{TEXT("fervour_from_minions"),       &ProbeScaledFervourFromMinions},
 			{TEXT("fervour_per_enemy_in_reach"), &ProbeScaledFervourPerEnemyInReach},
 			{TEXT("fervour_drain_per_second"),   &ProbeScaledFervourDrainPerSecond},
@@ -14616,6 +14700,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("berserking_spends_half"), &ProbeConditionedBerserkingSpendsHalf},
 			{TEXT("block_chance_floor"), &ProbeConditionedBlockChanceFloor},
 			{TEXT("minion_range"), &ProbeConditionedMinionRange},
+			// AND LAST STAND PROTOCOL'S AND JURY RIGGED'S GADGET ATTACK SPEED, window 2 (2026-11-28).
+			{TEXT("minion_attack_speed"), &ProbeConditionedMinionAttackSpeed},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -17373,8 +17459,9 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
 	// FORTY-EIGHT SINCE THE WAR TREES' ENGINE SLICES E1 TO E3 (2026-11-27): E1's three immunities, unmitigated
 	// retaliation and the retaliation radius, E2's full-circle swing and Fervour per enemy hit, and E3's Bloodied,
-	// Berserker's Rage and Eye of the Storm. FORTY-NINE SINCE WINDOW 2 (2026-11-28): Siege Mode's gadget range.
-	if (!TestEqual(TEXT("the forty-nine probes are all here"), ConditionedProbes().Num(), 49))
+	// Berserker's Rage and Eye of the Storm. FORTY-NINE SINCE WINDOW 2 (2026-11-28): Siege Mode's gadget range. FIFTY THE SAME DAY: Last Stand
+	// Protocol's and Jury Rigged's gadget attack speed.
+	if (!TestEqual(TEXT("the fifty probes are all here"), ConditionedProbes().Num(), 50))
 	{
 		return false;
 	}

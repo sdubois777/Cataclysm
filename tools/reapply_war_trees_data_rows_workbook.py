@@ -469,9 +469,11 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # point from all sources." The enemy that set the trap off; one mark, its window refreshed.
     ("Saboteur_basic_trap_ql_004", "Marked Territory",
      (R(None, "", 5, action="enemy_damage_taken", action_event="trap_triggered", stack_seconds=5, cap=1),)),
-    # PERSISTENT SYSTEMS, THE 4-POINT HALF: "Gadgets that survive for 20 seconds gain a permanent +10% damage stack."
+    # PERSISTENT SYSTEMS (ruled 2026-11-28): "Gadgets above 50% HP regenerate 1.5% of their maximum HP per second per
+    # point. At 4 points: Gadgets that survive for 20 seconds gain a permanent +10% damage stack."
     ("Saboteur_basic_gadget_sus_002", "Persistent Systems",
-     (R("minion_damage", "increased", 10, tags=GADGET, scale="minion_seconds_active", step=20, cap=1, min_points=4),)),
+     (R("gadget_regen_percent_above_half", "flat", 1.5),
+      R("minion_damage", "increased", 10, tags=GADGET, scale="minion_seconds_active", step=20, cap=1, min_points=4))),
     # SCRAP AND REBUILD, THE FERVOUR HALF: "When a gadget is destroyed gain +5 Fervour per point".
     ("Saboteur_basic_gadget_deep_003", "Scrap and Rebuild",
      (R(None, "", 5, action="class_resource", action_event="gadget_destroyed", fraction_of="points"),)),
@@ -508,6 +510,35 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # line-of-sight test (`ACataclysmMinion`, `UCataclysmTargeting`), so it has no row.
     ("Saboteur_basic_gadget_deep_001", "Combat Engineer",
      (R("minion_range", "increased", 8, tags=GADGET, scale="gadgets_active", step=1),)),
+    # OVERCHARGE: "When a gadget is deployed, it automatically consumes 2 Fervour per point to grant +5% damage and +5% HP
+    # per Fervour consumed."
+    ("Saboteur_basic_gadget_stem_004", "Overcharge",
+     (R(None, "", 2, action="gadget_empowered", action_event="gadget_placed", event_value=5),
+      *_damage(5, tags=GADGET, scale="gadget_empowered_fervour", step=1))),
+    # OVERCLOCK: "When a gadget is deployed, it passively drains 2 Fervour per point over 10 seconds, gaining +5% attack
+    # speed for each Fervour drained."
+    ("Saboteur_basic_gadget_dep_002", "Overclock",
+     (R(None, "", 2, action="gadget_overclocked", action_event="gadget_placed", event_value=10),
+      R("minion_attack_speed", "increased", 5, tags=GADGET, scale="gadget_overclock_fervour", step=1))),
+    # RAPID DEPLOYMENT: "Reduces the Fervour cost of all automatic gadget empowerment effects by 1 per point. At 6 points:
+    # Once every 15 seconds, your next gadget deployment costs no Fervour to empower."
+    ("Saboteur_basic_gadget_dep_005", "Rapid Deployment",
+     (R("gadget_empower_cost_less", "flat", 1), R("gadget_empower_free_every_seconds", "flat", 15, min_points=6))),
+    # LAST STAND PROTOCOL: "When a gadget is reduced below 25% HP, it gains +8% attack speed and +8% damage per point for
+    # 5 seconds."
+    ("Saboteur_basic_gadget_dep_004", "Last Stand Protocol",
+     (R("minion_attack_speed", "increased", 8, tags=GADGET, cond="seconds_after_gadget_fell_below_quarter", cond_value=5),
+      *_damage(8, tags=GADGET, cond="seconds_after_gadget_fell_below_quarter", cond_value=5))),
+    # JURY RIGGED (ruled 2026-11-27): "Your gadgets cannot be destroyed. Instead, when they would be destroyed they are
+    # reduced to 1 HP and gain +100% damage and +100% attack speed while below full HP. Once per gadget per deployment."
+    ("Saboteur_basic_gadget_mid_007", "Jury Rigged",
+     (R("gadget_survives_lethal_once", "flat", 1),
+      R("minion_attack_speed", "increased", 100, tags=GADGET, cond="gadget_reprieved_below_full_health"),
+      *_damage(100, tags=GADGET, cond="gadget_reprieved_below_full_health"))),
+    # EFFICIENT DESIGN (ruled 2026-11-28): "Each other active gadget reduces the Fervour your gadgets reserve by 1% per
+    # point." Inside the 75% cap every reserve reduction shares.
+    ("Saboteur_basic_gadget_stem_003", "Efficient Design",
+     (R("minion_reserve_percent_less", "flat", 1, tags=GADGET, scale="gadgets_active", step=1),)),
 )
 
 NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES + E4_NODES

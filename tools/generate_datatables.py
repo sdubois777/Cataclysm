@@ -5716,6 +5716,10 @@ CONDITIONS = {
     # AND "Once you have stood still for 3 seconds" ON THE CHARACTER'S OWN CLOCK, never a gadget's: Siege Mode (R19, the
     # War trees' window 2, 2026-11-28).
     "player_stationary_for_seconds": (0.0, 60.0, "a number of seconds"),
+    # AND THE GADGET ASKED: Jury Rigged's "until repaired to full HP" after its save, and Last Stand Protocol's "When a
+    # gadget is reduced below 25% HP ... for 5 seconds" (window 2, 2026-11-28).
+    "gadget_reprieved_below_full_health": None,
+    "seconds_after_gadget_fell_below_quarter": (0.0, 60.0, "a number of seconds"),
 
     # "When your class resource is full, gain 10%-20% damage reduction for 3
     # seconds" is `seconds_after_resource_full` with 3. Issue #1815.
@@ -6808,6 +6812,10 @@ SCALES = {
     "evasion_before_removal": (0.0, 100.0, "a percentage of evasion chance"),
     "trap_kinds_active": (0.0, 10.0, "a number of trap kinds"),
     "player_seconds_stationary": (0.0, 60.0, "a number of seconds"),
+    # AND THE GADGET ASKED, ITS EMPOWERED AND OVERCLOCKED FERVOUR: Overcharge's "per Fervour consumed" and Overclock's
+    # "for each Fervour drained".
+    "gadget_empowered_fervour": (0.0, 1000.0, "an amount of the class resource"),
+    "gadget_overclock_fervour": (0.0, 1000.0, "an amount of the class resource"),
 
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish
@@ -8928,11 +8936,16 @@ ECHO_STRIKE_LATER_ACTION = "echo_strike_later"
 #: AND `gadgets_pulled_to_placed`, on `gadget_placed` only: every other gadget the wearer commands moves to a ring around
 #: the gadget just placed. Forward Operating Base, the War trees' window 2 (2026-11-28). Its value is 100, the whole rule.
 GADGETS_PULLED_TO_PLACED_ACTION = "gadgets_pulled_to_placed"
+#: AND `gadget_empowered` (Overcharge: the value in Fervour, the Event Value the health per cent for each) and
+#: `gadget_overclocked` (Overclock: the value in Fervour, drained over the Event Value in seconds), on `gadget_placed`.
+GADGET_EMPOWERED_ACTION = "gadget_empowered"
+GADGET_OVERCLOCKED_ACTION = "gadget_overclocked"
 RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION,
-                 GADGETS_PULLED_TO_PLACED_ACTION)
+                 GADGETS_PULLED_TO_PLACED_ACTION, GADGET_EMPOWERED_ACTION, GADGET_OVERCLOCKED_ACTION)
 RIDER_ACTION_EVENTS = {RETALIATION_BURST_ON_KILL_ACTION: ("kill",), ECHO_STRIKE_LATER_ACTION: ("hit_dealt",),
                        "next_attack_bonus_of_blocked_damage": ("block",),
-                       GADGETS_PULLED_TO_PLACED_ACTION: ("gadget_placed",)}
+                       GADGETS_PULLED_TO_PLACED_ACTION: ("gadget_placed",),
+                       GADGET_EMPOWERED_ACTION: ("gadget_placed",), GADGET_OVERCLOCKED_ACTION: ("gadget_placed",)}
 MOST_ECHO_DELAY_SECONDS = 5.0
 #: AND `execute_nearby_below`: every enemy within the row's Event Value in metres (required, up to
 #: `MAX_SMITE_NEARBY_BY_HIT_METRES`) below the value's per cent of its maximum health, that may be executed, loses the
@@ -12125,6 +12138,20 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_RETALIATION_PULSE_METRES:g}.")
+    elif action in (GADGET_EMPOWERED_ACTION, GADGET_OVERCLOCKED_ACTION):
+        # OR OVERCHARGE'S HEALTH PER CENT FOR EACH FERVOUR, AND OVERCLOCK'S
+        # SECONDS, required. The War trees' window 2 (2026-11-28).
+        what = ("the health per cent for each Fervour"
+                if action == GADGET_EMPOWERED_ACTION else "the seconds the drain lasts")
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} pays {action} and "
+                f"states no Event Value. It is {what}.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= 100:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states "
+                f"{event_value:g} for {what}. It is above 0 and up to 100.")
     elif event_value_text:
         raise DataError(
             f"Enchantment Effects row {index}: {name} states an Event Value on "
@@ -13039,6 +13066,9 @@ STATS_WITH_AN_ASKER = frozenset({
     # `ProbeScaledTrapArmingSpeed` and `ProbeScaledMinionRange`.
     "trap_arming_speed",
     "minion_range",
+    # AND EFFICIENT DESIGN'S RESERVE, "Each other active gadget reduces the Fervour your gadgets reserve by 1% per point"
+    # (ruled 2026-11-28), asked by `UCataclysmCommand::ReserveFor` with the state; `ProbeScaledMinionReservePercentLess`.
+    "minion_reserve_percent_less",
     "fervour_per_enemy_in_reach",
     "fervour_from_minions",
     "max_energy_shield",
@@ -13389,6 +13419,9 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # AND SIEGE MODE'S GADGET RANGE under "Once you have stood still for 3 seconds" (R19, window 2, 2026-11-28), asked by
     # `UCataclysmCommand::SummonerMultiplierFor` with the summoner's state; `ProbeConditionedMinionRange`.
     "minion_range": ASKER_PASSES_NOTHING_MORE,
+    # AND A GADGET'S ATTACK SPEED under its own readings (Last Stand Protocol, Jury Rigged), asked with the gadget named
+    # by `ACataclysmMinion::SkillGadgetSecondsBetweenCasts`; `ProbeConditionedMinionAttackSpeed`.
+    "minion_attack_speed": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,

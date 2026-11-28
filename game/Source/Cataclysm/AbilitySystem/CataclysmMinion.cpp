@@ -33,6 +33,8 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the Fervour Overcharge and Overclock take from the summoner. The War trees' window 2, 2026-11-28.
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For the basic attack gadget's clock, the player's swing interval. Ruled 2026-10-16, stack 2.
 #include "AbilitySystem/CataclysmBasicAttack.h"
 // For a Warhound's blow, its taunt and where it appears. Warlord's Will's six-piece, ruled 2026-10-17 and 2026-10-18.
@@ -555,6 +557,145 @@ bool ACataclysmMinion::IsGadget() const
 
 const TCHAR* ACataclysmMinion::GadgetsTargetMostHealthStat = TEXT("gadgets_target_most_health");
 
+const TCHAR* ACataclysmMinion::GadgetEmpowerCostLessStat = TEXT("gadget_empower_cost_less");
+const TCHAR* ACataclysmMinion::GadgetEmpowerFreeEverySecondsStat = TEXT("gadget_empower_free_every_seconds");
+const TCHAR* ACataclysmMinion::GadgetSurvivesLethalOnceStat = TEXT("gadget_survives_lethal_once");
+const TCHAR* ACataclysmMinion::GadgetRegenPercentAboveHalfStat = TEXT("gadget_regen_percent_above_half");
+
+void ACataclysmMinion::FillGadgetReadings(FCataclysmStatConditions& State) const
+{
+	const UWorld* World = GetWorld();
+	if (!IsGadget() || !AbilitySystemComponent)
+	{
+		return;
+	}
+	const float Health = AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float Maximum = AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	State.GadgetHealthPercent = Maximum > 0.0f ? Health / Maximum * 100.0f : -1.0f;
+	State.GadgetEmpoweredFervour = EmpoweredFervour;
+	State.GadgetOverclockFervour = OverclockFervourDrained;
+	State.SecondsSinceGadgetFellBelowQuarter =
+		(World && FellBelowQuarterAtSeconds >= 0.0f) ? World->GetTimeSeconds() - FellBelowQuarterAtSeconds : -1.0f;
+	State.bGadgetReprieved = bJuryRigged;
+}
+
+float ACataclysmMinion::Empower(float NominalFervour, float HealthPercentPerFervour, bool bFree)
+{
+	if (NominalFervour <= 0.0f || !IsValid(Summoner))
+	{
+		return 0.0f;
+	}
+	UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Summoner);
+	const float Cost = bFree ? 0.0f : FMath::Max(0.0f, NominalFervour - SummonersGadgetStat(GadgetEmpowerCostLessStat));
+	float Paid = 0.0f;
+	if (Cost > 0.0f && Theirs && Theirs->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		const float Before = Theirs->GetNumericAttribute(Pool);
+		const float Taken = FMath::Min(Cost, FMath::Max(0.0f, Before));
+		if (Taken > 0.0f)
+		{
+			Theirs->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
+			Paid = Before - Theirs->GetNumericAttribute(Pool);
+			FCataclysmWarFervour::NoteFervourSpentOrDrained(Theirs, Paid);
+			if (UCataclysmAbilitySystemComponent* Spending = Cast<UCataclysmAbilitySystemComponent>(Theirs))
+			{
+				Spending->NoteFervourSpent(Paid);
+			}
+		}
+	}
+	// A SHORT POOL EMPOWERS WITH WHAT IT PAID, AS "consumes" READS; A REDUCED OR FREE COST STILL COUNTS THE WHOLE FIGURE.
+	const float Counted = (Cost > 0.0f && Paid < Cost) ? NominalFervour * Paid / Cost : NominalFervour;
+	EmpoweredFervour += Counted;
+	if (AbilitySystemComponent && HealthPercentPerFervour > 0.0f && Counted > 0.0f)
+	{
+		const float Raise = 1.0f + HealthPercentPerFervour / 100.0f * Counted;
+		const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute HealthNow = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Maximum = AbilitySystemComponent->GetNumericAttribute(MaxHealth) * Raise;
+		AbilitySystemComponent->SetNumericAttributeBase(MaxHealth, Maximum);
+		AbilitySystemComponent->SetNumericAttributeBase(HealthNow,
+			AbilitySystemComponent->GetNumericAttribute(HealthNow) * Raise);
+		SpawnedMaxHealth = Maximum;
+	}
+	return Paid;
+}
+
+void ACataclysmMinion::BeginOverclock(float NominalFervour, float Seconds, bool bFree)
+{
+	if (NominalFervour <= 0.0f || Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Cost = bFree ? 0.0f : FMath::Max(0.0f, NominalFervour - SummonersGadgetStat(GadgetEmpowerCostLessStat));
+	OverclockFervourLeft = NominalFervour;
+	OverclockSecondsLeft = Seconds;
+	OverclockPaidShare = NominalFervour > 0.0f ? Cost / NominalFervour : 0.0f;
+}
+
+bool ACataclysmMinion::TryJuryRig()
+{
+	if (bJuryRigged || !IsGadget() || SummonersGadgetStat(GadgetSurvivesLethalOnceStat) <= 0.0f)
+	{
+		return false;
+	}
+	bJuryRigged = true;
+	return true;
+}
+
+void ACataclysmMinion::StepGadgetReadings(float StepSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !AbilitySystemComponent || StepSeconds <= 0.0f)
+	{
+		return;
+	}
+	const FGameplayAttribute HealthNow = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Maximum = AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Health = AbilitySystemComponent->GetNumericAttribute(HealthNow);
+
+	// OVERCLOCK: this step's share of what is left, paid by the summoner at its paid share, counted whole.
+	if (OverclockSecondsLeft > 0.0f && OverclockFervourLeft > 0.0f)
+	{
+		const float Share = FMath::Min(1.0f, StepSeconds / OverclockSecondsLeft);
+		const float ThisStep = OverclockFervourLeft * Share;
+		OverclockFervourLeft -= ThisStep;
+		OverclockSecondsLeft = FMath::Max(0.0f, OverclockSecondsLeft - StepSeconds);
+		float Counted = ThisStep;
+		UAbilitySystemComponent* Theirs = IsValid(Summoner) ? UCataclysmTargeting::AbilitySystemOf(Summoner) : nullptr;
+		const float Cost = ThisStep * OverclockPaidShare;
+		if (Cost > 0.0f && Theirs && Theirs->GetSet<UCataclysmClassResourceAttributeSet>())
+		{
+			const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+			const float Before = Theirs->GetNumericAttribute(Pool);
+			const float Taken = FMath::Min(Cost, FMath::Max(0.0f, Before));
+			if (Taken > 0.0f)
+			{
+				Theirs->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
+				FCataclysmWarFervour::NoteFervourSpentOrDrained(Theirs, Before - Theirs->GetNumericAttribute(Pool));
+			}
+			Counted = ThisStep * (Taken / Cost);
+		}
+		OverclockFervourDrained += Counted;
+	}
+
+	// THE FALL BELOW A QUARTER, stamped on the step that first finds it there, again after a rise above (Last Stand).
+	const bool bBelowQuarter = Maximum > 0.0f && Health < Maximum * 0.25f;
+	if (bBelowQuarter && !bWasBelowQuarter)
+	{
+		FellBelowQuarterAtSeconds = World->GetTimeSeconds();
+	}
+	bWasBelowQuarter = bBelowQuarter;
+
+	// PERSISTENT SYSTEMS: above half and below full, a share of the maximum each second (ruled 2026-11-28).
+	const float Regen = SummonersGadgetStat(GadgetRegenPercentAboveHalfStat);
+	if (Regen > 0.0f && Maximum > 0.0f && Health > Maximum * 0.5f && Health < Maximum)
+	{
+		AbilitySystemComponent->ApplyModToAttribute(HealthNow, EGameplayModOp::Additive,
+			FMath::Min(Maximum - Health, Maximum * Regen / 100.0f * StepSeconds));
+	}
+}
+
 float ACataclysmMinion::SummonersGadgetStat(const TCHAR* Stat) const
 {
 	// THE GADGET TEST FIRST, so an imp, a mote and a trap ask their summoner nothing and are answered nought.
@@ -718,6 +859,9 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 	{
 		return;
 	}
+
+	// AND ITS OWN READINGS: Overclock, the fall below a quarter, regeneration (the War trees' window 2, 2026-11-28).
+	Gadget->StepGadgetReadings(DeviceStepSeconds);
 
 	// WALKING ARSENAL (V5b3), BEFORE ANYTHING THE GADGET FIRES ON THIS STEP, so what it fires is fired from where it has
 	// walked to. Nothing for a gadget whose summoner holds no reach.
@@ -1152,9 +1296,14 @@ float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSki
 	// AND SHORTENED BY "Gadgets fire 20%-40% faster" (S3), as a minion's interval is shortened by attack speed: one
 	// over one plus the increases, with this gadget's type tags, the reading `UCataclysmCommand` makes for a swing.
 	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Theirs);
+	// WITH THIS GADGET NAMED, so its own readings (Overclock, Last Stand, Jury Rigged) reach the rows on its attack speed
+	// (the War trees' window 2, 2026-11-28), as the pricing of its blow names it.
+	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow Naming(
+		const_cast<UCataclysmAbilitySystemComponent*>(Cataclysm), this);
 	const float Faster = Cataclysm
 		? FMath::Max(0.0f, Cataclysm->IncreasesForStat(FName(TEXT("minion_attack_speed")), TypeTags))
 		: 0.0f;
+	Naming.End();
 
 	// THE BASIC ATTACK'S CLOCK IS THE PLAYER'S SWING INTERVAL, "once per basic attack cooldown" (stack 2, item 1;
 	// S2): `SecondsBetweenSwingsFor` of the player, shortened by the fire-rate row as the keyed clock is. Its slot

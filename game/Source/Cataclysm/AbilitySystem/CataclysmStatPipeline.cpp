@@ -197,6 +197,8 @@ namespace
 		{ TEXT("while_crowd_controlled"),       ECataclysmStatCondition::WhileCrowdControlled },
 		{ TEXT("dual_wielding_outside_frenzy"),                ECataclysmStatCondition::DualWieldingOutsideFrenzy },
 		{ TEXT("hit_taken_was_unblocked"),      ECataclysmStatCondition::HitTakenWasUnblocked },
+		{ TEXT("gadget_reprieved_below_full_health"), ECataclysmStatCondition::GadgetReprievedBelowFullHealth },
+		{ TEXT("seconds_after_gadget_fell_below_quarter"), ECataclysmStatCondition::SecondsAfterGadgetFellBelowQuarter },
 		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
 		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
 		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
@@ -241,6 +243,8 @@ namespace
 		{ TEXT("evasion_before_removal"), ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval },
 		{ TEXT("trap_kinds_active"), ECataclysmStatScale::PerTrapKindActive },
 		{ TEXT("player_seconds_stationary"), ECataclysmStatScale::PerSecondPlayerStationary },
+		{ TEXT("gadget_empowered_fervour"), ECataclysmStatScale::PerFervourGadgetEmpowered },
+		{ TEXT("gadget_overclock_fervour"), ECataclysmStatScale::PerFervourGadgetOverclocked },
 		{ TEXT("enemies_struck_recently"), ECataclysmStatScale::PerEnemyStruckRecently },
 		{ TEXT("enemies_that_struck_you_recently"), ECataclysmStatScale::PerEnemyThatStruckYouRecently },
 		{ TEXT("remains_in_reach"),    ECataclysmStatScale::PerOwnRemainsInReach },
@@ -482,8 +486,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::WhileCrowdControlled:
 	case ECataclysmStatCondition::DualWieldingOutsideFrenzy:
 	case ECataclysmStatCondition::HitTakenWasUnblocked:
+	case ECataclysmStatCondition::GadgetReprievedBelowFullHealth:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the sixty-three says
+		// nothing for a number to be compared against. Each of the sixty-four says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -645,6 +650,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfCrowdControl:
 	case C::StationaryForSeconds:
 	case C::PlayerStationaryForSeconds:
+	// AND A GADGET'S OWN HEALTH AND ITS FALL BELOW A QUARTER, which change with no notice this pipeline hears (window 2).
+	case C::GadgetReprievedBelowFullHealth:
+	case C::SecondsAfterGadgetFellBelowQuarter:
 	case C::NotAttackedForSeconds:
 	case C::MovedWithinSeconds:
 	case C::WhileBleeding:
@@ -1273,6 +1281,14 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::HitTakenWasUnblocked:
 		// 0 IS A HIT TAKEN IN HAND THAT WAS NOT BLOCKED; -1, NONE, REFUSES. The War trees' engine slice E2.
 		return State.HitTakenBlocked == 0;
+
+	case ECataclysmStatCondition::GadgetReprievedBelowFullHealth:
+		// SAVED BY JURY RIGGED AND BELOW FULL HEALTH; NO GADGET NAMED REFUSES. The War trees' window 2.
+		return State.bGadgetReprieved && State.GadgetHealthPercent >= 0.0f && State.GadgetHealthPercent < 100.0f;
+
+	case ECataclysmStatCondition::SecondsAfterGadgetFellBelowQuarter:
+		// THE SAME TWO RULES AS EVERY WINDOW: never fallen, or no gadget named, refuses. The War trees' window 2.
+		return State.SecondsSinceGadgetFellBelowQuarter >= 0.0f && State.SecondsSinceGadgetFellBelowQuarter <= Value;
 
 	case ECataclysmStatCondition::TargetCarriesBleed:
 		// THE SAME WALK AS THE VOID SPLINTER'S, ON THE BLEED'S TAG. The War trees' slice E1 (2026-11-27).
@@ -2478,6 +2494,8 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerPercentOfEvasion:
 	case ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval:
 	case ECataclysmStatScale::PerSecondPlayerStationary:
+	case ECataclysmStatScale::PerFervourGadgetEmpowered:
+	case ECataclysmStatScale::PerFervourGadgetOverclocked:
 	{
 		float Reading = -1.0f;
 		switch (Modifier.Scale)
@@ -2495,6 +2513,12 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			break;
 		case ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval:
 			Reading = State.EvasionBeforeRemoval;
+			break;
+		case ECataclysmStatScale::PerFervourGadgetEmpowered:
+			Reading = State.GadgetEmpoweredFervour;
+			break;
+		case ECataclysmStatScale::PerFervourGadgetOverclocked:
+			Reading = State.GadgetOverclockFervour;
 			break;
 		default:
 			Reading = State.PlayerSecondsSinceMoved;

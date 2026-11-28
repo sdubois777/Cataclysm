@@ -2134,6 +2134,9 @@ public:
 	static const TCHAR* EchoStrikeLaterAction;
 	/** `gadgets_pulled_to_placed`. Forward Operating Base, the War trees' window 2 (2026-11-28). */
 	static const TCHAR* GadgetsPulledToPlacedAction;
+	/** `gadget_empowered` and `gadget_overclocked`. Overcharge and Overclock, window 2 (2026-11-28). */
+	static const TCHAR* GadgetEmpoweredAction;
+	static const TCHAR* GadgetOverclockedAction;
 	static const TCHAR* NextAttackBonusOfBlockedDamageAction;
 
 	/**
@@ -7178,6 +7181,16 @@ protected:
 
 	/** When and how much of the class resource was spent, pruned past 5 seconds. Hot Deploy (window 2). */
 	TArray<TPair<float, float>> RecentFervourSpent;
+
+	/**
+	 * Rapid Deployment's free empowerment: when the next may be free, and the gadget the last free one went to, so its
+	 * Overcharge and its Overclock are both free. Window 2 (2026-11-28).
+	 */
+	float NextFreeEmpowerAtSeconds = -1.0f;
+	TWeakObjectPtr<const AActor> FreeEmpowerGadget;
+
+	/** Whether this placing's empowerment of `Gadget` is free, deciding it on the first ask for that gadget. */
+	bool IsEmpowermentFree(const AActor* Gadget);
 
 	/** The class resource spent in the last 5 seconds. */
 	float FervourSpentRecently() const;
