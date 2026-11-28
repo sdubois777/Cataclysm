@@ -264,6 +264,40 @@ public:
 	bool HasAScreenEscCloses() const;
 
 	/**
+	 * Pauses a walk that has just been resumed from a save, until the player presses a key or a button. Issue #2970.
+	 * The project owner, 2026-11-27, verbatim: "it will also need to freeze all of your minions until you press a
+	 * button as well. Maybe just make them load in paused?"
+	 *
+	 * THE GAME'S OWN PAUSE, the one `PauseTheGame` uses (`APlayerController::SetPause`), so creatures, the player's
+	 * minions, cooldowns, damage over time and every dungeon timer stop together, with no rule of their own for each.
+	 * NO PAUSE SCREEN: the heads-up display draws `HeldUntilFirstInputLine` instead, while `IsHeldUntilFirstInput`.
+	 *
+	 * THE HOLD IS RECORDED BEFORE THE PAUSE IS ASKED FOR, as `PauseTheGame` records the pause screen: a world with no
+	 * game mode to ask (a client, or a test world) refuses the pause, and the line and the first press still work.
+	 * True when the game is paused afterwards. Called by `FCataclysmSaveLoad::CharacterAndRun` when it resumes a walk.
+	 */
+	bool HoldUntilFirstInput();
+
+	/** Whether a resumed walk is waiting for the player's first press: from `HoldUntilFirstInput` until that press. */
+	bool IsHeldUntilFirstInput() const { return bHeldUntilFirstInput; }
+
+	/**
+	 * Ends the hold and lets the game run, unless the pause screen is up. `InputKey` calls it on the first press. True
+	 * when the game runs afterwards.
+	 */
+	bool ReleaseTheHold();
+
+	/**
+	 * Whether a key event ends the hold. A PRESS OF ANY KEY OR BUTTON: keyboard, mouse button or gamepad button, Esc
+	 * included. Not a release or a repeat, not the mouse wheel (a scroll is not a press), and not an analogue axis, whose
+	 * events are not presses. Static, so a test can ask the rule with no controller.
+	 */
+	static bool PressEndsTheHold(const FKey& Key, EInputEvent Event);
+
+	/** The line the heads-up display draws while the walk is held. */
+	static const TCHAR* HeldUntilFirstInputLine() { return TEXT("Press any key or button to resume"); }
+
+	/**
 	 * Closes every screen Esc closes, EACH THROUGH WHAT CLOSES IT TODAY: its own toggle, which on an open screen is its
 	 * close, so Esc does exactly what the screen's key does (the inventory lets go of what is on the cursor); the
 	 * empire's four through `CloseEmpireScreens`, as a walk closes them; and the choice panel through `Close`, which is
@@ -1273,6 +1307,9 @@ private:
 
 	/** See `IsPauseScreenWanted`. */
 	bool bPauseScreenWanted = false;
+
+	/** See `IsHeldUntilFirstInput`. Issue #2970. */
+	bool bHeldUntilFirstInput = false;
 
 	/** See `SetAScreenOpenForTest`. */
 	bool bScreenOpenForTest = false;

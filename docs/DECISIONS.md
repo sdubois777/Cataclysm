@@ -2,6 +2,63 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-28 — A walk resumed from a save loads paused, through the game's own pause, until the player presses a key or button (#2970)
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp`: `HoldUntilFirstInput`, `ReleaseTheHold`,
+  `PressEndsTheHold`, `IsHeldUntilFirstInput`, and the first lines of `InputKey`.
+- `game/Source/Cataclysm/Save/CataclysmSaveLoad.h` and `.cpp`: `FCataclysmLoadReport::bResumedAWalk` and
+  `bHeldUntilFirstInput`; `FCataclysmSaveLoad::CharacterAndRun` asks for the hold.
+- `game/Source/Cataclysm/Interface/CataclysmHUD.h` and `.cpp`: `DrawResumeHoldLine`.
+- `game/Source/Cataclysm/Tests/CataclysmResumeHoldTests.cpp`, and one test in `CataclysmSaveLoadTests.cpp`.
+
+**The problem.** Continuing a character whose walk was saved mid-floor put it back among the creatures that stood
+around it, and they attacked at once. On 2026-11-27 a copy of the owner's character resumed on floor 2 of 8 of a Horde
+dungeon with 439 creatures standing, took 107 hits in about 12 seconds and died.
+
+**The owner's rulings, verbatim.** 2026-11-27: "yes, it should probably give you a few seconds, or until you press any
+button before enemies aggro on you again". Then, the same day: "it will also need to freeze all of your minions until
+you press a button as well. Maybe just make them load in paused?"
+
+**What was built.** When `FCataclysmSaveLoad::CharacterAndRun` enters a dungeon again at its saved floor
+(`ACataclysmDungeonGameMode::ResumeEmpireDungeon` succeeds), it asks the game's controller for
+`HoldUntilFirstInput`, last, after the placement. That pauses through `APlayerController::SetPause`, the pause Esc
+uses, so creatures, the player's minions, cooldowns, damage over time and every dungeon timer stop together. No pause
+screen is shown; the heads-up display draws "Press any key or button to resume" in the middle of the screen. The first
+press of a key or button, read in `InputKey`, ends the hold and the world runs. Both ways a load runs go through
+`CharacterAndRun`: the select screen's Continue (`ACataclysmGameMode::LoadThePendingCharacter`) and the console
+command `Cataclysm.LoadCharacter`.
+
+**Judgements, not ruled:**
+- **No time limit.** The first ruling named "a few seconds" as the other choice; the second ruling's pause has no
+  limit, so a player who stepped away is still safe.
+- **The press that ends the hold does nothing else.** `InputKey` takes every event while held, so the first key does
+  not also cast a skill into the creatures beside the player, and Esc does not also open the pause screen.
+- **What counts as a press:** a press of any keyboard key, mouse button or gamepad button, Esc included. Not a
+  release, a repeat, the mouse wheel, or an analogue axis such as the mouse moving or a stick.
+- **Not held:** a load outside a dungeon, entering a new floor or a new dungeon, and a character the placement leaves
+  dead, whose death would otherwise wait for a key.
+- **A click that an interface widget takes does not end the hold**, most likely, because the widget handles the click
+  before `InputKey` sees it; a key press still does. No full screen opens on a resume. The floor's modifier panel is put
+  up when the floor starts, and whether it takes clicks was not checked.
+
+**Window resume-w1, 2026-11-28, at 1dda47127** (329a1d0a4 with development 54892742d merged in), every figure registered
+with the coordinating session before the run:
+
+| Step | Registered | Printed |
+| :-- | :-- | :-- |
+| Three compiles: as committed, the five changed `.cpp` files each alone, the unity files again | succeed | all `Build: Succeeded`, 0 compiler warning or error lines; build 2 compiled the five files alone |
+| `Cataclysm.ResumeHold.` alone | 3 | `3 tests performed, 3 succeeded, 0 failed` |
+| The whole Unreal suite | 6151, 63 skipped halves, 898 saves | `6151 tests performed, 6151 succeeded, 0 failed`, 63 skipped halves; `898 written and deleted, 0 left behind` |
+| Python beside it, `python -u -m pytest --junit-xml=...` | no failure | `9763 passed, 10 skipped`; JUnit tests 9773, failures 0, errors 0, skipped 10; `ruff check .` clean |
+| C++ guard proof (a): the save loader's hold condition inverted | 1 named failure, then 1 of 1 | `PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed: AWalkResumedFromASaveIsPausedUntilTheFirstPress \| restored: 1 tests performed, 1 succeeded, 0 failed` |
+| C++ guard proof (b): ending the hold unpauses only while the pause screen is wanted | 2 named failures, then 3 of 3 | `PROVED: with the break in: 3 tests performed, 1 succeeded, 2 failed: EscDuringTheHoldEndsItAndPutsUpNoPauseScreen, TheHoldPausesTheWorldUntilAPressAndTheWorldRunsAfterIt \| restored: 3 tests performed, 3 succeeded, 0 failed` |
+
+**Not shown by any test:** the line drawn on the screen, a real key reaching `InputKey` through the game viewport, and
+whether the floor's modifier panel takes a click. The coordinating session checks the first two in the packaged game.
+
+---
+
 ## 2026-11-27 — The game holds every loaded object of the Paragon art packs for the rest of the session, which stops the packaged game's crash when a Paragon creature is drawn again after a garbage collection (#2968)
 
 **Affects:**
