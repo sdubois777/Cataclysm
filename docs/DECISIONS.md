@@ -2,6 +2,103 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-28 — The War weapon skills, slice WS1: nineteen War skills gain their shape, Earthquake among them, and Colossus casts it (issue #2972)
+
+**Affects:**
+- `tools/reapply_war_skills_workbook.py`, new: the War skill rows' Shape, Shape Params and ruled rewordings in
+  `docs/All_Things_Cataclysm.xlsx`, Weapon Skills, found by weapon, damage type and slot. A `BUILT` set of code pieces
+  decides which rows get a shape, as `tools/reapply_death_skills_workbook.py` does (issue #2885), whose helpers it
+  reuses. `game/Data/WeaponSkills.csv`. **The editor step must rebuild `DT_WeaponSkills` and `DT_PassiveEffects`.**
+- `tools/reapply_war_trees_data_rows_workbook.py`: Colossus's row (`WS1_NODES`). `game/Data/PassiveEffects.csv`.
+- Engine:
+  - `CataclysmSkillShape.h` and `.cpp`: the five keys W1 to W5;
+  - `CataclysmSkillTemplate.h` and `.cpp`: `ApplyStatedHitMarksTo`, the ailment's chance and magnitude, and a free
+    start's radius share in `AreaOfEffectMultiplier`;
+  - `CataclysmSkillTemplates.cpp`: the marks laid by every blow;
+  - `CataclysmGameplayAbility.h`: `FreeRepeatRadiusShare`;
+  - `CataclysmTriggeredSkill.h` and `.cpp`: `Trigger`'s radius share and `FindSkillRowNamed`;
+  - `CataclysmStatPipeline.h`, `CataclysmAbilitySystemComponent.h` and `.cpp`, and `CataclysmItem.cpp`: Colossus's
+    action;
+  - `CataclysmPassiveTreeWidget.h` and `.cpp`: a test-only effect table for the "not built yet" tool tip;
+  - `tools/generate_datatables.py`: the keys and the action, each with its refusals.
+- Tests: `CataclysmWarSkillsTests.cpp`, new (`Cataclysm.WarSkills.`, four tests); `CataclysmWarVowsV2aTests.cpp`;
+  `test_a_skill_deals_the_damage_its_description_states.py` (Annihilator's 300% is its closing hit),
+  `test_stun_durations_are_stated.py` (an `Immune` key naming Stun is immunity), `sim/cataclysm_sim/enemy_abilities.py`
+  (the eight new riders), `CataclysmUndesignedSkill.h` (34 undesigned), and the pins: 1,232 passive rows, 661 nodes,
+  225 War tree rows on 118 nodes; `docs/README.md`.
+
+### SAID FIRST
+
+- **NOT COMPILED OR RUN IN UNREAL.** The window holding WS1 and WS2 compiles and measures it.
+- **RECOIL DASH IS HELD** (2H Crossbow Movement, "propel yourself backward 6 meters"), under a new piece, W12, a dash
+  away from the aim. As a plain Blink, which goes toward the aim, it would be a 6 m gap-closer, shorter than every
+  Movement skill, and three enemy designs are measured against the shortest one (the Succubus's 8 m, the Abyssal
+  Warden's 8 m charge, the 6.5 m telegraph cap). Sent to the coordinating session for its ruling.
+- **TWO SKILL NAMES ARE AN OPEN QUESTION FOR THE OWNER**, kept as they are by the coordinating session's ruling of
+  2026-11-28 because names are creative:
+  - the Fist Ultimate "Unstoppable Force" has the same name as the Berserker keystone `Berserker_dw_ks_002`;
+  - the Warhammer Ultimate is named "Cataclysm", the game's own name.
+  Nothing is renamed until the owner answers.
+
+### THE RULINGS (the coordinating session, 2026-11-28, under the owner's delegation of details)
+
+The plan (53 War skill rows with no shape: 10 data, 16 needing one small key, 27 needing engine work; two windows of two
+slices each) was accepted with these readings:
+1. A bleed "for 10 seconds" or "for 8 seconds" runs on Bleed's own clock, and the sentence is reworded. The design's
+   Bleed lasts 5 s and stops after 4 s of movement, so 10 s cannot happen.
+2. "Staggered for N seconds" is the Staggered state for N seconds, not a stun.
+3. "Bleed at double / 15 times its normal damage" multiplies the bleed's damage. It does not add stacks.
+4. Ranges of 20 m and 15 m are cut to 14 m, as the Death ranges were.
+5. Annihilator's 300 is its final hit (`FinalHitPercent=300`); its ticks take the slot's figure, as Pyroclasm's do.
+6. A movement-only slow becomes Cripple, reworded "move and attack N% slower". Entangle's two figures become one, 50.
+7. Battle Rage: a kill refills the full 8 seconds (slice WS2).
+8. Executioner's Arc: bosses are exempt from the kill (slice WS4).
+9. Sundering Throw: the sword returns by itself after 5 seconds (slice WS2).
+10. Cavalry Charge sets off skill traps only (slice WS2).
+11. Artillery Barrage's "do not count towards your trap limit" names a cap the owner removed on 2026-11-20; it is
+    reworded "reserve no Fervour" (slice WS3).
+- **Earthquake**: as written below, including the 2 m, 5 s ground zone, which is my judgement because the sentence says
+  only "at the impact point".
+- **Colossus**: as below.
+
+### THE FIVE KEYS (W1 to W5), each laid on a landed blow wherever a row's stated Ailment is
+
+| Key | What it does |
+|---|---|
+| `AilmentChance` (W1) | the per cent chance the stated Ailment lands, rolled per blow; pinned by `Cataclysm.SkillAilmentRoll` |
+| `AilmentMagnitude` (W2) | the stated Ailment at that many times its normal damage |
+| `ArmourRemoved`, `ArmourRemovedDuration`, `ArmourRemovedCap` (W3) | a placed stack removing that per cent of armour for that many seconds, keyed by the skill; one stack unless a cap says more, 0 for no cap |
+| `DamageTakenIncreased`, `DamageTakenIncreasedDuration` (W4) | a placed stack of that per cent more damage taken from all sources for that many seconds |
+| `Stagger` (W5) | the Staggered state for that many seconds, through `ApplyStagger` |
+
+### THE NINETEEN ROWS
+
+The nine data rows are Siege Bolt, Artillery Strike, Headlong Charge, Suppressing Fire, Bull Rush, Spinning
+Axe, Leaping Cleave, Shield Charge and Skirmish. The ten rows on W1 to W5 are Cleaving Blow, Thrown Axe, Bolas, Savage
+Leap, Annihilator, Warlord's Decree, Rending Strike, Earthquake, Catapult Stone and Entangle. Every figure a sentence
+does not state (a radius, a speed, a duration) is a judgement of the writing session, taken from the nearest shaped
+precedent row and named in the script's comments.
+
+**Earthquake** (`War_Warhammer_Heavy`): Strike, `Radius=6; Angle=360; GroundRadius=2; GroundDuration=5; GroundPercent=20;
+Stagger=0.5; ArmourRemoved=20; ArmourRemovedDuration=6`.
+- The fissure is the ground zone, not `Terrain=Fissure`, which knocks down whoever crosses it and deals no damage.
+
+### COLOSSUS
+
+`Berserker_twoh_ks_001`, the owner's ruling of 2026-11-27: "I think I wanted that to act like a passive trigger that uses
+the earthquake skill regardless of if they have the skill".
+- **The row:** `cast_earthquake_by_fervour` 25 on `movement_skill_ends`, under `in_wrath` and
+  `wielding_two_handed_weapon`.
+- **What it does:** where the wearer stands as the movement skill ends, Earthquake is cast on the next tick, free,
+  through `UCataclysmTriggeredSkill::Trigger`, whatever weapon is held.
+- **Next tick, because** the event can come inside an ability's activation, where a grant is refused.
+- **Its share** is read as the movement ends: 25% at an empty pool, rising in a straight line to 100% at a full one. It
+  scales the damage (`DamageShare`) and the area (the new `RadiusShare`, read by `AreaOfEffectMultiplier`).
+- **The test that used Colossus as its node with no row** (`Cataclysm.WarVowsV2a.APassiveNodeOrOptionWithNoRowSaysItIsNotBuiltYet`)
+  now takes Colossus's row out of its copy of the table. No node in the loaded table is without a row any more.
+
+---
+
 ## 2026-11-28 — The War passive trees, window 2: the Saboteur's last 27 nodes act (engine slice E4 and the Saboteur rows)
 
 **Affects:**
