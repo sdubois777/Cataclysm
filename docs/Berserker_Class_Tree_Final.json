@@ -749,7 +749,7 @@
       "data": {
         "kind": "basic",
         "name": "Flurry",
-        "description": "Dual wield only. Every 5th consecutive melee attack triggers an additional offhand strike dealing 50% weapon damage per point.",
+        "description": "Dual wield only. Every 5th consecutive melee attack deals 50% more damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8

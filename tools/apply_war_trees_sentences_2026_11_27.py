@@ -91,6 +91,9 @@ SENTENCES: tuple[Sentence, ...] = (
              "block streak is active, your next attack deals bonus flat damage equal to 5% of your Armor value.",
              "+2% damage per point for every 10% Block Chance you have. At 6 points: after you block, your next attack "
              "deals bonus damage equal to 5% of your Armor."),
+    Sentence("R11", "Berserker", "dw_002",
+             "Dual wield only. Every 5th consecutive melee attack triggers an additional offhand strike dealing 50% weapon damage per point.",
+             "Dual wield only. Every 5th consecutive melee attack deals 50% more damage per point."),
     Sentence("Unstoppable Force (owner, 2026-11-27)", "Berserker", "dw_ks_002",
              "Dual wield only. Killing an enemy while in Frenzy immediately resets the Frenetic auto-strike timer. "
              "Additionally, entering Frenzy instantly triggers three bonus strikes at full damage.",

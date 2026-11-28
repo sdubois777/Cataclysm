@@ -293,6 +293,10 @@ E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R("area_of_effect", "increased", 5, **TWO_HANDED),
         R(None, "", 20, tags="Type.AOE", action="burst_slain_for_share_of_maximum_health", action_event="kill",
           min_points=5, cond="wielding_two_handed_weapon"))),
+    # FLURRY (R11): "Dual wield only. Every 5th consecutive melee attack deals 50% more damage per point." Every attack
+    # is counted, the attacks "every Nth attack" rows count; the coordinating session marked the size a play-test point.
+    ("Berserker_dw_002", "Flurry", (
+        R(None, "", 50, action="nth_attack_more_damage", every_nth=5, **DUAL),)),
     # SHATTER: "Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times."
     ("Berserker_twoh_009", "Shatter", (
         R(None, "", 5, tags=MELEE, action="enemy_armor_removed", action_event="critical_strike", stack_seconds=5,

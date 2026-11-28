@@ -8047,6 +8047,9 @@ NTH_ACTIONS = (
     "nth_hit_taken_damage",
     "nth_spell_mana_cost",
     "nth_attack_no_damage",
+    # THE Nth ATTACK DEALS THE VALUE'S PER CENT MORE: Flurry (R11), "Every 5th consecutive melee attack deals 50% more
+    # damage per point". The War trees' engine slice E2 (2026-11-27). `NthAttackMoreDamageAction` holds the name.
+    "nth_attack_more_damage",
 )
 
 #: The largest N a row may state.

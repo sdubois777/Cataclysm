@@ -1477,6 +1477,13 @@ public:
 	float NthHitTakenBonusPercent() const;
 
 	/**
+	 * What the attack about to be made deals more, in per cent, when it is the Nth of a worn "every Nth attack deals
+	 * more" row, or 0: Flurry (R11). Asked before the attack is counted, as `NextAttackIsNth` is. The War trees' engine
+	 * slice E2 (2026-11-27).
+	 */
+	float NthAttackMorePercent() const;
+
+	/**
 	 * The share of the mana held that the spell about to be paid for adds to
 	 * its cost, as a percentage, when it is the Nth of a worn "every Nth spell"
 	 * row, or 0. Issue #1833, phase 2: its normal cost PLUS this, ruled
@@ -1560,6 +1567,8 @@ public:
 	static const TCHAR* NthHitTakenDamageAction;
 	static const TCHAR* NthSpellManaCostAction;
 	static const TCHAR* NthAttackNoDamageAction;
+	/** `nth_attack_more_damage`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* NthAttackMoreDamageAction;
 
 	/**
 	 * The six cooldown reset action names. Issue #1833, the cooldown reset

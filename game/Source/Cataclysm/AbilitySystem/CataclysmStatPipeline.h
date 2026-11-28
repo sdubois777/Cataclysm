@@ -5285,6 +5285,13 @@ enum class ECataclysmEveryNth : uint8
 
 	/** "Every 10th attack deals no damage": the Nth attack deals none. */
 	Attack UMETA(DisplayName = "Nth attack"),
+
+	/**
+	 * "Every 5th consecutive melee attack deals 50% more damage per point" (Flurry, R11): the Nth attack deals `Percent`
+	 * more, a multiplier on everything that use deals itself. Counted with the attacks `Attack` counts. The War trees'
+	 * engine slice E2 (2026-11-27).
+	 */
+	AttackMore UMETA(DisplayName = "Nth attack deals more"),
 };
 
 UENUM(BlueprintType)

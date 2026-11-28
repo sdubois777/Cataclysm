@@ -5666,6 +5666,11 @@ float UCataclysmAbilitySystemComponent::NthHitTakenBonusPercent() const
 	return NthPercentDue(ECataclysmEveryNth::HitTaken);
 }
 
+float UCataclysmAbilitySystemComponent::NthAttackMorePercent() const
+{
+	return NthPercentDue(ECataclysmEveryNth::AttackMore);
+}
+
 float UCataclysmAbilitySystemComponent::NthSpellExtraManaPercent() const
 {
 	return NthPercentDue(ECataclysmEveryNth::SpellCast);
@@ -6360,6 +6365,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::NearbyAlliesMoreDamageStat =
 	TEXT("nearby_allies_more_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::NthAttackNoDamageAction =
 	TEXT("nth_attack_no_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::NthAttackMoreDamageAction =
+	TEXT("nth_attack_more_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetAllAction =
 	TEXT("cooldown_reset_all");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetOthersAction =

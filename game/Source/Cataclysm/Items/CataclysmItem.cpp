@@ -1312,6 +1312,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						 ECataclysmEveryNth::SpellCast},
 						{UCataclysmAbilitySystemComponent::NthAttackNoDamageAction,
 						 ECataclysmEveryNth::Attack},
+						// AND FLURRY'S, the War trees' engine slice E2 (2026-11-27).
+						{UCataclysmAbilitySystemComponent::NthAttackMoreDamageAction,
+						 ECataclysmEveryNth::AttackMore},
 					};
 					for (const TPair<const TCHAR*, ECataclysmEveryNth>& Nth : NthActions)
 					{

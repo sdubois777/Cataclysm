@@ -425,10 +425,15 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// is one. Asked before it is counted. A judgement: the Nth attack
 		// spends no next-use charge, since it could do nothing with one.
 		bThisUseDealsNoDamage = false;
+		// AND WHAT A WORN "EVERY Nth ATTACK DEALS MORE" ROW ADDS TO THIS ONE, asked before it is counted: Flurry (the War
+		// trees' engine slice E2, 2026-11-27). Applied below, once the next-use charges have set this use's multiplier.
+		float NthMorePercent = 0.0f;
 		if (DeliversDamageItself() && !UCataclysmSkillEffects::IsSpell(SkillTags))
 		{
 			bThisUseDealsNoDamage = Cataclysm->NextAttackIsNth();
 			Cataclysm->NoteNthEvent(ECataclysmEveryNth::Attack);
+			NthMorePercent = Cataclysm->NthAttackMorePercent();
+			Cataclysm->NoteNthEvent(ECataclysmEveryNth::AttackMore);
 		}
 		// AND WHAT A WORN ROW ROLLED FOR THIS USE, a few lines up, when the notice above reached the rows. Ruled
 		// 2026-10-06. BOTH ARE TAKEN WHATEVER HAPPENS NEXT, so neither is left for a later use. A use that deals no
@@ -450,6 +455,11 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 			if (DeliversDamageItself())
 			{
 				LastNextUseIncreasePercent += RolledIncreasePercent;
+				// FLURRY'S MORE, a multiplier on everything this use deals itself, as an effectiveness charge's is.
+				if (NthMorePercent > 0.0f)
+				{
+					LastNextUseMoreMultiplier *= 1.0f + NthMorePercent / 100.0f;
+				}
 			}
 		}
 		// SOUL FUEL'S SPEND, AND THE DAMAGE IT BUYS. The Death finish slice A (2026-11-26), issue #2937: "Your skills that
