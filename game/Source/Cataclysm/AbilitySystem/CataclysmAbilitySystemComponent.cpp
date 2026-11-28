@@ -6778,6 +6778,14 @@ const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByArmourAction =
 	TEXT("smite_nearby_by_armor");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByHitAction =
 	TEXT("smite_nearby_by_hit");
+const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyOfMaximumHealthAction =
+	TEXT("smite_nearby_of_max_health");
+const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetOfMaximumHealthAction =
+	TEXT("strike_target_of_max_health");
+const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfMaximumHealthAction =
+	TEXT("next_attack_bonus_of_max_health");
+const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfArmourAction =
+	TEXT("next_attack_bonus_of_armor");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
 	TEXT("retaliation_pulse");
 const TCHAR* UCataclysmAbilitySystemComponent::FrenzyChainAction =
@@ -7652,6 +7660,22 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			{
 				ReduceCooldowns(Action);
 			}
+			// A NOVA SIZED BY MAXIMUM HEALTH ON A CLOCK: The Inevitable's "flat damage per second to all enemies within
+			// 4 metres" (the War trees' engine slice E2, 2026-11-27).
+			else if (Action.Nearby == ECataclysmNearbyAction::SmiteByMaximumHealth)
+			{
+				ActOnNearby(Action, 0.0f);
+			}
+			// AND A NEXT-ATTACK BONUS ON ONE: Mountain's Wrath's "Once every 10 seconds, your next attack deals bonus
+			// damage equal to 5% of your Maximum HP" (the same slice). The larger of it and what is held.
+			else if (Action.NextAttackBonusOf > 0)
+			{
+				const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>();
+				const float Of = Action.NextAttackBonusOf == 1
+					? MaximumHealthNow()
+					: StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f);
+				NextAttackBonusStore = FMath::Max(NextAttackBonusStore, Of * Action.Percent / 100.0f);
+			}
 			// AND A ROW WITH A CHANCE PAYS ON ITS ROLL (the Death trees' slice C6b3).
 			else if (PoolActionChanceComesUp(Action))
 			{
@@ -8354,7 +8378,20 @@ float UCataclysmAbilitySystemComponent::SpendStoredAbsorbedDamage(float HitDamag
 		Added += TitanfallStore;
 		TitanfallStore = 0.0f;
 	}
+	// AND A NEXT-ATTACK BONUS SIZED BY MAXIMUM HEALTH OR ARMOUR, WHOLE AND WITH NO CAP, as Titanfall's is: Mountain's
+	// Wrath and Shield Slam (the War trees' engine slice E2, 2026-11-27).
+	if (NextAttackBonusStore > 0.0f)
+	{
+		Added += NextAttackBonusStore;
+		NextAttackBonusStore = 0.0f;
+	}
 	return Added;
+}
+
+float UCataclysmAbilitySystemComponent::MaximumHealthNow() const
+{
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	return HasAttributeSetForAttribute(Maximum) ? FMath::Max(0.0f, GetNumericAttribute(Maximum)) : 0.0f;
 }
 
 bool UCataclysmAbilitySystemComponent::TryTitanfall(float GotThrough)
@@ -9523,6 +9560,39 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				Delivery.bCannotBeEvaded = true;
 				Delivery.bIsARowsAnswerToAnEvent = true;
 				UCataclysmSkillEffects::ApplyHit(Self, Struck, Action.Percent, FGameplayTagContainer(), Delivery);
+			}
+			continue;
+		}
+		// A DIRECT BLOW OF A SHARE OF THE WEARER'S MAXIMUM HEALTH ON THE EVENT'S OTHER CHARACTER, once per row per event,
+		// landed only, with the row's own trigger clock. The War trees' engine slice E2 (2026-11-27): Dead Weight and
+		// Immovable Object strike the character whose crowd control was received or refused, Fortified Mind the
+		// attacker whose blow was blocked, Seismic Slam the enemy struck.
+		if (Action.bStrikeTargetOfMaximumHealth)
+		{
+			AActor* Other = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			const float Amount = MaximumHealthNow() * Action.Percent / 100.0f;
+			if (bLanded && Other && Self && Other != Self && Amount > 0.0f && !UCataclysmSkillEffects::IsDead(Other)
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Amount);
+			}
+			continue;
+		}
+		// A NEXT-ATTACK BONUS OF A SHARE OF MAXIMUM HEALTH OR ARMOUR, the larger of it and what is held. The same slice.
+		if (Action.NextAttackBonusOf > 0)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>();
+				const float Of = Action.NextAttackBonusOf == 1
+					? MaximumHealthNow()
+					: StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(), Combat ? Combat->GetArmor() : 0.0f);
+				NextAttackBonusStore = FMath::Max(NextAttackBonusStore, Of * Action.Percent / 100.0f);
 			}
 			continue;
 		}
@@ -11379,7 +11449,15 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 	{
 		return;
 	}
-	const float RadiusCm = bByHit ? Action.EventValue * 100.0f : NearbyActionRadiusCm;
+	// AND ONE SIZED BY THE WEARER'S MAXIMUM HEALTH, reaching its own Event Value in metres, which the generator requires.
+	// The War trees' engine slice E2 (2026-11-27).
+	const bool bByMaximumHealth = Action.Nearby == ECataclysmNearbyAction::SmiteByMaximumHealth;
+	const float ByMaximumHealth = bByMaximumHealth ? MaximumHealthNow() * Action.Percent / 100.0f : 0.0f;
+	if (bByMaximumHealth && (ByMaximumHealth <= 0.0f || Action.EventValue <= 0.0f))
+	{
+		return;
+	}
+	const float RadiusCm = (bByHit || bByMaximumHealth) ? Action.EventValue * 100.0f : NearbyActionRadiusCm;
 
 	// THE SEARCH THE PLAYER'S OWN NOVAS MAKE (`UCataclysmNova`): every living
 	// character with an ability system that the wearer's side counts as an
@@ -11390,6 +11468,12 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 
 	for (AActor* Other : Nearby)
 	{
+		if (bByMaximumHealth)
+		{
+			// A DIRECT BLOW OF THE SHARE OF MAXIMUM HEALTH ON EACH ONE, as the hit-sized one below. War trees E2.
+			UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, ByMaximumHealth);
+			continue;
+		}
 		if (bByHit)
 		{
 			// A BLOW OF THE SHARE OF WHAT THE HIT TOOK FROM HEALTH, meeting each enemy's mitigation as a blow does, the

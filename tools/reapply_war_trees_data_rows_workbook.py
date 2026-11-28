@@ -207,6 +207,36 @@ E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
           stack_seconds=3, cap=5, max_points=5, **DUAL),
         R(None, "", 1, tags=MELEE, action="enemy_damage_reduction_removed", action_event="hit_dealt",
           stack_seconds=3, cap=8, min_points=5, per_point_from=1, **DUAL))),
+    # MOUNTAIN'S WRATH (R5): "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP."
+    ("Bulwark_keystone_jg_t2", "Mountain's Wrath", (
+        R(None, "", 5, action="next_attack_bonus_of_max_health", action_event="every_seconds", every_seconds=10),)),
+    # DEAD WEIGHT (R27): "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: each
+    # crowd control effect applied to you deals damage equal to 3% of your Maximum HP to the enemy that applied it."
+    ("Bulwark_basic_jg_t1_003", "Dead Weight", (
+        R("damage_reduction", "more", 3, cond="while_crowd_controlled"),
+        R(None, "", 3, action="strike_target_of_max_health", action_event="crowd_control_taken", min_points=4))),
+    # IMMOVABLE OBJECT (R4): "While above 50% health, you are immune to crowd control. Each crowd control effect you
+    # are immune to this way deals damage equal to 3% of your Maximum HP to the enemy that applied it."
+    ("Bulwark_keystone_jg_t1", "Immovable Object", (
+        R("immune_to_crowd_control", "flat", 1, cond="health_above", cond_value=50),
+        R(None, "", 3, action="strike_target_of_max_health", action_event="crowd_control_refused"))),
+    # FORTIFIED MIND, the coordinating session's reading: "+3% Fervour generation from blocking per point. At 5 points:
+    # While at maximum Fervour, blocking deals damage equal to 3% of your Maximum HP back to the attacker."
+    ("Bulwark_basic_ic_t3_001", "Fortified Mind", (
+        R("fervour_per_block", "increased", 3),
+        R(None, "", 3, action="strike_target_of_max_health", action_event="block", cond="class_resource_at_maximum",
+          min_points=5))),
+    # SHIELD SLAM, the coordinating session's reading: "+2% damage per point for every 10% Block Chance you have. At 6
+    # points: after you block, your next attack deals bonus damage equal to 5% of your Armor."
+    ("Bulwark_basic_ic_t2_003", "Shield Slam", (
+        *_damage(2, scale="block_chance", step=10),
+        R(None, "", 5, action="next_attack_bonus_of_armor", action_event="block", min_points=6))),
+    # THE INEVITABLE, with the coordinating session's 4 metres for "nearby": 1% of maximum health a second after 10
+    # seconds in combat, and 0.5% more for each further 10 seconds, to 3% at 50.
+    ("Bulwark_keystone_jg_t3", "The Inevitable", tuple(
+        R(None, "", 1 if seconds == 10 else 0.5, action="smite_nearby_of_max_health", action_event="every_seconds",
+          every_seconds=1, event_value=4, cond="in_combat_for_seconds", cond_value=seconds)
+        for seconds in (10, 20, 30, 40, 50))),
     # SHATTER: "Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times."
     ("Berserker_twoh_009", "Shatter", (
         R(None, "", 5, tags=MELEE, action="enemy_armor_removed", action_event="critical_strike", stack_seconds=5,

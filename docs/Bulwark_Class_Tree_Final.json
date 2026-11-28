@@ -485,7 +485,7 @@
       "data": {
         "kind": "basic",
         "name": "Shield Slam",
-        "description": "+2% damage per point for every 10% Block Chance you have. At 6 points: Whenever you take a hit while your block streak is active, your next attack deals bonus flat damage equal to 5% of your Armor value.",
+        "description": "+2% damage per point for every 10% Block Chance you have. At 6 points: after you block, your next attack deals bonus damage equal to 5% of your Armor.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -573,7 +573,7 @@
       "data": {
         "kind": "basic",
         "name": "Fortified Mind",
-        "description": "+3% Fervour generation from blocking per point. At 5 points: While at maximum Fervour, blocking deals 200 flat damage back to the attacker.",
+        "description": "+3% Fervour generation from blocking per point. At 5 points: While at maximum Fervour, blocking deals damage equal to 3% of your Maximum HP back to the attacker.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -881,7 +881,7 @@
       "data": {
         "kind": "basic",
         "name": "Dead Weight",
-        "description": "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: Taking a crowd control effect retaliates with 500 flat damage.",
+        "description": "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: each crowd control effect applied to you deals damage equal to 3% of your Maximum HP to the enemy that applied it.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1057,7 +1057,7 @@
       "data": {
         "kind": "keystone",
         "name": "Immovable Object",
-        "description": "While above 15,000 Maximum HP, you are immune to all crowd control effects. Enemies that attempt to crowd control you instead take 500 flat damage.",
+        "description": "While above 50% health, you are immune to crowd control. Each crowd control effect you are immune to this way deals damage equal to 3% of your Maximum HP to the enemy that applied it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1079,7 +1079,7 @@
       "data": {
         "kind": "keystone",
         "name": "Mountain's Wrath",
-        "description": "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP as flat damage. Requires 20,000 Maximum HP to activate.",
+        "description": "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "keystone",
         "name": "The Inevitable",
-        "description": "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all nearby enemies equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second.",
+        "description": "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all enemies within 4 metres equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

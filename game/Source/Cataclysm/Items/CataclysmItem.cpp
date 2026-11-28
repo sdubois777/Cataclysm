@@ -1766,6 +1766,24 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.Nearby = ECataclysmNearbyAction::SmiteByHit;
 					}
+					// AND THE WAR TREES' ACTIONS SIZED BY MAXIMUM HEALTH OR ARMOUR, engine slice E2 (2026-11-27).
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteNearbyOfMaximumHealthAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteByMaximumHealth;
+					}
+					Action.bStrikeTargetOfMaximumHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeTargetOfMaximumHealthAction, ESearchCase::IgnoreCase);
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::NextAttackBonusOfMaximumHealthAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.NextAttackBonusOf = 1;
+					}
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::NextAttackBonusOfArmourAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.NextAttackBonusOf = 2;
+					}
 					if (bArmourRemovedNearby)
 					{
 						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;

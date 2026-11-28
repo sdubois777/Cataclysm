@@ -5048,6 +5048,13 @@ enum class ECataclysmNearbyAction : uint8
 	 * event's own character. The War vow options' second slice, V2b, 2026-11-25: Warlord.
 	 */
 	ArmourRemoved UMETA(DisplayName = "Remove the armour of nearby enemies"),
+
+	/**
+	 * Direct damage of `Percent` of the wearer's maximum health on every enemy within `EventValue` metres. The War trees'
+	 * engine slice E2 (2026-11-27): The Inevitable's "flat damage per second to all nearby enemies equal to 1% of your
+	 * Maximum HP" and Seismic Slam's "This bonus damage hits all enemies within 2 meters".
+	 */
+	SmiteByMaximumHealth UMETA(DisplayName = "Smite nearby enemies by a share of maximum health"),
 };
 
 /**
@@ -5976,6 +5983,22 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * `UCataclysmAbilitySystemComponent::ActOnEvent`.
 	 */
 	bool bStrikeTarget = false;
+
+	/**
+	 * Direct damage of `Percent` of the wearer's maximum health to the event's other character: `strike_target_of_max_health`.
+	 * The War trees' engine slice E2 (2026-11-27): Dead Weight's and Immovable Object's "deals damage equal to 3% of your
+	 * Maximum HP to the enemy that applied it", Fortified Mind's and Seismic Slam's. For the events `STRIKE_TARGET_EVENTS`
+	 * lists. Meets the struck one's mitigation as a direct blow does.
+	 */
+	bool bStrikeTargetOfMaximumHealth = false;
+
+	/**
+	 * What a next-attack bonus is sized by: nought for none, 1 the wearer's maximum health, 2 its armour. The War trees'
+	 * engine slice E2 (2026-11-27): Mountain's Wrath's "your next attack deals bonus damage equal to 5% of your Maximum HP"
+	 * and Shield Slam's "equal to 5% of your Armor". `Percent` of the stat is stored for the next attack
+	 * (`UCataclysmAbilitySystemComponent::NextAttackBonusStore`), the larger of it and what was stored.
+	 */
+	int32 NextAttackBonusOf = 0;
 
 	/**
 	 * Set, this action EXECUTES THE ENEMY A HIT OF ITS WEARER'S LEAVES BELOW A SHARE OF ITS HEALTH. `Percent` is the

@@ -66,6 +66,38 @@ SENTENCES: tuple[Sentence, ...] = (
              "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at "
              "maximum Fervour, your retaliation damage hits every enemy within 4 metres rather than just your "
              "attacker."),
+    # ENGINE SLICE E2'S (2026-11-27): three War rulings, and three of the coordinating session's readings.
+    Sentence("R5", "Bulwark", "keystone_jg_t2",
+             "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP as flat damage. "
+             "Requires 20,000 Maximum HP to activate.",
+             "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP."),
+    Sentence("R27", "Bulwark", "basic_jg_t1_003",
+             "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: Taking a crowd "
+             "control effect retaliates with 500 flat damage.",
+             "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: each crowd control "
+             "effect applied to you deals damage equal to 3% of your Maximum HP to the enemy that applied it."),
+    Sentence("R4", "Bulwark", "keystone_jg_t1",
+             "While above 15,000 Maximum HP, you are immune to all crowd control effects. Enemies that attempt to crowd "
+             "control you instead take 500 flat damage.",
+             "While above 50% health, you are immune to crowd control. Each crowd control effect you are immune to this "
+             "way deals damage equal to 3% of your Maximum HP to the enemy that applied it."),
+    Sentence("Fortified Mind (coordinator, 2026-11-27)", "Bulwark", "basic_ic_t3_001",
+             "+3% Fervour generation from blocking per point. At 5 points: While at maximum Fervour, blocking deals 200 "
+             "flat damage back to the attacker.",
+             "+3% Fervour generation from blocking per point. At 5 points: While at maximum Fervour, blocking deals "
+             "damage equal to 3% of your Maximum HP back to the attacker."),
+    Sentence("Shield Slam (coordinator, 2026-11-27)", "Bulwark", "basic_ic_t2_003",
+             "+2% damage per point for every 10% Block Chance you have. At 6 points: Whenever you take a hit while your "
+             "block streak is active, your next attack deals bonus flat damage equal to 5% of your Armor value.",
+             "+2% damage per point for every 10% Block Chance you have. At 6 points: after you block, your next attack "
+             "deals bonus damage equal to 5% of your Armor."),
+    Sentence("The Inevitable (coordinator, 2026-11-27)", "Bulwark", "keystone_jg_t3",
+             "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all nearby "
+             "enemies equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every "
+             "additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second.",
+             "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all enemies "
+             "within 4 metres equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for "
+             "every additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second."),
 )
 
 

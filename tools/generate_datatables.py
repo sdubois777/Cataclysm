@@ -8183,6 +8183,10 @@ NEARBY_ACTIONS = (
     # not the five metres above; see `SMITE_NEARBY_BY_HIT_ACTION`.
     # `SmiteNearbyByHitAction` holds the same name.
     "smite_nearby_by_hit",
+    # A DIRECT BLOW OF A SHARE OF THE WEARER'S MAXIMUM HEALTH on every enemy within the row's Event Value in metres,
+    # required, as the hit-sized nova's is. The War trees' engine slice E2 (2026-11-27): The Inevitable and Seismic
+    # Slam's rider. `SmiteNearbyOfMaximumHealthAction` holds the same name.
+    "smite_nearby_of_max_health",
 )
 
 #: The nova sized by a hit, its events and its radius. The War vow options'
@@ -8202,6 +8206,7 @@ MAX_NEARBY_PERCENT = {
     "heal_nearby_enemies": 100.0,
     "smite_nearby_by_armor": 1000.0,
     "smite_nearby_by_hit": 1000.0,
+    "smite_nearby_of_max_health": 100.0,
 }
 
 #: The action that PAYS A SHARE OF WHAT A BLOCK REMOVED BACK TO THE ATTACKER, as
@@ -8838,6 +8843,17 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
 #: sentence is 20 to 70.
 MAX_STRIKE_TARGET_PERCENT = 1000.0
 
+#: THE WAR TREES' ENGINE SLICE E2 (2026-11-27): actions SIZED BY THE WEARER'S OWN MAXIMUM HEALTH OR ARMOUR.
+#: `strike_target_of_max_health` is direct damage of the value's per cent of maximum health to the event's other
+#: character, on the events `STRIKE_TARGET_EVENTS` lists (Dead Weight, R27; Immovable Object, R4; Fortified Mind;
+#: Seismic Slam). `next_attack_bonus_of_max_health` and `next_attack_bonus_of_armor` store the value's per cent of the
+#: stat for the next attack, paid with Titanfall's store, the larger of it and what is held (Mountain's Wrath, R5;
+#: Shield Slam). `smite_nearby_of_max_health` is in `NEARBY_ACTIONS`. Each value is a per cent above 0 and up to
+#: `MAX_SIZED_BY_A_STAT_PERCENT`. `UCataclysmAbilitySystemComponent` holds the same names.
+STRIKE_TARGET_OF_MAX_HEALTH_ACTION = "strike_target_of_max_health"
+NEXT_ATTACK_BONUS_ACTIONS = ("next_attack_bonus_of_max_health", "next_attack_bonus_of_armor")
+MAX_SIZED_BY_A_STAT_PERCENT = 100.0
+
 #: The action that EXECUTES THE ENEMY A HIT LEAVES BELOW A SHARE OF ITS HEALTH,
 #: with its value as the chance, where 100 is always. Ruled 2026-10-12 under the
 #: owner's delegation: "Strike skills have a 10%-20% chance to execute enemies
@@ -8881,6 +8897,8 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             # `trap_triggered`, which no hit fires, so it takes none by default.
             or action == SLOW_FOR_SECONDS_ACTION
             or action == STRIKE_TARGET_ACTION
+            # AND THE WAR TREES' ACTIONS SIZED BY A STAT (engine slice E2): Mountain's Wrath's "Once every 10 seconds".
+            or action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS
             # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
             # a second" is its Trigger Cooldown (V4b, 2026-11-25).
             or action == COUNTERFIRE_ACTION
@@ -9491,6 +9509,9 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_strike_target_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
         return
+    if action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS:
+        _check_sized_by_a_stat_action(index, who, action, event, fraction_of, kind, raw, headers)
+        return
     if action == EXECUTE_TARGET_ACTION:
         _check_execute_target_action(index, who, action, event, fraction_of,
                                      kind, raw, headers)
@@ -9761,6 +9782,10 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
     Soul Furnace's "for each Fervour spent" (the Death trees' slice C3b).
     """
     known = action_events()
+    # AND THE CLOCK, FOR THE NOVA SIZED BY MAXIMUM HEALTH: The Inevitable's "per second" (the War trees' engine slice E2,
+    # 2026-11-27). `UCataclysmAbilitySystemComponent`'s timed step acts on it.
+    if action == "smite_nearby_of_max_health":
+        known = known | {TIMED_EVENT}
     if event not in known:
         raise DataError(
             f"Enchantment Effects row {index}: {who} acts on the characters "
@@ -10085,6 +10110,26 @@ def _check_strike_target_action(index: int, who: str, action: str, event: str,
                 f"character of its event and states {column} {written!r}. Its "
                 f"value is a percentage of attack damage and nothing else, so "
                 f"the column must be empty.")
+
+
+def _check_sized_by_a_stat_action(index: int, who: str, action: str, event: str, fraction_of: str, kind: str, raw,
+                                  headers: dict[str, int]) -> None:
+    """Everything a row sized by the wearer's maximum health or armour must say, and everything it must not. The War
+    trees' engine slice E2 (2026-11-27). A strike needs an event naming a living character other than the wearer; a
+    next-attack bonus needs an event the game fires. The share is checked where the value is read. A fraction, a value
+    kind and a scale each mean nothing here, so each is refused rather than dropped."""
+    known = STRIKE_TARGET_EVENTS if action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION else tuple(sorted(granting_events()))
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} acts on the event {event or '(none)'!r}. It may act on: "
+            f"{', '.join(known)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} is sized by a stat of the wearer's and states {column} "
+                f"{written!r}. Its value is a per cent of that stat and nothing else, so the column must be empty.")
 
 
 def _check_execute_target_action(index: int, who: str, action: str, event: str,
@@ -10625,6 +10670,8 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
+                and action != STRIKE_TARGET_OF_MAX_HEALTH_ACTION \
+                and action not in NEXT_ATTACK_BONUS_ACTIONS \
                 and action != EXECUTE_TARGET_ACTION \
                 and action != TEMPORARY_ABSORB_ACTION \
                 and action != RETALIATION_PULSE_ACTION \
@@ -11010,6 +11057,14 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} strikes for "
                 f"{low:g} to {high:g} per cent of attack damage. A strike "
                 f"is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
+
+    # A ROW SIZED BY A STAT OF THE WEARER'S IS A PER CENT OF IT, above 0 and up to the bound. The War trees' engine
+    # slice E2 (2026-11-27).
+    if action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS:
+        if not (0 < low <= MAX_SIZED_BY_A_STAT_PERCENT and 0 < high <= MAX_SIZED_BY_A_STAT_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is {low:g} to {high:g} per cent of a stat of the "
+                f"wearer's. It is above 0 and up to {MAX_SIZED_BY_A_STAT_PERCENT:g}.")
 
     # AN EXECUTE'S VALUE IS ITS CHANCE, above 0 and up to 100. Ruled
     # 2026-10-12. 100 is always. Its share of health is checked where the
@@ -11801,9 +11856,10 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"Enchantment Effects row {index}: {name} reaches a death "
                     f"{event_value:g} metres away. It is 0, the 3 metres every "
                     f"such row reached before, up to {MAX_NEARBY_DEATH_METRES:g}.")
-    elif action == SMITE_NEARBY_BY_HIT_ACTION:
+    elif action == SMITE_NEARBY_BY_HIT_ACTION or action == "smite_nearby_of_max_health":
         # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
-        # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`.
+        # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`. AND OF ONE SIZED BY MAXIMUM HEALTH, the War trees' engine slice
+        # E2 (2026-11-27), which reads its radius the same way.
         if not event_value_text:
             raise DataError(
                 f"Enchantment Effects row {index}: {name} deals a share of a "

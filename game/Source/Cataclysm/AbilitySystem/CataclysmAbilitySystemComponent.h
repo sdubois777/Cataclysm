@@ -2073,6 +2073,14 @@ public:
 	 * too.
 	 */
 	static const TCHAR* SmiteNearbyByHitAction;
+	/** `smite_nearby_of_max_health`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* SmiteNearbyOfMaximumHealthAction;
+	/** `strike_target_of_max_health`. The same slice. */
+	static const TCHAR* StrikeTargetOfMaximumHealthAction;
+	/** `next_attack_bonus_of_max_health`. The same slice. */
+	static const TCHAR* NextAttackBonusOfMaximumHealthAction;
+	/** `next_attack_bonus_of_armor`. The same slice. */
+	static const TCHAR* NextAttackBonusOfArmourAction;
 
 	/**
 	 * Wrath Incarnate's pulse. The War vow options' third slice, V3a, 2026-11-25: "When a single hit takes more than 10%
@@ -4920,6 +4928,12 @@ public:
 	/** What Titanfall stored for the next attack, or nought (T4). */
 	float TitanfallStoredDamage() const { return TitanfallStore; }
 
+	/** What a `next_attack_bonus_of_*` row stored for the next attack, or nought. The War trees' engine slice E2. */
+	float NextAttackBonusStored() const { return NextAttackBonusStore; }
+
+	/** The wearer's maximum health now, or nought with no vital attribute set. The War trees' engine slice E2. */
+	float MaximumHealthNow() const;
+
 	/**
 	 * How a device of this character's answers `Enemy`, queued and made at depth nought as Counterfire's answers are: a
 	 * skill trap goes off through the forced set-off; a skill gadget fires its shot at `Enemy` at `DamageMultiplier`; a
@@ -6934,6 +6948,12 @@ protected:
 
 	/** Titanfall's store for the next attack, its window's end and its clock. See `TryTitanfall`. */
 	float TitanfallStore = 0.0f;
+
+	/**
+	 * What a `next_attack_bonus_of_*` row stored for the next attack: the larger of what it stored and what was held.
+	 * Paid whole with Titanfall's store by `SpendStoredAbsorbedDamage`. The War trees' engine slice E2 (2026-11-27).
+	 */
+	float NextAttackBonusStore = 0.0f;
 	float TitanfallUnkillableUntilSeconds = -1.0f;
 	float TitanfallReadyAtSeconds = 0.0f;
 	bool bTitanfallHasFired = false;
