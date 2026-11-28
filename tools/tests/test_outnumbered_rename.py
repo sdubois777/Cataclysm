@@ -19,7 +19,14 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import apply_outnumbered_rename_2026_11_25 as rename  # noqa: E402
 
+sys.path.insert(0, str(REPO_ROOT / "tools" / "tests"))
+import without_the_war_trees_rows  # noqa: E402
+
 TREE_FILE = REPO_ROOT / "docs" / "Bulwark_Class_Tree_Final.json"
+#: THE TREE FILE AS THE RENAME LEFT IT, with the War trees' sentences of 2026-11-27 taken out: the coordinating
+#: session's reading of Outnumbered's "all nearby enemies" as 4 metres rewrote the sentence the rename checks for, after
+#: it. The name tests read the repository's file; the script's own tests read this copy.
+BEFORE_LATER_SENTENCES = without_the_war_trees_rows.docs() / "Bulwark_Class_Tree_Final.json"
 
 
 def _node(data: dict) -> dict:
@@ -44,12 +51,13 @@ def test_the_generated_node_table_carries_the_new_name():
 
 def test_the_script_has_nothing_left_to_do():
     result = subprocess.run([sys.executable, str(REPO_ROOT / "tools" / "apply_outnumbered_rename_2026_11_25.py"),
-                             "--check", str(REPO_ROOT / "docs")], capture_output=True, text=True, cwd=REPO_ROOT)
+                             "--check", str(BEFORE_LATER_SENTENCES.parent)], capture_output=True, text=True,
+                            cwd=REPO_ROOT)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
 def _with_name(tmp_path, name: str) -> pathlib.Path:
-    raw = TREE_FILE.read_bytes()
+    raw = BEFORE_LATER_SENTENCES.read_bytes()
     old = f'"name": "{rename.AFTER}",'.encode()
     assert raw.count(old) == 1
     copy = tmp_path / TREE_FILE.name
@@ -62,7 +70,7 @@ def test_the_script_renames_the_old_name_once_byte_for_byte(tmp_path):
     outcome = rename.plan_file(copy)
     assert outcome.changes == [f"renamed {rename.NODE_ID} from {rename.BEFORE!r} to {rename.AFTER!r}"]
     copy.write_bytes(outcome.new_bytes)
-    assert copy.read_bytes() == TREE_FILE.read_bytes()
+    assert copy.read_bytes() == BEFORE_LATER_SENTENCES.read_bytes()
     assert rename.plan_file(copy).new_bytes is None
 
 

@@ -290,9 +290,62 @@ DEATH_CLASSES: dict[str, ClassDefinition] = {
     c.name: c for c in (SOUL_COLLECTOR, NECROMANCER, SHADOW)
 }
 
+# THE THREE WAR LINES, issue #932, ruled by the coordinating session on
+# 2026-11-27: written as judgements under the owner's delegation of unstated
+# numbers, the method of the six above. `tools/reapply_war_class_stats_workbook.py`
+# writes the same numbers into the workbook, which is authoritative.
+
+# The shield-bearer: health, armour, flat damage reduction and crowd control
+# resistance. NO BLOCK BASE: no class has one, which the four gems' tooltip of
+# 2026-11-22 tells the player. Below the Masochist's health, above the Ravager's.
+BULWARK = ClassDefinition(
+    name="Bulwark",
+    overrides={
+        "max_health": Scaling(base=140.0, per_level=21.0),      # L100: 2,219
+        "health_regen": Scaling(base=2.0, per_level=0.25),      # L100: 26.75/s
+        "armor": Scaling(base=30.0, per_level=4.0),             # L100: 426
+        "damage_reduction": Scaling(base=3.0, per_level=0.05),  # L100: 7.95%
+        "crowd_control_resistance": Scaling(base=8.0, per_level=0.15),  # L100: 22.85
+        "movement_speed": Scaling(base=3.9),
+    },
+)
+
+# The fighter that heals by hitting: health, a little leech, a larger critical
+# strike multiplier, and quicker on foot.
+BERSERKER = ClassDefinition(
+    name="Berserker",
+    overrides={
+        "max_health": Scaling(base=120.0, per_level=18.0),      # L100: 1,902
+        "life_leech": Scaling(base=1.0, per_level=0.02),        # L100: 2.98%
+        "crit_multiplier": Scaling(base=160.0),
+        "damage_reduction": Scaling(base=1.0, per_level=0.02),  # L100: 2.98%
+        "movement_speed": Scaling(base=4.4),
+    },
+)
+
+# The device user: less health, more mana, a little flat damage reduction, a
+# larger area and the quickest feet.
+# NO EVASION BASE, though its tree raises evasion: no class has one (see the
+# Shadow above).
+SABOTEUR = ClassDefinition(
+    name="Saboteur",
+    overrides={
+        "max_health": Scaling(base=95.0, per_level=14.0),       # L100: 1,481
+        "max_mana": Scaling(base=60.0, per_level=7.0),          # L100: 753
+        # Saboteur_basic_trunk_014 increases it.
+        "damage_reduction": Scaling(base=1.0, per_level=0.02),  # L100: 2.98%
+        "area_of_effect": Scaling(base=110.0),
+        "movement_speed": Scaling(base=4.5),
+    },
+)
+
+WAR_CLASSES: dict[str, ClassDefinition] = {
+    c.name: c for c in (BULWARK, BERSERKER, SABOTEUR)
+}
+
 #: Every class that has a stat line, which is every class `Class Stats` in the
 #: design workbook names besides `Default`.
-CLASSES: dict[str, ClassDefinition] = {**DEMONIC_CLASSES, **DEATH_CLASSES}
+CLASSES: dict[str, ClassDefinition] = {**DEMONIC_CLASSES, **DEATH_CLASSES, **WAR_CLASSES}
 
 
 if __name__ == "__main__":

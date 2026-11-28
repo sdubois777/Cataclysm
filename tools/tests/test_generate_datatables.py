@@ -3729,12 +3729,13 @@ class TestStrikeTarget:
         with pytest.raises(gen.DataError, match="names a living character other than"):
             gen.enchantment_effects(self.strike(tmp_path, {"Action Event": event}))
 
-    def test_the_list_of_events_is_exactly_the_ten(self):
-        # TEN SINCE V3a, 2026-11-25: `hit_taken` and `big_hit_taken` name the attacker.
+    def test_the_list_of_events_is_exactly_the_twelve(self):
+        # TEN SINCE V3a, 2026-11-25: `hit_taken` and `big_hit_taken` name the attacker. TWELVE SINCE THE WAR TREES'
+        # ENGINE SLICE E1, 2026-11-27: `crowd_control_taken` and `crowd_control_refused` name whose act it was.
         assert set(gen.STRIKE_TARGET_EVENTS) == {
             "hit_dealt", "first_hit_dealt", "critical_strike", "deployable_hit",
             "retaliation_dealt", "block", "melee_hit_taken", "dodge",
-            "hit_taken", "big_hit_taken"}
+            "hit_taken", "big_hit_taken", "crowd_control_taken", "crowd_control_refused"}
         assert set(gen.STRIKE_TARGET_EVENTS) <= gen.granting_events()
 
     def test_a_size_at_the_bound_is_carried_through(self, tmp_path):
@@ -3817,7 +3818,8 @@ class TestExecuteTarget:
         assert out[0]["TriggerCooldown"] == gen.DEFAULT_TRIGGER_COOLDOWN
 
     def test_execute_is_the_one_action_with_no_default_wait_and_may_state_one(self):
-        assert gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN == (gen.EXECUTE_TARGET_ACTION,)
+        # AND PHANTOM BLADES' ECHO SINCE 2026-11-27: one echo per melee hit, so no quarter-second wait between two.
+        assert gen.ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN == (gen.EXECUTE_TARGET_ACTION, "echo_strike_later")
         assert gen.takes_a_trigger_cooldown(gen.EXECUTE_TARGET_ACTION)
 
     @pytest.mark.parametrize("stated", [0, 0.25, 10])
@@ -6159,9 +6161,12 @@ class TestRetaliationThatCannotBeMitigated:
             "EnchantmentEffects", [row]) == []
         assert gen.refuse_a_scale_nothing_asks_for(
             "EnchantmentEffects", [row]) == []
-        conditioned = gen.refuse_a_condition_nothing_asks_for(
-            "EnchantmentEffects", [dict(row, Condition="health_below")])
-        assert len(conditioned) == 1 and self.STAT in conditioned[0]
+        # A CONDITION IS ACCEPTED SINCE THE WAR TREES' ENGINE SLICE E1 (2026-11-27): the flag is asked through
+        # `StatForSkill`, which judges conditions, and Undying Rage's "While below 25% HP ... cannot be reduced by
+        # enemy resistances" needs one. `CONDITIONED_STATS_WITH_AN_ASKER` names it and
+        # `ProbeConditionedRetaliationCannotBeMitigated` measures it.
+        assert gen.refuse_a_condition_nothing_asks_for(
+            "EnchantmentEffects", [dict(row, Condition="health_below")]) == []
         scaled = gen.refuse_a_scale_nothing_asks_for(
             "EnchantmentEffects", [dict(row, Scale="own_stacks")])
         assert len(scaled) == 1 and self.STAT in scaled[0]

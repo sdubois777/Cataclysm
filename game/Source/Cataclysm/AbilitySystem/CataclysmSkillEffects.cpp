@@ -4358,6 +4358,8 @@ namespace
 		// not make the next shove -- after the immunity ends -- land for half.
 		if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Displacement")))
 		{
+			// AND THE CHARACTER IMMUNE TO IT REFUSED IT, the War trees' slice E1 (2026-11-27).
+			UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
 			return false;
 		}
 
@@ -4495,9 +4497,30 @@ namespace
 	}
 }
 
+void UCataclysmSkillEffects::NoteCrowdControlReceived(const AActor* Instigator, AActor* Target, bool bRefused)
+{
+	// ON THE CHARACTER IT LANDED ON, NAMING WHOSE ACT IT WAS: a minion's stun names the minion, and its summoner only
+	// under Conduit, as the applier's own event does (`UCataclysmCombatEvents::AttackerOf`). The War trees' slice E1
+	// (2026-11-27).
+	if (UCataclysmAbilitySystemComponent* Taking =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+	{
+		Taking->NoteCrowdControlReceived(UCataclysmCombatEvents::AttackerOf(const_cast<AActor*>(Instigator)), bRefused);
+	}
+}
+
 bool UCataclysmSkillEffects::ApplyStagger(AActor* Instigator, AActor* Target,
 										  float Seconds)
 {
+	// A CHARACTER IMMUNE TO STAGGER IS NOT MARKED: Juggernaut's "You cannot be staggered ... while above 50% Fervour"
+	// (`immune_to_stagger`) and any immunity to all crowd control. The War trees' slice E1 (2026-11-27). Only the marker
+	// is refused, as the ceiling below refuses it; the shove that got here has already landed.
+	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Stagger")))
+	{
+		UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
+		return false;
+	}
+
 	// A HEALTH CEILING THE STAGGERING CHARACTER CAN CARRY. Issue #45, for
 	// "You cannot stagger enemies above 50% HP".
 	//
@@ -4604,7 +4627,7 @@ namespace
 	 * ON `UCataclysmCombatEvents::AttackerOf`, so a minion's stun opens its own
 	 * window, and its summoner's only under the Ritualist keystone Conduit.
 	 */
-	void CataclysmSkillEffectsNoteCrowdControl(AActor* Instigator)
+	void CataclysmSkillEffectsNoteCrowdControl(AActor* Instigator, AActor* Target)
 	{
 		AActor* Owner = UCataclysmCombatEvents::AttackerOf(Instigator);
 		if (UCataclysmAbilitySystemComponent* Cataclysm =
@@ -4613,6 +4636,8 @@ namespace
 		{
 			Cataclysm->NoteCrowdControlApplied();
 		}
+		// AND THE CHARACTER IT LANDED ON RECEIVED IT, the War trees' slice E1 (2026-11-27).
+		UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/false);
 	}
 }
 
@@ -4674,7 +4699,7 @@ bool UCataclysmSkillEffects::ApplyKnockbackFrom(AActor* Instigator, AActor* Targ
 	// answer of 2026-09-11. A shove an immunity refused, or one crowd control
 	// resistance took to nothing, returned above and staggers nothing.
 	ApplyStagger(Instigator, Target);
-	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator, Target);
 	return true;
 }
 
@@ -4701,7 +4726,7 @@ bool UCataclysmSkillEffects::ApplyPushAside(AActor* Instigator, AActor* Target,
 		return false;
 	}
 	ApplyStagger(Instigator, Target);
-	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator, Target);
 	return true;
 }
 
@@ -4758,7 +4783,7 @@ bool UCataclysmSkillEffects::ApplyPullFrom(AActor* Instigator, AActor* Target,
 	// three verbs the owner named. A drag is this function applied after the
 	// caster has moved, so it staggers too.
 	ApplyStagger(Instigator, Target);
-	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator, Target);
 	return true;
 }
 
@@ -4781,7 +4806,7 @@ bool UCataclysmSkillEffects::ApplyLaunch(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
-	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator, Target);
 	return true;
 }
 
@@ -5193,6 +5218,8 @@ bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 	// stunned" is not a question about how hard the blow was.
 	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Stun")))
 	{
+		// AND THE CHARACTER IMMUNE TO IT REFUSED IT, the War trees' slice E1 (2026-11-27).
+		UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
 		return false;
 	}
 
@@ -5264,7 +5291,7 @@ bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 	ApplyTagForDuration(Instigator, Target, StunImmuneTag(),
 						StunImmunityWindowSeconds);
 
-	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator, Target);
 	return true;
 }
 
@@ -5328,6 +5355,8 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 	// down" is not a question about how hard the blow was.
 	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Knockdown")))
 	{
+		// AND THE CHARACTER IMMUNE TO IT REFUSED IT, the War trees' slice E1 (2026-11-27).
+		UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
 		return false;
 	}
 
@@ -5383,7 +5412,7 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 	// stagger is a separate question from what the knockdown refuses.
 	ApplyStagger(Instigator, Target);
 
-	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator, Target);
 	return true;
 }
 

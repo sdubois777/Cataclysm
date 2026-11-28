@@ -53,6 +53,14 @@ public:
 	 *  melee attack asks it with an answer above nought. */
 	static const TCHAR* BerserkingDamagePerFervourStat;
 
+	/** Berserking spends half the pool rather than all of it: Berserker's Rage, the project owner's ruling of 2026-11-27.
+	 *  A flag. The War trees' engine slice E3. */
+	static const TCHAR* BerserkingSpendsHalfStat;
+
+	/** Berserking fires on every melee attack outside Wrath and Frenzy, armed or not: Bloodied's "Berserking triggers on
+	 *  every melee hit rather than only when Fervour is full", under its condition. A flag. The War trees' engine slice E3. */
+	static const TCHAR* BerserkingOnEveryMeleeHitStat;
+
 	/** Fervour taken a second, by any row granting it, under any condition. */
 	static const TCHAR* DrainPerSecondStat;
 

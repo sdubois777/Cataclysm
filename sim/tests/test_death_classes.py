@@ -30,7 +30,8 @@ def _at_100(name, **kwargs):
 
 def test_the_three_death_classes_are_defined_with_the_games_spelling():
     assert tuple(cl.DEATH_CLASSES) == DEATH
-    assert set(cl.CLASSES) == set(cl.DEMONIC_CLASSES) | set(DEATH)
+    # AND THE WAR THREE SINCE ISSUE #932 (2026-11-27).
+    assert set(cl.CLASSES) == set(cl.DEMONIC_CLASSES) | set(DEATH) | set(cl.WAR_CLASSES)
 
 
 @pytest.mark.parametrize("name", DEATH)
@@ -54,7 +55,8 @@ def test_no_two_of_the_six_classes_have_the_same_stat_line():
     lines = {name: tuple(sorted((s, d.scaling(s).base, d.scaling(s).per_level)
                                 for s in ch.ALL_STATS))
              for name, d in cl.CLASSES.items()}
-    assert len(set(lines.values())) == len(lines) == 6
+    # NINE SINCE THE WAR LINES OF ISSUE #932 (2026-11-27); the name says six, the count is every class with a line.
+    assert len(set(lines.values())) == len(lines) == 9
 
 
 def test_no_class_has_a_base_of_evasion_and_the_shadow_takes_less_area():

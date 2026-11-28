@@ -83,6 +83,7 @@ namespace
 		{ TEXT("seconds_after_summon"),         ECataclysmStatCondition::WithinSecondsOfSummon },
 		{ TEXT("seconds_after_dodge"),          ECataclysmStatCondition::WithinSecondsOfEvade },
 		{ TEXT("seconds_after_hit_taken"),      ECataclysmStatCondition::WithinSecondsOfHitTaken },
+		{ TEXT("two_hits_taken_within_seconds"), ECataclysmStatCondition::TwoHitsTakenWithinSeconds },
 		{ TEXT("seconds_after_resource_full"),  ECataclysmStatCondition::WithinSecondsOfClassResourceFull },
 		{ TEXT("seconds_after_resource_empty"), ECataclysmStatCondition::WithinSecondsOfClassResourceEmpty },
 		{ TEXT("seconds_after_striking_a_boss"), ECataclysmStatCondition::WithinSecondsOfStrikingABoss },
@@ -185,6 +186,16 @@ namespace
 		{ TEXT("target_marked_by_you"), ECataclysmStatCondition::TargetMarkedByYou },
 		{ TEXT("target_is_your_last_attacker"), ECataclysmStatCondition::TargetIsYourLastAttacker },
 		{ TEXT("dual_wielding"),                ECataclysmStatCondition::DualWielding },
+		// THE WAR TREES' SLICE E1 (2026-11-27).
+		{ TEXT("target_carries_bleed"),         ECataclysmStatCondition::TargetCarriesBleed },
+		{ TEXT("holding_shield"),               ECataclysmStatCondition::HoldingShield },
+		{ TEXT("not_holding_shield"),           ECataclysmStatCondition::NotHoldingShield },
+		{ TEXT("attack_at_full_fervour"),       ECataclysmStatCondition::AttackAtFullFervour },
+		{ TEXT("blow_was_critical"),              ECataclysmStatCondition::HitIsCritical },
+		{ TEXT("blow_was_not_critical"),          ECataclysmStatCondition::HitIsNotCritical },
+		{ TEXT("while_crowd_controlled"),       ECataclysmStatCondition::WhileCrowdControlled },
+		{ TEXT("dual_wielding_outside_frenzy"),                ECataclysmStatCondition::DualWieldingOutsideFrenzy },
+		{ TEXT("hit_taken_was_unblocked"),      ECataclysmStatCondition::HitTakenWasUnblocked },
 		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
 		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
 		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
@@ -216,6 +227,15 @@ namespace
 		{ TEXT("enemies_in_siphon"),   ECataclysmStatScale::PerEnemyInSiphon },
 		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
 		{ TEXT("crippled_enemies_in_reach"), ECataclysmStatScale::PerCrippledEnemyInReach },
+		// THE WAR TREES' SLICE E1 (2026-11-27).
+		{ TEXT("bleeding_enemies_in_reach"), ECataclysmStatScale::PerBleedingEnemyInReach },
+		{ TEXT("class_resource_held_percent"), ECataclysmStatScale::PerPercentOfClassResourceHeld },
+		{ TEXT("target_health_missing"), ECataclysmStatScale::PerPercentOfTargetHealthMissing },
+		{ TEXT("increased_max_health"), ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth },
+		{ TEXT("max_health_from_other_sources"), ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources },
+		{ TEXT("combat_seconds_held"), ECataclysmStatScale::PerSecondOfCombatHeld },
+		{ TEXT("enemies_struck_recently"), ECataclysmStatScale::PerEnemyStruckRecently },
+		{ TEXT("enemies_that_struck_you_recently"), ECataclysmStatScale::PerEnemyThatStruckYouRecently },
 		{ TEXT("remains_in_reach"),    ECataclysmStatScale::PerOwnRemainsInReach },
 		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
 		{ TEXT("damage_reduction"),    ECataclysmStatScale::PerPercentOfDamageReduction },
@@ -444,8 +464,19 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::InFrenzy:
 	case ECataclysmStatCondition::TargetNotYetTriggeredYourTrap:
 	case ECataclysmStatCondition::NoRoomForATrap:
+	// AND THE WAR TREES' SLICE E1'S THREE (2026-11-27): an ailment the target carries, and whether a Shield is held.
+	case ECataclysmStatCondition::TargetCarriesBleed:
+	case ECataclysmStatCondition::HoldingShield:
+	case ECataclysmStatCondition::NotHoldingShield:
+	// AND THREE FACTS OF THE ATTACK OR HIT IN HAND, the same slice.
+	case ECataclysmStatCondition::AttackAtFullFervour:
+	case ECataclysmStatCondition::HitIsCritical:
+	case ECataclysmStatCondition::HitIsNotCritical:
+	case ECataclysmStatCondition::WhileCrowdControlled:
+	case ECataclysmStatCondition::DualWieldingOutsideFrenzy:
+	case ECataclysmStatCondition::HitTakenWasUnblocked:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the fifty-four says
+		// nothing for a number to be compared against. Each of the sixty-three says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -555,6 +586,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WieldingTwoHandedWeapon:
 	// AND HOW MANY ITEMS THE WEAPON SLOTS HOLD, for the same reason: a weapon swap. The Berserker's states, 2026-11-25.
 	case C::DualWielding:
+	// AND WHETHER A SHIELD IS HELD, for the same reason: a weapon swap. The War trees' slice E1 (2026-11-27).
+	case C::HoldingShield:
+	case C::NotHoldingShield:
 	// AND WHETHER THE FERVOUR HELD ADDS DAMAGE, which a passive point taken or refunded changes, and a point rewrites the
 	// character's attributes. Death Made Flesh, issue #2951.
 	case C::FervourHeldAddsDamage:
@@ -565,6 +599,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// speed again, so a speed row under either reads the new state.
 	case C::InWrath:
 	case C::InFrenzy:
+	case C::DualWieldingOutsideFrenzy:
 		return EOn::ClassResource;
 
 	// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Whether the pool has room for another trap moves with the pool and
@@ -588,6 +623,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfSummon:
 	case C::WithinSecondsOfEvade:
 	case C::WithinSecondsOfHitTaken:
+	case C::TwoHitsTakenWithinSeconds:
 	case C::WithinSecondsOfClassResourceFull:
 	case C::WithinSecondsOfClassResourceEmpty:
 	case C::WithinSecondsOfStrikingABoss:
@@ -672,6 +708,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetCarriesCripple:
 	case C::TargetCarriesCrippleAndWeaken:
 	case C::TargetCarriesVoidSplinter:
+	case C::TargetCarriesBleed:
 	case C::OpponentCarriesWeaken:
 	case C::TargetHealthBelowPercent:
 	case C::TargetAtFullHealth:
@@ -723,7 +760,16 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::MinionHasYourMostMaximumHealth:
 	case C::TargetMarkedByYou:
 	case C::TargetIsYourLastAttacker:
+	case C::AttackAtFullFervour:
+	case C::HitIsCritical:
+	case C::HitIsNotCritical:
+	case C::HitTakenWasUnblocked:
 		return EOn::TheBlowOrSkill;
+
+	// WHETHER THE CHARACTER IS HELD BY CROWD CONTROL, which ends on a timer nothing tells a cached stat about. The War
+	// trees' slice E1 (2026-11-27).
+	case C::WhileCrowdControlled:
+		return EOn::Time;
 
 	// WHETHER THE KILL BEING ACTED ON WAS MADE BY A HIT, the Death trees' slice C4c1 (2026-11-25): a fact of the kill in
 	// hand, set only while the player's kill handler acts on it.
@@ -892,6 +938,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// The same two rules again. Issue #1815.
 		return State.SecondsSinceHitTaken >= 0.0f
 			&& State.SecondsSinceHitTaken <= Value;
+
+	case ECataclysmStatCondition::TwoHitsTakenWithinSeconds:
+		// The same two rules, on the gap between the last two hits. The War trees' engine slice E2 (Counter Stance).
+		return State.SecondsBetweenLastTwoHitsTaken >= 0.0f
+			&& State.SecondsBetweenLastTwoHitsTaken <= Value;
 
 	case ECataclysmStatCondition::WithinSecondsOfClassResourceFull:
 		// The same two rules again. Issue #1815.
@@ -1187,9 +1238,47 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// and refuses.
 		return State.WeaponsWorn == 2;
 
+	case ECataclysmStatCondition::HoldingShield:
+		// A SHIELD IN EITHER WEAPON SLOT. The War trees' slice E1 (2026-11-27). -1 is "no equipment" and refuses.
+		return State.ShieldsHeld > 0;
+
+	case ECataclysmStatCondition::NotHoldingShield:
+		// NONE IN EITHER, AND NOT UNKNOWN: -1 refuses here too, so a character with no equipment is neither.
+		return State.ShieldsHeld == 0;
+
+	case ECataclysmStatCondition::AttackAtFullFervour:
+		// THE SNAPSHOT `BeginAttackOn` TOOK. The War trees' slice E1 (2026-11-27).
+		return State.bAttackBeganAtFullFervour;
+
+	case ECataclysmStatCondition::HitIsCritical:
+		// 1 IS A CRITICAL HIT IN HAND; -1, NO HIT, REFUSES. The War trees' slice E1 (2026-11-27).
+		return State.HitInHandCritical == 1;
+
+	case ECataclysmStatCondition::HitIsNotCritical:
+		// 0 IS A HIT IN HAND THAT WAS NOT CRITICAL; -1 REFUSES HERE TOO.
+		return State.HitInHandCritical == 0;
+
+	case ECataclysmStatCondition::WhileCrowdControlled:
+		// THE READING `CurrentConditions` TOOK. The War trees' slice E1 (2026-11-27).
+		return State.bSelfCrowdControlled;
+
+	case ECataclysmStatCondition::HitTakenWasUnblocked:
+		// 0 IS A HIT TAKEN IN HAND THAT WAS NOT BLOCKED; -1, NONE, REFUSES. The War trees' engine slice E2.
+		return State.HitTakenBlocked == 0;
+
+	case ECataclysmStatCondition::TargetCarriesBleed:
+		// THE SAME WALK AS THE VOID SPLINTER'S, ON THE BLEED'S TAG. The War trees' slice E1 (2026-11-27).
+		// `HasTagExact`, for the reason given there: `Keyword.DoT` itself must not count.
+		return State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::BleedTag());
+
 	case ECataclysmStatCondition::InWrath:
 		// THE STATE THE ABILITY SYSTEM COMPONENT HOLDS. The Berserker's states, 2026-11-25.
 		return State.bInWrath;
+
+	case ECataclysmStatCondition::DualWieldingOutsideFrenzy:
+		// TWO ITEMS IN THE WEAPON SLOTS AND NOT IN FRENZY, the War trees' engine slice E2 (2026-11-27). -1, no equipment,
+		// refuses as `DualWielding` does.
+		return State.WeaponsWorn == 2 && !State.bInFrenzy;
 
 	case ECataclysmStatCondition::InFrenzy:
 		return State.bInFrenzy;
@@ -2336,6 +2425,78 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		return StackedValue(Modifier,
 							CrippledEnemiesInReach(State, Modifier.ReachMetres));
 
+	// AND PER BLEEDING ENEMY, THE SAME ARITHMETIC ON ITS OWN LIST. The War trees' slice E1 (2026-11-27), Open Wounds;
+	// the row's `ScaleMaxSteps` holds its "up to 5 enemies".
+	// THE SHARE OF ITS MAXIMUM HEALTH THE TARGET IS MISSING, IN WHOLE STEPS OF PER CENT. The War trees' slice E1
+	// (2026-11-27), Executioner and Death Strike. An unread target, -1, scales to nothing.
+	case ECataclysmStatScale::PerPercentOfTargetHealthMissing:
+	{
+		if (State.TargetHealthPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Steps = FMath::FloorToFloat(FMath::Max(0.0f, 100.0f - State.TargetHealthPercent)
+												/ Modifier.ScaleStep);
+		return Modifier.Value * Steps;
+	}
+
+	// INCREASED MAXIMUM HEALTH IN WHOLE STEPS OF PER CENT, the shape of the movement speed one. The War trees' slice E1.
+	case ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth:
+	{
+		if (State.IncreasedMaximumHealthPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(State.IncreasedMaximumHealthPercent / Modifier.ScaleStep));
+	}
+
+	// SECONDS OF COMBAT HELD IN WHOLE STEPS, the shape of the seconds in combat one. The War trees' slice E3.
+	case ECataclysmStatScale::PerSecondOfCombatHeld:
+	{
+		if (State.CombatSecondsHeld < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(State.CombatSecondsHeld / Modifier.ScaleStep));
+	}
+
+	// MAXIMUM HEALTH FROM OTHER SOURCES IN WHOLE STEPS, the shape of the maximum health one. The War trees' slice E3.
+	case ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources:
+	{
+		if (State.MaximumHealthFromOtherSources < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return Modifier.Value
+			* FMath::Max(0.0f, FMath::FloorToFloat(State.MaximumHealthFromOtherSources / Modifier.ScaleStep));
+	}
+
+	// TWO COUNTS OF CHARACTERS, the War trees' slice E1 (2026-11-27). Unread, -1, counts none.
+	case ECataclysmStatScale::PerEnemyStruckRecently:
+		return StackedValue(Modifier, FMath::Max(0, State.EnemiesStruckRecently));
+
+	case ECataclysmStatScale::PerEnemyThatStruckYouRecently:
+		return StackedValue(Modifier, FMath::Max(0, State.EnemiesThatStruckYouRecently));
+
+	case ECataclysmStatScale::PerBleedingEnemyInReach:
+		return StackedValue(Modifier, CountWithin(State.BleedingHostileDistancesMetres, Modifier.ReachMetres));
+
+	// THE FERVOUR HELD AS A SHARE OF ITS MAXIMUM, IN WHOLE STEPS OF PER CENT. The War trees' slice E1 (2026-11-27),
+	// Thick Skin's "for every 4% of your maximum Fervour you currently hold". The refusals of the points scale, and a
+	// maximum of nothing. The offset is in per cent and is not counted, as the points scale's is in points.
+	case ECataclysmStatScale::PerPercentOfClassResourceHeld:
+	{
+		if (State.ClassResourceHeld < 0.0f || State.ClassResourceMaximum <= 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		const float Percent =
+			UCataclysmStatPipeline::FervourHeldCounted(State) * 100.0f / State.ClassResourceMaximum;
+		const float Steps = FMath::FloorToFloat(
+			FMath::Max(0.0f, Percent - FMath::Max(0.0f, Modifier.ScaleOffset)) / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
 	// AND PER REMAINS OF THE CHARACTER'S OWN, THE SAME ARITHMETIC ON ITS OWN LIST: Mantle of Bone, the Death finish's
 	// slice D (2026-11-26). `StackedValue` holds the row's "up to 10" through `ScaleMaxSteps`.
 	case ECataclysmStatScale::PerOwnRemainsInReach:
@@ -2709,11 +2870,13 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	if (Modifier.ScaleOffset > 0.0f
 		&& Modifier.Scale != ECataclysmStatScale::PerClassPointSpent
 		&& Modifier.Scale != ECataclysmStatScale::PerTrapActive
-		&& Modifier.Scale != ECataclysmStatScale::PerPointOfClassResourceHeld)
+		&& Modifier.Scale != ECataclysmStatScale::PerPointOfClassResourceHeld
+		// AND THE SHARE OF IT, the War trees' slice E1 (2026-11-27): Steady Power's "above 50% of your maximum".
+		&& Modifier.Scale != ECataclysmStatScale::PerPercentOfClassResourceHeld)
 	{
 		return FString::Printf(
-			TEXT("an offset of %.1f on a scale that does not read one. Only "
-				 "class_points_spent, traps_active and class_resource_held count from a threshold."),
+			TEXT("an offset of %.1f on a scale that does not read one. Only class_points_spent, traps_active, "
+				 "class_resource_held and class_resource_held_percent count from a threshold."),
 			Modifier.ScaleOffset);
 	}
 

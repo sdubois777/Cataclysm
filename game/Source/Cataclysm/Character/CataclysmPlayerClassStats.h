@@ -11,6 +11,7 @@
 
 class UAbilitySystemComponent;
 class UDataTable;
+struct FCataclysmPassiveAllocation;
 
 /**
  * Whether health, mana and the energy shield are filled after stats are written.
@@ -229,6 +230,27 @@ public:
 
 	/** Which class the console variable asks for. `Default` is the shared line. */
 	static FString ChosenClass();
+
+	/**
+	 * Which class stat line a character with this allocation, created with this damage type, stands on. Issue #932, the
+	 * coordinating session's ruling of 2026-11-27:
+	 *
+	 *   - `Cataclysm.PlayerClass` SET BY HAND WINS, for a test or a person at the console. It is empty unless somebody
+	 *     sets it.
+	 *   - OTHERWISE THE CLASS WITH THE MOST POINTS SPENT IN ITS TREE, counting every class tree of every damage type; a
+	 *     tie goes to the class chosen first, the one whose tree holds the node that comes first in `Allocation.Nodes`
+	 *     (each damage type's class is chosen by its first point, `UCataclysmPassiveTree::ClassChosenFor`).
+	 *   - WITH NO POINT SPENT, THE FIRST CLASS THE DESIGN LISTS FOR THE DAMAGE TYPE CHOSEN AT CREATION
+	 *     (`UCataclysmCharacterCreation::ClassesFor`): the Bulwark for War, the Ravager for Demonic, the Soul Collector
+	 *     for Death.
+	 *   - WITH NEITHER, `StartingClassName`, as before.
+	 *
+	 * Points spent count whether or not a worn weapon reaches their tree: the class is what was chosen, and the stats the
+	 * tree grants are what the weapons decide. When the answer changes, the next refresh recomputes every maximum and
+	 * holds the pools where they are (`ECataclysmPoolFill::LeaveAsTheyAre`), as a gear swap does.
+	 */
+	static FString ClassFor(const UDataTable* NodeTable, const FCataclysmPassiveAllocation& Allocation,
+							FName CreationDamageType);
 
 	/** Which level the console variable asks for, clamped to 1 to 100. */
 	static int32 ChosenLevel();

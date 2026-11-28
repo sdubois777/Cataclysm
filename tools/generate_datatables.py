@@ -5710,6 +5710,9 @@ CONDITIONS = {
     # same question as `seconds_after_foreign_damage`, which asks about the
     # Cataclysm type and is reached only when something actually got through.
     "seconds_after_hit_taken": (0.0, 60.0, "a number of seconds"),
+    # AND "If you take two hits within 1 second" is `two_hits_taken_within_seconds` with a value of 1: the last two landed
+    # hits taken, not ticks, came that close together. Counter Stance, the War trees' engine slice E2 (2026-11-27).
+    "two_hits_taken_within_seconds": (0.0, 10.0, "a number of seconds"),
 
     # "When your class resource is full, gain 10%-20% damage reduction for 3
     # seconds" is `seconds_after_resource_full` with 3. Issue #1815.
@@ -6320,6 +6323,29 @@ CONDITIONS = {
     "in_wrath": None,
     "in_frenzy": None,
 
+    # THE WAR TREES' SLICE E1 (2026-11-27). "bleeding enemies" is `target_carries_bleed`, a Bleed whoever laid it
+    # (Open Wounds, R10); "while a shield is equipped" is `holding_shield` (Stalwart, Reinforced Guard) and "While you do
+    # not hold a shield" its complement `not_holding_shield` (Flesh Fortress, R16). Each names a state or an ailment
+    # and takes no value.
+    "target_carries_bleed": None,
+    "holding_shield": None,
+    "not_holding_shield": None,
+    # AND THE COMPLEMENT OF "While in Frenzy", the War trees' engine slice E2 (2026-11-27): Death Strike's 20% row holds
+    # outside Frenzy and its 35% row in it.
+    "dual_wielding_outside_frenzy": None,
+    # AND "an unblocked hit" taken, the same slice: Consecutive Blocks' reset, held while a landed hit is announced.
+    "hit_taken_was_unblocked": None,
+    # AND THREE FACTS OF THE ATTACK OR HIT IN HAND, the same slice: "when you attack at maximum Fervour" is
+    # `attack_at_full_fervour`, the pool full when the attack began, before Berserking spends it (Executioner, Apex
+    # Predator, Whirlwind, Coup de Grace); "on critical melee strikes" on a leech row is `blow_was_critical` (Vital
+    # Strike, R13); "every melee hit that does not crit" is `blow_was_not_critical` (Relentless).
+    "attack_at_full_fervour": None,
+    "blow_was_critical": None,
+    "blow_was_not_critical": None,
+    # AND "while crowd controlled" is `while_crowd_controlled` (Dead Weight, R27): held by a stun, knockdown, fear,
+    # silence, taunt or the like now, by `UCataclysmSkillEffects::IsCrowdControlled`. It names a state.
+    "while_crowd_controlled": None,
+
     # "Enemies that survive more than 5 seconds after first being hit gain
     # 20%-40% increased damage" is `opponent_first_struck_by_you_seconds_ago`
     # with 5, on a `damage_taken` row. Ruled 2026-10-12 under the owner's
@@ -6746,6 +6772,30 @@ SCALES = {
     # count, which is itself uncapped.
     "crippled_enemies_in_reach": (0.0, 10.0, "a number of crippled enemies"),
 
+    # THE WAR TREES' SLICE E1 (2026-11-27). "for each bleeding enemy within 4 metres, up to 5 enemies" is
+    # `bleeding_enemies_in_reach` with a step of 1, a reach and a cap (Open Wounds, R10); "for every 4% of your maximum
+    # Fervour you currently hold" is `class_resource_held_percent` with a step of 4 (Thick Skin), which takes an offset in
+    # per cent for "above 50% of your maximum" (Steady Power).
+    "bleeding_enemies_in_reach": (0.0, 10.0, "a number of bleeding enemies"),
+    "class_resource_held_percent": (0.0, 100.0, "a percentage of the pool's maximum"),
+    # AND "for every 1% of HP the target is missing" is `target_health_missing` with a step of 1 (Executioner, Death
+    # Strike), the same slice.
+    "target_health_missing": (0.0, 100.0, "a percentage of the target's maximum health"),
+    # AND THREE MORE, the same slice: "for every 2% maximum HP bonus you have" is `increased_max_health` with a step of
+    # 2 (Iron Will); "each unique enemy you have hit in the last 3 seconds" is `enemies_struck_recently` (Dancing
+    # Blades); "each unique enemy that has hit you in the last 10 seconds" is `enemies_that_struck_you_recently`
+    # (Outnumbered). The two windows are the scales' own, each named by its one sentence.
+    "increased_max_health": (0.0, 1000.0, "a percentage of increased maximum health"),
+    "enemies_struck_recently": (0.0, 10.0, "a number of enemies"),
+    "enemies_that_struck_you_recently": (0.0, 10.0, "a number of enemies"),
+    # AND "for every 1,000 Maximum HP you have from other sources" is `max_health_from_other_sources` with a step of
+    # 1,000 (Colossus, R3), the War trees' engine slice E3 (2026-11-27): the `max_health` line's unconditional, unscaled
+    # rows, so never its own.
+    "max_health_from_other_sources": (0.0, 1000000.0, "maximum health"),
+    # AND "for every 10 seconds in continuous combat" WHEN ITS STACKS ARE "lost 50% slower when leaving combat" is
+    # `combat_seconds_held` (Grinding Advance), the same slice: seconds held, rising in combat and falling out of it.
+    "combat_seconds_held": (0.0, 600.0, "a number of seconds"),
+
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish
     # (2026-11-26). Counted within the row's own Reach Metres, as the two above.
@@ -7120,7 +7170,9 @@ BASE_PLUS_RANGE_ENCHANTMENTS: dict[str, float] = {
 #: AND `class_resource_held`, SINCE 2026-11-27: the Soul Collector's Heavy Urn,
 #: "0.5% more damage for each Fervour you hold above 50" (issue #2951), is an
 #: offset of 50. `UCataclysmStatPipeline::ValidateModifier` allows the same three.
-SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent", "traps_active", "class_resource_held"})
+SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent", "traps_active", "class_resource_held",
+                                        # AND THE SHARE OF THE POOL, the War trees' slice E1 (2026-11-27).
+                                        "class_resource_held_percent"})
 
 #: The largest offset a row may state: the 230 point budget. Issue #1686.
 MAX_SCALE_OFFSET = 230
@@ -7264,6 +7316,8 @@ PASSIVE_PORT_FIELDS = tuple(field for field, _ in PASSIVE_PORT_DEFAULTS)
 #: #1597, and the crippled-enemy scale of issue #1515.
 PASSIVE_REACH_NAMES = frozenset({"enemies_in_reach_at_least", "enemies_in_reach",
                                  "crippled_enemies_in_reach",
+                                 # AND THE WAR TREES' SLICE E1'S BLEEDING ENEMIES.
+                                 "bleeding_enemies_in_reach",
                                  # AND THE DEATH TREES' SLICE C6b3'S TWO.
                                  "enemy_of_rarity_in_reach", "no_enemy_in_reach",
                                  # AND SLICE C6d1'S OWN MINIONS.
@@ -7291,12 +7345,17 @@ def _chance_percent(raw, headers, index: int, node: str, action: str) -> float:
     # AND TWICE ANSWERED'S ACTION, the Death trees' slice C6b4 (2026-11-25), as
     # ruled; AND THE STRIKE ON THE STRONGEST NEAR, for the Soul Collector's
     # Gleaning (issue #2951, 2026-11-27). Nothing else reads a chance.
-    if action not in (CLASS_RESOURCE_POOL, NEXT_HIT_CRITICAL_TWICE_ACTION, STRIKE_STRONGEST_NEAR_ACTION):
+    # AND THE WAR TREES' TWO SIZED BY MAXIMUM HEALTH, engine slice E2 (2026-11-27): Seismic Slam's "+4% chance per point
+    # for melee attacks to deal bonus flat damage equal to 1% of your Maximum HP", on the target and, from 5 points, on
+    # every enemy within 2 metres.
+    chanced = (CLASS_RESOURCE_POOL, NEXT_HIT_CRITICAL_TWICE_ACTION, STRIKE_STRONGEST_NEAR_ACTION,
+               STRIKE_TARGET_OF_MAX_HEALTH_ACTION, "smite_nearby_of_max_health")
+    if action not in chanced:
         raise DataError(
             f"Passive Effects row {index}: {node} states a Chance Percent of "
             f"{written!r} on {'the action ' + repr(action) if action else 'a stat row'}. "
             f"A chance is read by a {CLASS_RESOURCE_POOL!r} row and the actions "
-            f"{NEXT_HIT_CRITICAL_TWICE_ACTION!r} and {STRIKE_STRONGEST_NEAR_ACTION!r} only.")
+            f"{', '.join(repr(each) for each in chanced[1:])} only.")
     if not 0.0 < value <= 100.0:
         raise DataError(
             f"Passive Effects row {index}: {node} has a Chance Percent of "
@@ -7744,6 +7803,8 @@ def passive_effects(book) -> list[dict]:
         # radius exactly as the two above do and so needs one just as much.
         counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach",
                           "crippled_enemies_in_reach",
+                          # AND THE WAR TREES' SLICE E1'S BLEEDING ENEMIES (2026-11-27).
+                          "bleeding_enemies_in_reach",
                           # AND THE DEATH TREES' SLICE C6b3'S TWO (2026-11-25).
                           "enemy_of_rarity_in_reach", "no_enemy_in_reach",
                           # AND SLICE C6d1'S OWN MINIONS.
@@ -7964,7 +8025,12 @@ NEXT_USE_ACTIONS = (
 #: `UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction` and
 #: `AttackerDamageRemovedAction` hold the same two names.
 PLACED_ACTIONS = {
-    "enemy_armor_removed": ("hit_dealt", "deployable_hit"),
+    # THE WAR TREES' ENGINE SLICE E2 (2026-11-27): issue #964's mark, a stack on the enemy of the event that raises
+    # the damage it takes from every source (Open Wound on a critical strike; Marked Territory on a trap's blow), and
+    # Rend's, which lowers its damage reduction. `enemy_armor_removed` below gains `critical_strike` for Shatter.
+    "enemy_damage_taken": ("hit_dealt", "critical_strike", "deployable_hit"),
+    "enemy_damage_reduction_removed": ("hit_dealt",),
+    "enemy_armor_removed": ("hit_dealt", "deployable_hit", "critical_strike"),
     "attacker_damage_removed": ("melee_hit_taken",),
     # THE SAME ARMOUR STACK PLACED ON EVERY ENEMY NEAR THE WEARER, within the
     # nearby radius of five metres, rather than on the event's own character.
@@ -7998,6 +8064,9 @@ NTH_ACTIONS = (
     "nth_hit_taken_damage",
     "nth_spell_mana_cost",
     "nth_attack_no_damage",
+    # THE Nth ATTACK DEALS THE VALUE'S PER CENT MORE: Flurry (R11), "Every 5th consecutive melee attack deals 50% more
+    # damage per point". The War trees' engine slice E2 (2026-11-27). `NthAttackMoreDamageAction` holds the name.
+    "nth_attack_more_damage",
 )
 
 #: The largest N a row may state.
@@ -8039,6 +8108,9 @@ COOLDOWN_REDUCE_ACTIONS = (
     # second ... off your movement skill's remaining cooldown". The Death trees'
     # slice C6a (2026-11-25).
     "cooldown_reduce_movement",
+    # A SHARE OF WHAT IS LEFT OF EVERY COOLDOWN ON THE KEYS, in per cent, above 0 and up to 100: Apex Predator's
+    # "instantly reduces all cooldowns by 50%" (the War trees' engine slice E2, 2026-11-27).
+    "cooldown_reduce_all_percent",
 )
 
 #: The most seconds a reduction may take off, the same sanity bound the clocks use.
@@ -8137,6 +8209,18 @@ NEARBY_ACTIONS = (
     # not the five metres above; see `SMITE_NEARBY_BY_HIT_ACTION`.
     # `SmiteNearbyByHitAction` holds the same name.
     "smite_nearby_by_hit",
+    # A DIRECT BLOW OF A SHARE OF THE WEARER'S MAXIMUM HEALTH on every enemy within the row's Event Value in metres,
+    # required, as the hit-sized nova's is. The War trees' engine slice E2 (2026-11-27): The Inevitable and Seismic
+    # Slam's rider. `SmiteNearbyOfMaximumHealthAction` holds the same name.
+    "smite_nearby_of_max_health",
+    # A DIRECT BLOW OF A SHARE OF ALL THE DAMAGE THE WEARER TOOK IN THE LAST 5 SECONDS on every enemy within the larger
+    # of the row's Event Value in metres, required, and the wearer's retaliation radius. The War trees' engine slice E3
+    # (2026-11-27): Wrathful Presence. `SmiteNearbyOfRecentDamageTakenAction` holds the same name.
+    "smite_nearby_of_recent_damage_taken",
+    # A DIRECT BLOW OF A SHARE OF WHAT THE EVENT'S HIT TOOK FROM HEALTH on every enemy in a line from the wearer along
+    # the way it faces, the row's Event Value in metres long, required, and 2 metres wide. The War trees' engine slice E2
+    # (2026-11-27): Seismic Slam (Berserker). On the events `smite_nearby_by_hit` takes. `SmiteLineByHitAction`.
+    "smite_line_by_hit",
 )
 
 #: The nova sized by a hit, its events and its radius. The War vow options'
@@ -8156,6 +8240,9 @@ MAX_NEARBY_PERCENT = {
     "heal_nearby_enemies": 100.0,
     "smite_nearby_by_armor": 1000.0,
     "smite_nearby_by_hit": 1000.0,
+    "smite_nearby_of_max_health": 100.0,
+    "smite_nearby_of_recent_damage_taken": 100.0,
+    "smite_line_by_hit": 1000.0,
 }
 
 #: The action that PAYS A SHARE OF WHAT A BLOCK REMOVED BACK TO THE ATTACKER, as
@@ -8726,6 +8813,10 @@ STRIKE_TARGET_ACTION = "strike_target"
 #: game raises an event with a character that is neither here nor in
 #: `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`.
 STRIKE_TARGET_EVENTS = (
+    # CROWD CONTROL RECEIVED OR REFUSED, naming whose act it was: Dead Weight (R27) and Immovable Object (R4) strike that
+    # character back. The War trees' engine slice E1 (2026-11-27).
+    "crowd_control_taken",
+    "crowd_control_refused",
     "hit_dealt",
     "first_hit_dealt",
     "critical_strike",
@@ -8788,6 +8879,52 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
 #: sentence is 20 to 70.
 MAX_STRIKE_TARGET_PERCENT = 1000.0
 
+#: THE WAR TREES' ENGINE SLICE E2 (2026-11-27): actions SIZED BY THE WEARER'S OWN MAXIMUM HEALTH OR ARMOUR.
+#: `strike_target_of_max_health` is direct damage of the value's per cent of maximum health to the event's other
+#: character, on the events `STRIKE_TARGET_EVENTS` lists (Dead Weight, R27; Immovable Object, R4; Fortified Mind;
+#: Seismic Slam). `next_attack_bonus_of_max_health` and `next_attack_bonus_of_armor` store the value's per cent of the
+#: stat for the next attack, paid with Titanfall's store, the larger of it and what is held (Mountain's Wrath, R5;
+#: Shield Slam). `smite_nearby_of_max_health` is in `NEARBY_ACTIONS`. Each value is a per cent above 0 and up to
+#: `MAX_SIZED_BY_A_STAT_PERCENT`. `UCataclysmAbilitySystemComponent` holds the same names.
+STRIKE_TARGET_OF_MAX_HEALTH_ACTION = "strike_target_of_max_health"
+#: AND TWO MORE ON THE EVENT'S OTHER CHARACTER, the same slice: `strike_target_of_target_missing_health`, direct damage of
+#: the value's per cent of the health that character is missing (Coup de Grace), and `knock_back_target`, which knocks
+#: it back the value in metres, up to `MAX_KNOCK_BACK_METRES` (Whirlwind). Checked with the strike above.
+STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION = "strike_target_of_target_missing_health"
+#: AND `own_stacks_removed`, which removes the own stacks of every row of its own node: Killing Rhythm's "Missing a
+#: critical strike or your Fervour reaching 0 resets the streak" and Consecutive Blocks' "Resets if you take an
+#: unblocked hit". Its value is 100, all of them. On any event the game fires.
+OWN_STACKS_REMOVED_ACTION = "own_stacks_removed"
+#: AND `next_retaliation_more`: the next retaliation payment deals the value's per cent more, up to
+#: `MAX_SIZED_BY_A_STAT_PERCENT`, the larger of it and what is held. Spiteful. On any event the game fires.
+NEXT_RETALIATION_MORE_ACTION = "next_retaliation_more"
+#: AND `fervour_per_percent_of_max_health_leeched`: the class resource raised by the value for each 1% of maximum health
+#: the event carried, never above the pool's maximum. Vampiric Fury, on `life_leeched`. The War trees' engine slice E2.
+FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION = "fervour_per_percent_of_max_health_leeched"
+#: AND THREE RIDERS OF 2026-11-27 (the coordinating session's rulings): `fervour_of_frenzy_drain_seconds`, the class
+#: resource raised by the value's seconds of Frenzy's drain (Carnage, with a Trigger Cooldown of 1 for "at most once
+#: every 1 second"); `retaliation_burst_on_kill`, on `kill` only, a kill inside the retaliation radius bursting for the
+#: value's per cent of the last retaliation payment on every enemy within the row's Event Value in metres of the slain
+#: one (Spreading Thorns); `echo_strike_later`, on `hit_dealt` only, the hit struck again on the same enemy the row's
+#: Event Value in seconds later at the value's per cent of weapon damage (Phantom Blades).
+FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION = "fervour_of_frenzy_drain_seconds"
+RETALIATION_BURST_ON_KILL_ACTION = "retaliation_burst_on_kill"
+ECHO_STRIKE_LATER_ACTION = "echo_strike_later"
+RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION)
+RIDER_ACTION_EVENTS = {RETALIATION_BURST_ON_KILL_ACTION: ("kill",), ECHO_STRIKE_LATER_ACTION: ("hit_dealt",),
+                       "next_attack_bonus_of_blocked_damage": ("block",)}
+MOST_ECHO_DELAY_SECONDS = 5.0
+#: AND `execute_nearby_below`: every enemy within the row's Event Value in metres (required, up to
+#: `MAX_SMITE_NEARBY_BY_HIT_METRES`) below the value's per cent of its maximum health, that may be executed, loses the
+#: health it has left. Killing Blow. On any event the game fires.
+EXECUTE_NEARBY_BELOW_ACTION = "execute_nearby_below"
+KNOCK_BACK_TARGET_ACTION = "knock_back_target"
+MAX_KNOCK_BACK_METRES = 10.0
+NEXT_ATTACK_BONUS_ACTIONS = ("next_attack_bonus_of_max_health", "next_attack_bonus_of_armor",
+                             # AND UNBREAKABLE WILL'S, on `block` only, the blocked damage added to what is held.
+                             "next_attack_bonus_of_blocked_damage")
+MAX_SIZED_BY_A_STAT_PERCENT = 100.0
+
 #: The action that EXECUTES THE ENEMY A HIT LEAVES BELOW A SHARE OF ITS HEALTH,
 #: with its value as the chance, where 100 is always. Ruled 2026-10-12 under the
 #: owner's delegation: "Strike skills have a 10%-20% chance to execute enemies
@@ -8831,6 +8968,12 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             # `trap_triggered`, which no hit fires, so it takes none by default.
             or action == SLOW_FOR_SECONDS_ACTION
             or action == STRIKE_TARGET_ACTION
+            # AND THE WAR TREES' ACTIONS SIZED BY A STAT (engine slice E2): Mountain's Wrath's "Once every 10 seconds".
+            or action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS
+            or action == STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION or action == KNOCK_BACK_TARGET_ACTION
+            or action == NEXT_RETALIATION_MORE_ACTION
+            or action == FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION
+            or action in RIDER_ACTIONS
             # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
             # a second" is its Trigger Cooldown (V4b, 2026-11-25).
             or action == COUNTERFIRE_ACTION
@@ -8850,7 +8993,8 @@ def takes_a_trigger_cooldown(action: str) -> bool:
 #: empty, writes no wait, and one swing that leaves three enemies below the
 #: share rolls for each of the three. A row that states a wait keeps it: the
 #: engine already starts one at an execute, and a later sentence may state one.
-ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN = (EXECUTE_TARGET_ACTION,)
+#: AND PHANTOM BLADES' ECHO (2026-11-27): "one echo per melee hit", so a quarter second between two would drop one.
+ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN = (EXECUTE_TARGET_ACTION, "echo_strike_later")
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -9067,6 +9211,28 @@ MAX_TEMPORARY_ABSORB_PERCENT = 100.0
 #: one blow. `seconds_after_hit_taken` is stamped on the character that was
 #: hit; `hit_dealt` fires on the character that hit.
 ACTION_ONLY_EVENTS = (
+    # A MELEE USE OF A DIFFERENT SKILL FROM THE LAST MELEE USE, OR OF THE SAME ONE AGAIN, raised after `melee_attack_use`
+    # by `UCataclysmAbilitySystemComponent` (the basic attack included; the first melee use raises neither): Weaving's
+    # stacks and their removal (R12, the War trees' engine slice E2, 2026-11-27).
+    "different_melee_skill_used",
+    "same_melee_skill_used",
+    # AN ATTACK BEGUN AT A FULL FERVOUR POOL, raised by `UCataclysmSkillTemplate::BeginAttackOn` before anything that
+    # attack spends: War Cry and Rapid Fire's "after attacking at maximum Fervour" (the War trees' slice E1, 2026-11-27).
+    "attack_at_full_fervour",
+    # EACH 10 FERVOUR FRENZY'S DRAIN TAKES, raised by `UCataclysmAbilitySystemComponent::NoteFrenzyDrained`: Frenetic's
+    # bonus strike and Knife Dance's Fervour (the War trees' engine slice E2, 2026-11-27).
+    "frenzy_drained",
+    # A CROWD CONTROL EFFECT LANDED ON THE CHARACTER, OR WAS REFUSED BY ITS IMMUNITY, raised by
+    # `UCataclysmAbilitySystemComponent::NoteCrowdControlReceived` with whose act it was as the event's character: Iron
+    # Mind ("Each crowd control effect applied to you generates 10 Fervour"), Dead Weight (R27) and Immovable Object
+    # (R4). The War trees' slice E1 (2026-11-27). NOT `crowd_control`, which is raised on the character that APPLIED
+    # it.
+    "crowd_control_taken",
+    "crowd_control_refused",
+    # A LEECH PAYMENT OF HEALTH PROMISED, raised by `UCataclysmAbilitySystemComponent::NoteLifeLeechPromised` with the
+    # health promised as its amount: Sanguine's "Each time you leech HP" and Vampiric Fury (the War trees' slice E1,
+    # 2026-11-27).
+    "life_leeched",
     "critical_strike",
     "nearby_death",
     # EACH 5 FERVOUR A DECAY TAKES, raised by
@@ -9427,6 +9593,16 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_strike_target_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
         return
+    if action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
+                  KNOCK_BACK_TARGET_ACTION, OWN_STACKS_REMOVED_ACTION, NEXT_RETALIATION_MORE_ACTION,
+                  EXECUTE_NEARBY_BELOW_ACTION, FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION) \
+            or action in NEXT_ATTACK_BONUS_ACTIONS or action in RIDER_ACTIONS:
+        if action in RIDER_ACTION_EVENTS and event not in RIDER_ACTION_EVENTS[action]:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} acts on {event or '(none)'!r}; {action!r} acts on "
+                f"{', '.join(RIDER_ACTION_EVENTS[action])} only.")
+        _check_sized_by_a_stat_action(index, who, action, event, fraction_of, kind, raw, headers)
+        return
     if action == EXECUTE_TARGET_ACTION:
         _check_execute_target_action(index, who, action, event, fraction_of,
                                      kind, raw, headers)
@@ -9697,6 +9873,10 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
     Soul Furnace's "for each Fervour spent" (the Death trees' slice C3b).
     """
     known = action_events()
+    # AND THE CLOCK, FOR THE NOVA SIZED BY MAXIMUM HEALTH: The Inevitable's "per second" (the War trees' engine slice E2,
+    # 2026-11-27). `UCataclysmAbilitySystemComponent`'s timed step acts on it.
+    if action in ("smite_nearby_of_max_health", "smite_nearby_of_recent_damage_taken"):
+        known = known | {TIMED_EVENT}
     if event not in known:
         raise DataError(
             f"Enchantment Effects row {index}: {who} acts on the characters "
@@ -9704,7 +9884,7 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
             f"not fire. Known: {', '.join(sorted(known))}.")
     fraction_of = _sized_by_the_amount(index, who, event, fraction_of)
     # A NOVA SIZED BY A HIT NEEDS AN EVENT CARRYING ONE. V2b, 2026-11-25.
-    if action == SMITE_NEARBY_BY_HIT_ACTION and event not in SMITE_NEARBY_BY_HIT_EVENTS:
+    if action in (SMITE_NEARBY_BY_HIT_ACTION, "smite_line_by_hit") and event not in SMITE_NEARBY_BY_HIT_EVENTS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} deals a share of a hit on "
             f"the event {event!r}, which carries no hit. Only "
@@ -10021,6 +10201,29 @@ def _check_strike_target_action(index: int, who: str, action: str, event: str,
                 f"character of its event and states {column} {written!r}. Its "
                 f"value is a percentage of attack damage and nothing else, so "
                 f"the column must be empty.")
+
+
+def _check_sized_by_a_stat_action(index: int, who: str, action: str, event: str, fraction_of: str, kind: str, raw,
+                                  headers: dict[str, int]) -> None:
+    """Everything a row sized by the wearer's maximum health or armour must say, and everything it must not. The War
+    trees' engine slice E2 (2026-11-27). A strike needs an event naming a living character other than the wearer; a
+    next-attack bonus needs an event the game fires. The share is checked where the value is read. A fraction, a value
+    kind and a scale each mean nothing here, so each is refused rather than dropped."""
+    known = (STRIKE_TARGET_EVENTS
+             if action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
+                           KNOCK_BACK_TARGET_ACTION)
+             else tuple(sorted(granting_events())))
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} acts on the event {event or '(none)'!r}. It may act on: "
+            f"{', '.join(known)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} is sized by a stat of the wearer's and states {column} "
+                f"{written!r}. Its value is a per cent of that stat and nothing else, so the column must be empty.")
 
 
 def _check_execute_target_action(index: int, who: str, action: str, event: str,
@@ -10561,6 +10764,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action not in TRAPS_NEARBY_ACTIONS \
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
+                and action != STRIKE_TARGET_OF_MAX_HEALTH_ACTION \
+                and action != STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION \
+                and action != KNOCK_BACK_TARGET_ACTION \
+                and action != OWN_STACKS_REMOVED_ACTION \
+                and action != NEXT_RETALIATION_MORE_ACTION \
+                and action != FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION \
+                and action not in RIDER_ACTIONS \
+                and action != EXECUTE_NEARBY_BELOW_ACTION \
+                and action not in NEXT_ATTACK_BONUS_ACTIONS \
                 and action != EXECUTE_TARGET_ACTION \
                 and action != TEMPORARY_ABSORB_ACTION \
                 and action != RETALIATION_PULSE_ACTION \
@@ -10947,6 +11159,27 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"{low:g} to {high:g} per cent of attack damage. A strike "
                 f"is above 0 and up to {MAX_STRIKE_TARGET_PERCENT:g}.")
 
+    # A ROW SIZED BY A STAT OF THE WEARER'S IS A PER CENT OF IT, above 0 and up to the bound. The War trees' engine
+    # slice E2 (2026-11-27).
+    if action == OWN_STACKS_REMOVED_ACTION:
+        if low != 100 or high != 100:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} removes {low:g} to {high:g} of its node's stacks. It removes "
+                f"all of them: 100.")
+    elif action == KNOCK_BACK_TARGET_ACTION:
+        if not (0 < low <= MAX_KNOCK_BACK_METRES and 0 < high <= MAX_KNOCK_BACK_METRES):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} knocks back {low:g} to {high:g} metres. It is above 0 and "
+                f"up to {MAX_KNOCK_BACK_METRES:g}.")
+    elif action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
+                    NEXT_RETALIATION_MORE_ACTION, EXECUTE_NEARBY_BELOW_ACTION,
+                    FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS \
+            or action == RETALIATION_BURST_ON_KILL_ACTION or action == ECHO_STRIKE_LATER_ACTION:
+        if not (0 < low <= MAX_SIZED_BY_A_STAT_PERCENT and 0 < high <= MAX_SIZED_BY_A_STAT_PERCENT):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} is {low:g} to {high:g} per cent of a stat of the "
+                f"wearer's. It is above 0 and up to {MAX_SIZED_BY_A_STAT_PERCENT:g}.")
+
     # AN EXECUTE'S VALUE IS ITS CHANCE, above 0 and up to 100. Ruled
     # 2026-10-12. 100 is always. Its share of health is checked where the
     # Condition Value is read.
@@ -11158,7 +11391,12 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
 
     # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
     # Issue #1833, the cooldown reduction action.
-    if action in COOLDOWN_REDUCE_ACTIONS:
+    if action == "cooldown_reduce_all_percent":
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} takes {low:g} to {high:g} per cent off cooldowns. It takes "
+                f"above 0 and up to 100.")
+    elif action in COOLDOWN_REDUCE_ACTIONS:
         if not (0 < low <= MAX_COOLDOWN_REDUCE_SECONDS
                 and 0 < high <= MAX_COOLDOWN_REDUCE_SECONDS):
             raise DataError(
@@ -11737,9 +11975,18 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"Enchantment Effects row {index}: {name} reaches a death "
                     f"{event_value:g} metres away. It is 0, the 3 metres every "
                     f"such row reached before, up to {MAX_NEARBY_DEATH_METRES:g}.")
-    elif action == SMITE_NEARBY_BY_HIT_ACTION:
+    elif action == ECHO_STRIKE_LATER_ACTION:
+        # OR THE ECHO'S DELAY, in seconds, required. Phantom Blades (2026-11-27).
+        event_value = number(event_value_text or "0", "Event Value", index)
+        if not 0 < event_value <= MOST_ECHO_DELAY_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} strikes again {event_value:g} seconds later. The delay is "
+                f"above 0 and up to {MOST_ECHO_DELAY_SECONDS:g}.")
+    elif action in (SMITE_NEARBY_BY_HIT_ACTION, "smite_nearby_of_max_health", EXECUTE_NEARBY_BELOW_ACTION,
+                    "smite_nearby_of_recent_damage_taken", "smite_line_by_hit", RETALIATION_BURST_ON_KILL_ACTION):
         # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
-        # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`.
+        # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`. AND OF ONE SIZED BY MAXIMUM HEALTH, the War trees' engine slice
+        # E2 (2026-11-27), which reads its radius the same way.
         if not event_value_text:
             raise DataError(
                 f"Enchantment Effects row {index}: {name} deals a share of a "
@@ -11751,6 +11998,14 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == STRIKE_NEAREST_NEAR_ACTION:
+        # OR HOW MANY STRIKES THE NEAREST ENEMY TAKES, a whole number, empty for one. The War trees' engine slice E2.
+        if event_value_text:
+            event_value = number(event_value_text, "Event Value", index)
+            if event_value != int(event_value) or not 1 <= event_value <= MOST_NEAREST_STRIKES:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} strikes the nearest enemy {event_value:g} times. It is a "
+                    f"whole number from 1 to {MOST_NEAREST_STRIKES}, or empty for one.")
     elif action == TITANFALL_ACTION:
         # OR TITANFALL'S SHARE OF MAXIMUM HEALTH A BIG HIT MUST TAKE, in per
         # cent, required. 2026-11-25. See `TITANFALL_ACTION`.
@@ -12647,6 +12902,14 @@ def stats_with_an_attribute() -> frozenset[str]:
 #: list and that probe table to be equal. A name added to one without the other
 #: fails.
 STATS_WITH_AN_ASKER = frozenset({
+    # THE WAR TREES' SLICE E1 (2026-11-27): block chance scaled by the Fervour held (Resolve to Steel), the enemies in
+    # reach (Living Fortress) and its own stacks (Unyielding Guard). Asked at the block step by
+    # `UCataclysmDamageCalculation::Resolve` through `StatForSkill` with every reading; `ProbeScaledBlockChance`
+    # measures it.
+    "block_chance",
+    # AND THE FERVOUR A LANDED BLOW GAINS, scaled by its own stacks (Sanguine), the same slice. Asked by
+    # `FCataclysmWarFervour::GainByRate` through `StatForSkill`; `ProbeScaledFervourPerHitDealt` measures it.
+    "fervour_per_hit_dealt",
     # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's
     # damage scaled by the other minions near the one going off (Close Packed),
     # by the summoner's own stacks (Bursting Ranks) and by the minion's age
@@ -12932,6 +13195,8 @@ CONDITIONS_OF_A_BLOW_TAKEN = frozenset({
 #: many were struck together, and what the skill cost or how far its user moved
 #: before it. Only a stat asked for while a hit is priced is handed those.
 CONDITIONS_OF_A_HIT_DEALT = frozenset({
+    # THE WAR TREES' SLICE E1 (2026-11-27): a Bleed the character struck carries.
+    "target_carries_bleed",
     "enemies_hit_at_least",
     "enemies_hit_at_most",
     "metres_moved_before_attack",
@@ -13070,6 +13335,31 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "max_health": ASKER_PASSES_NOTHING_MORE,
     # The Death trees' slice C6d1 (2026-11-25): Ringed in Bone. Read by UCataclysmSkillTemplate::IsImmuneTo.
     "immune_to_slow": ASKER_PASSES_NOTHING_MORE,
+    # AND THE WAR TREES' THREE IMMUNITIES, slice E1 (2026-11-27), asked where `immune_to_slow` is.
+    "immune_to_crowd_control": ASKER_PASSES_NOTHING_MORE,
+    "immune_to_stun": ASKER_PASSES_NOTHING_MORE,
+    "immune_to_stagger": ASKER_PASSES_NOTHING_MORE,
+    # AND RETALIATION THAT CANNOT BE MITIGATED, the same slice: Undying Rage's "While below 25% HP, retaliation ...
+    # cannot be reduced by enemy resistances". Asked by `UCataclysmRetaliation` through `StatForSkill`;
+    # `ProbeConditionedRetaliationCannotBeMitigated` measures it.
+    "retaliation_cannot_be_mitigated": ASKER_PASSES_NOTHING_MORE,
+    # AND THE RETALIATION RADIUS, under "While at maximum Fervour" (Outnumbered), the same slice. Asked by
+    # `UCataclysmRetaliation::RadiusMetresFor` through `StatForSkill`; `ProbeConditionedRetaliationRadius` measures it.
+    "retaliation_radius_metres": ASKER_PASSES_NOTHING_MORE,
+    # AND WHIRLWIND'S TWO, the War trees' engine slice E2 (2026-11-27): the full-circle swing, asked by
+    # `UCataclysmStrikeSkill::ArcDegrees`, and the Fervour per enemy hit, asked by `UCataclysmFervour::GainForEnemiesHit`,
+    # each through `StatForSkill`. `ProbeConditionedMeleeArcFullCircle` and `ProbeConditionedFervourPerEnemyHit`.
+    "melee_arc_full_circle": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_enemy_hit": ASKER_PASSES_NOTHING_MORE,
+    # AND BLOODIED'S "Berserking triggers on every melee hit" under "While below 30% HP", the War trees' engine slice E3
+    # (2026-11-27), asked by `FCataclysmBerserkerStates::SpendBerserking`; `ProbeConditionedBerserkingOnEveryMeleeHit`.
+    "berserking_on_every_melee_hit": ASKER_PASSES_NOTHING_MORE,
+    # AND BERSERKER'S RAGE'S HALF POOL under "Two-handed weapons only", the same slice and asker;
+    # `ProbeConditionedBerserkingSpendsHalf`.
+    "berserking_spends_half": ASKER_PASSES_NOTHING_MORE,
+    # AND EYE OF THE STORM'S BLOCK FLOOR under "While 3 or more enemies are within 3 meters", the same slice, asked by
+    # `UCataclysmDamageCalculation::Resolve` at the block step as `block_chance` is; `ProbeConditionedBlockChanceFloor`.
+    "block_chance_floor": ASKER_PASSES_A_BLOW_TAKEN,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,
@@ -16692,12 +16982,21 @@ MAX_FERVOUR_HOLD_EXTENDED_SECONDS = 10.0
 #: `MAX_STRIKE_TARGET_PERCENT`.
 STRIKE_STRONGEST_NEAR_ACTION = "strike_strongest_near"
 DASH_TO_STRONGEST_AND_STRIKE_ACTION = "dash_to_strongest_and_strike"
-STRONGEST_NEAR_ACTIONS = (STRIKE_STRONGEST_NEAR_ACTION, DASH_TO_STRONGEST_AND_STRIKE_ACTION)
+#: AND THE NEAREST ENEMY'S, the War trees' engine slice E2 (2026-11-27): the same strike on the nearest living enemy
+#: within the same 10 metres, for Frenetic and Unstoppable Force. Checked as the two above are.
+STRIKE_NEAREST_NEAR_ACTION = "strike_nearest_near"
+#: Its Event Value is HOW MANY STRIKES, a whole number from 1 to `MOST_NEAREST_STRIKES`; empty is one. Unstoppable Force's
+#: "strikes the nearest enemy three times".
+MOST_NEAREST_STRIKES = 10
+STRONGEST_NEAR_ACTIONS = (STRIKE_STRONGEST_NEAR_ACTION, DASH_TO_STRONGEST_AND_STRIKE_ACTION, STRIKE_NEAREST_NEAR_ACTION)
 #: AND `fervour_decayed`, SINCE 2026-11-27: the Soul Collector's Unquiet
 #: Souls, "Every 5 Fervour you lose to decay strikes the strongest enemy within
 #: 10 metres" (issue #2951). The strike is the wearer's own, aimed from where it
 #: stands; it needs no character from its event.
-STRONGEST_NEAR_EVENTS = ("kill", "fervour_decayed")
+STRONGEST_NEAR_EVENTS = ("kill", "fervour_decayed",
+                         # AND THE WAR TREES' ENGINE SLICE E2 (2026-11-27): Frenetic's strike per 10 Fervour Frenzy
+                         # drains, and Unstoppable Force's three on entering Frenzy.
+                         "frenzy_drained", "frenzy_entered")
 
 NEXT_HIT_CRITICAL_TWICE_ACTION = "next_hit_critical_twice"
 NEXT_HIT_CRITICAL_TWICE_EVENTS = ("dodge",)
@@ -17236,6 +17535,8 @@ def refuse_a_gem_enchantment_row_the_game_cannot_read(
 SCALES_THAT_COUNT_ENEMIES_IN_A_RADIUS = frozenset({
     "enemies_in_reach",
     "crippled_enemies_in_reach",
+    # AND THE BLEEDING ONES, the War trees' slice E1 (2026-11-27).
+    "bleeding_enemies_in_reach",
     # AND THE SUMMONER'S OTHER MINIONS NEAR THE MINION ASKING, the finishing of
     # the Death Cataclysm, slice C (2026-11-26): bodies inside the row's radius,
     # counted from a minion rather than from the character, and needing the

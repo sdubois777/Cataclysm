@@ -3616,7 +3616,17 @@ namespace CataclysmPassiveConditionTest
 			// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25: the two that name a state. `own_gadget_within_metres` and
 			// `seconds_after_gadget_struck` compare their metres and seconds and are deliberately absent.
 			|| Name == TEXT("target_not_yet_triggered_your_trap")
-			|| Name == TEXT("no_room_for_a_trap");
+			|| Name == TEXT("no_room_for_a_trap")
+			// THE WAR TREES' SLICE E1 (2026-11-27): an ailment the target carries, and whether a Shield is held.
+			|| Name == TEXT("target_carries_bleed")
+			|| Name == TEXT("holding_shield")
+			|| Name == TEXT("not_holding_shield")
+			|| Name == TEXT("attack_at_full_fervour")
+			|| Name == TEXT("blow_was_critical")
+			|| Name == TEXT("blow_was_not_critical")
+			|| Name == TEXT("while_crowd_controlled")
+			|| Name == TEXT("dual_wielding_outside_frenzy")
+			|| Name == TEXT("hit_taken_was_unblocked");
 	}
 }
 
@@ -8964,6 +8974,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSpendingRefreshesTheStatLineTe
 bool FCataclysmPassiveSpendingRefreshesTheStatLineTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
+	// THE RAVAGER'S LINE, PINNED, since issue #932 (2026-11-27): with `Cataclysm.PlayerClass` empty, ten points in the
+	// Masochist's tree would make the character a Masochist and move the base this test's figures stand on. The class
+	// rule is `Cataclysm.ClassLine`'s; this test is about the tree reaching the stat line.
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
 	using Vital = UCataclysmVitalAttributeSet;
 	using Combat = UCataclysmCombatAttributeSet;
 
@@ -9168,6 +9182,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassivePossessionAppliesTheTreeTest,
 bool FCataclysmPassivePossessionAppliesTheTreeTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
+	// THE RAVAGER'S LINE, PINNED, since issue #932 (2026-11-27): with `Cataclysm.PlayerClass` empty, ten points in the
+	// Masochist's tree would make the character a Masochist and move the base this test's figures stand on. The class
+	// rule is `Cataclysm.ClassLine`'s; this test is about the tree reaching the stat line.
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
 	using Vital = UCataclysmVitalAttributeSet;
 
 	UWorld* World = MakeWorldThatHasBegunPlay();

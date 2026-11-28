@@ -176,7 +176,10 @@ class TestTheCapIsActuallyApplied:
         assert re.search(
             r"Damage \*= 1\.0f\s*- EffectiveDamageReduction\(\s*"
             r"DefenderStat\(Defender, TEXT\(\"damage_reduction\"\),\s*"
-            r"Combat->GetDamageReduction\(\)(?:,\s*BlowOf\(Hit\))?\)\)", text), (
+            r"Combat->GetDamageReduction\(\)(?:,\s*BlowOf\(Hit\))?\)"
+            # AND REND'S STACKS ON THE DEFENDER SUBTRACTED INSIDE THE CAP (the War trees' engine slice E2, 2026-11-27),
+            # spelled out rather than matched with a wildcard.
+            r"(?:\s*- UCataclysmAbilitySystemComponent::PlacedDamageReductionRemovedOn\(Defender\))?\)", text), (
             "UCataclysmDamageCalculation::Resolve no longer routes the "
             "defender's flat damage reduction through EffectiveDamageReduction, "
             "so the cap is declared and not applied. The figure has to come "

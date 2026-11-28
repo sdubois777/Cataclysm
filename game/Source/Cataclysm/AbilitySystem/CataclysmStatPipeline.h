@@ -413,6 +413,15 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Within Seconds Of A Hit Taken"),
 
 	/**
+	 * The last two hits the character took -- landed, not ticks -- came within `Value` seconds of each other: Counter
+	 * Stance's "If you take two hits within 1 second, this bonus is doubled". The War trees' engine slice E2 (2026-11-27).
+	 * Read from `SecondsBetweenLastTwoHitsTaken`; fewer than two hits taken, -1, refuses. It says nothing of how long ago;
+	 * a row pairs it with `WithinSecondsOfHitTaken`.
+	 */
+	TwoHitsTakenWithinSeconds
+		UMETA(DisplayName = "Two Hits Taken Within Seconds"),
+
+	/**
 	 * The character's class resource BECAME full within the last
 	 * `ConditionValue` seconds. Issue #1815.
 	 *
@@ -2235,6 +2244,89 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	FervourHeldAddsDamage
 		UMETA(DisplayName = "Fervour Held Adds Damage"),
+
+	/**
+	 * The character being struck carries a Bleed, whoever laid it: Open Wounds (R10), "your hits deal 20% increased
+	 * damage to bleeding enemies". The War trees' slice E1 (2026-11-27). Read from `TargetDebuffs`, which
+	 * `UCataclysmAbilitySystemComponent::WithTargetState` fills when a row asks about an ailment, against
+	 * `UCataclysmDebuffs::BleedTag`, exactly as `TargetCarriesVoidSplinter` reads its tag. NOT
+	 * `TargetCarriesYourPoisonOrBleed`, which asks whether the ASKER laid it and counts a poison too. IT TAKES NO VALUE:
+	 * it names an ailment.
+	 */
+	TargetCarriesBleed
+		UMETA(DisplayName = "Target Carries Bleed"),
+
+	/**
+	 * The character holds a Shield in one of its two weapon slots: Stalwart and Reinforced Guard, "while a shield is
+	 * equipped". The War trees' slice E1 (2026-11-27). Read from `ShieldsHeld`, which `CurrentConditions` counts from
+	 * the equipment; -1 with no equipment component (every enemy) refuses. IT TAKES NO VALUE: it names a state.
+	 */
+	HoldingShield
+		UMETA(DisplayName = "Holding Shield"),
+
+	/**
+	 * The character holds no Shield in either weapon slot: the complement of `HoldingShield`, for Flesh Fortress (R16),
+	 * "While you do not hold a shield". The War trees' slice E1 (2026-11-27). AN UNKNOWN READING REFUSES, as the
+	 * complement's does: a character with no equipment component is neither. IT TAKES NO VALUE: it names a state.
+	 */
+	NotHoldingShield
+		UMETA(DisplayName = "Not Holding Shield"),
+
+	/**
+	 * The attack this blow or kill belongs to began at a full Fervour pool: the Berserker's "when you attack at maximum
+	 * Fervour" (Overwhelming Force, Executioner, Apex Predator, Whirlwind, Coup de Grace and the rest). The War trees'
+	 * slice E1 (2026-11-27). Read from `bAttackBeganAtFullFervour`, which `CurrentConditions` copies from the ability
+	 * system component; `UCataclysmSkillTemplate::BeginAttackOn` sets it before anything that attack spends
+	 * (Bought With Ruin, Cleave's trade, Berserking) and `EndAttack` clears it. "Full" is the full-bar judgement
+	 * `ClassResourceAtMaximum` makes. IT TAKES NO VALUE: it names a fact of the attack.
+	 */
+	AttackAtFullFervour
+		UMETA(DisplayName = "Attack At Full Fervour"),
+
+	/**
+	 * The hit being announced or leeched from was a critical strike: Vital Strike (R13), "+1% life leech per point on
+	 * critical melee strikes". The War trees' slice E1 (2026-11-27). Read from `HitInHandCritical`, which
+	 * `CurrentConditions` copies from the ability system component; `UCataclysmAbilitySystemComponent::
+	 * SetHitBeingAnnouncedCritical` is set by whoever announces a hit or pays its leech, and put back after. -1, no hit
+	 * in hand, refuses. IT TAKES NO VALUE: it names a fact of the hit.
+	 */
+	HitIsCritical
+		UMETA(DisplayName = "Hit Is Critical"),
+
+	/**
+	 * The hit being announced was NOT a critical strike: Relentless, "every melee hit that does not crit still
+	 * generates +1 Fervour per point". The complement of `HitIsCritical`, read from the same field; -1 refuses here too,
+	 * so a stat asked with no hit in hand is neither. IT TAKES NO VALUE.
+	 */
+	HitIsNotCritical
+		UMETA(DisplayName = "Hit Is Not Critical"),
+
+	/**
+	 * The character is held by crowd control now: Dead Weight (R27), "+3% damage reduction per point while crowd
+	 * controlled". The War trees' slice E1 (2026-11-27). Read from `bSelfCrowdControlled`, which `CurrentConditions`
+	 * fills from `UCataclysmSkillEffects::IsCrowdControlled`, the reading every "is held" question uses. IT TAKES NO
+	 * VALUE: it names a state.
+	 */
+	WhileCrowdControlled
+		UMETA(DisplayName = "While Crowd Controlled"),
+
+	/**
+	 * The character is DUAL WIELDING AND NOT IN FRENZY: `DualWielding` and the complement of `InFrenzy`, from the same
+	 * readings. The War trees' engine slice E2 (2026-11-27), for Death Strike's "Dual wield only. ... below 20% HP ...
+	 * While in Frenzy this threshold is increased to 35%": its 20% row holds outside Frenzy and its 35% row in it, so the
+	 * two never pay together, and a row holds two conditions, the threshold being the other. IT TAKES NO VALUE.
+	 */
+	DualWieldingOutsideFrenzy
+		UMETA(DisplayName = "Dual Wielding Outside Frenzy"),
+
+	/**
+	 * The hit taken being announced was NOT blocked: Consecutive Blocks' "Resets if you take an unblocked hit". The War
+	 * trees' engine slice E2 (2026-11-27). Read from `HitTakenBlocked`, which `CurrentConditions` copies from the ability
+	 * system component while `NoteHitTaken` announces a landed hit (1 blocked, 0 not, -1 no hit in hand, which refuses).
+	 * IT TAKES NO VALUE.
+	 */
+	HitTakenWasUnblocked
+		UMETA(DisplayName = "Hit Taken Was Unblocked"),
 };
 
 /**
@@ -3164,6 +3256,87 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerMinionKindBeyondTheFirst
 		UMETA(DisplayName = "Per Minion Kind Beyond The First"),
+
+	/**
+	 * `Value` per BLEEDING hostile character within the row's own reach: Open Wounds (R10), "+3% retaliation damage per
+	 * point for each bleeding enemy within 4 metres, up to 5 enemies". The War trees' slice E1 (2026-11-27). The walk
+	 * `PerCrippledEnemyInReach` makes, on a list of the bleeding ones
+	 * (`FCataclysmStatConditions::BleedingHostileDistancesMetres`); the row's `ScaleMaxSteps` holds the "up to 5".
+	 */
+	PerBleedingEnemyInReach
+		UMETA(DisplayName = "Per Bleeding Enemy In Reach"),
+
+	/**
+	 * `Value` per `ScaleStep` PER CENT OF THE MAXIMUM the class resource holds: Thick Skin, "1% damage reduction for
+	 * every 4% of your maximum Fervour you currently hold". The War trees' slice E1 (2026-11-27). The Fervour counted as
+	 * held (`UCataclysmStatPipeline::FervourHeldCounted`) over `ClassResourceMaximum`, in whole steps, rounded down, less
+	 * the row's `ScaleOffset` in per cent ("for each point above 50% of your maximum" counts from 50). A maximum of
+	 * nothing, or an unknown reading, scales to nothing.
+	 */
+	PerPercentOfClassResourceHeld
+		UMETA(DisplayName = "Per Percent Of Class Resource Held"),
+
+	/**
+	 * `Value` per `ScaleStep` PER CENT OF ITS MAXIMUM HEALTH the character being struck is MISSING: Executioner, "+1%
+	 * damage per point for every 1% of HP the target is missing", and Death Strike. The War trees' slice E1
+	 * (2026-11-27). 100 less `TargetHealthPercent`, which `WithTargetState` fills when a row asks; a target whose health
+	 * cannot be read (-1) scales to nothing.
+	 */
+	PerPercentOfTargetHealthMissing
+		UMETA(DisplayName = "Per Percent Of Target Health Missing"),
+
+	/**
+	 * `Value` per `ScaleStep` per cent of INCREASED MAXIMUM HEALTH the character's `max_health` line sums: Iron Will,
+	 * "Your maximum HP bonus from all sources also increases your maximum Fervour by 1 point for every 2% maximum HP bonus
+	 * you have". The War trees' slice E1 (2026-11-27). Read from `IncreasedMaximumHealthPercent`, which
+	 * `CurrentConditions` fills -- and only for a component some row of which asks
+	 * (`UCataclysmAbilitySystemComponent::bSomeRowAsksIncreasedMaximumHealth`) -- from the line's unconditional rows:
+	 * the line evaluated with an empty state, so filling it can never ask for itself. A conditioned increase to maximum
+	 * health is left out, a judgement.
+	 */
+	PerPercentOfIncreasedMaximumHealth
+		UMETA(DisplayName = "Per Percent Of Increased Maximum Health"),
+
+	/**
+	 * `Value` per `ScaleStep` points of MAXIMUM HEALTH FROM OTHER SOURCES: Colossus (R3), "+10 flat Maximum HP per point
+	 * for every 1,000 Maximum HP you have from other sources". The War trees' engine slice E3 (2026-11-27). Read from
+	 * `MaximumHealthFromOtherSources`, which `CurrentConditions` fills -- only for a component some row of which asks --
+	 * from the `max_health` line evaluated with an empty state: every unconditional, unscaled row, and never a scaled
+	 * one, so a row of this scale is never in what it reads. A conditioned addition is left out, as Iron Will's is.
+	 */
+	PerPointOfMaximumHealthFromOtherSources
+		UMETA(DisplayName = "Per Point Of Maximum Health From Other Sources"),
+
+	/**
+	 * `Value` per `ScaleStep` SECONDS OF COMBAT HELD: Grinding Advance, "+1% damage reduction per point for every 10
+	 * seconds in continuous combat (multiplicative), stacking up to 5 times. At 5 points: Combat duration stacks are lost
+	 * 50% slower when leaving combat." The War trees' engine slice E3 (2026-11-27). Read from `CombatSecondsHeld`
+	 * (`UCataclysmAbilitySystemComponent::CombatSecondsHeld`): it rises a second a second in combat, falls a second a
+	 * second out of it -- half that under `combat_seconds_fall_slower` -- and what is left carries into the next combat.
+	 * The falling is a judgement: "lost 50% slower" means nothing if the stacks vanish when combat ends.
+	 */
+	PerSecondOfCombatHeld
+		UMETA(DisplayName = "Per Second Of Combat Held"),
+
+	/**
+	 * `Value` per hostile character the character STRUCK IN THE LAST 3 SECONDS: Dancing Blades, "each unique enemy you
+	 * have hit in the last 3 seconds drains 2 additional Fervour per second". The War trees' slice E1 (2026-11-27). Read
+	 * from `EnemiesStruckRecently`, which `WithEnemiesInReach` counts when a row asks: every hostile within
+	 * `UCataclysmAbilitySystemComponent::StruckRecentlySearchMetres` whose record says this character struck it at most
+	 * `StruckRecentlySeconds` ago (`SecondsSinceStruckBy`). THE WINDOW IS THE SCALE'S, 3 seconds, because the one
+	 * sentence that asks names it.
+	 */
+	PerEnemyStruckRecently
+		UMETA(DisplayName = "Per Enemy Struck Recently"),
+
+	/**
+	 * `Value` per character that STRUCK THIS ONE IN THE LAST 10 SECONDS: Outnumbered, "+2% retaliation damage per point
+	 * for each unique enemy that has hit you in the last 10 seconds". The War trees' slice E1 (2026-11-27). Read from
+	 * `EnemiesThatStruckYouRecently`, which `CurrentConditions` counts from this character's own record of who struck
+	 * it (`StruckBy`). THE WINDOW IS THE SCALE'S, 10 seconds, because the one sentence that asks names it.
+	 */
+	PerEnemyThatStruckYouRecently
+		UMETA(DisplayName = "Per Enemy That Struck You Recently"),
 };
 
 /**
@@ -3381,6 +3554,9 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceHitTaken = -1.0f;
+
+	/** Seconds between the last two landed hits taken that were not ticks, or -1. `TwoHitsTakenWithinSeconds`. E2. */
+	float SecondsBetweenLastTwoHitsTaken = -1.0f;
 
 	/**
 	 * Seconds since the character's class resource became full. Issue #1815.
@@ -3705,6 +3881,21 @@ struct CATACLYSM_API FCataclysmStatConditions
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float IncreasedMovementSpeedPercent = -1.0f;
 
+	/** Increased maximum health, in per cent, for `PerPercentOfIncreasedMaximumHealth`, or -1 unread. War trees E1. */
+	float IncreasedMaximumHealthPercent = -1.0f;
+
+	/** Maximum health from other sources, for `PerPointOfMaximumHealthFromOtherSources`, or -1 unread. War trees E3. */
+	float MaximumHealthFromOtherSources = -1.0f;
+
+	/** Seconds of combat held, for `PerSecondOfCombatHeld`, or -1 unread. War trees E3 (Grinding Advance). */
+	float CombatSecondsHeld = -1.0f;
+
+	/** Hostiles this character struck in the last 3 seconds, for `PerEnemyStruckRecently`, or -1 unread. War trees E1. */
+	int32 EnemiesStruckRecently = -1;
+
+	/** Characters that struck this one in the last 10 seconds, for `PerEnemyThatStruckYouRecently`, or -1. War trees E1. */
+	int32 EnemiesThatStruckYouRecently = -1;
+
 	/**
 	 * How much maximum mana the character has. Issue #1515.
 	 *
@@ -3747,6 +3938,38 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 WeaponsWorn = -1;
+
+	/**
+	 * How many Shields the character holds in its weapon slots: 0, 1 or 2, or -1 with no equipment component, which is
+	 * every enemy. Read by `HoldingShield` and `NotHoldingShield`. The War trees' slice E1 (2026-11-27). A Shield is an
+	 * item whose base row's weapon type is `Shield` (`docs/Cataclysm_GDD_v2.md`: "a weapon that grants no attack
+	 * damage").
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 ShieldsHeld = -1;
+
+	/**
+	 * Whether the attack in hand began at a full Fervour pool, for `AttackAtFullFervour`. The War trees' slice E1
+	 * (2026-11-27). Copied from `UCataclysmAbilitySystemComponent::AttackBeganAtFullFervour`; false with no attack in hand.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bAttackBeganAtFullFervour = false;
+
+	/**
+	 * Whether the hit in hand was a critical strike: 1 yes, 0 no, -1 no hit in hand. For `HitIsCritical` and
+	 * `HitIsNotCritical`. The War trees' slice E1 (2026-11-27). Copied from
+	 * `UCataclysmAbilitySystemComponent::HitBeingAnnouncedCritical`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 HitInHandCritical = -1;
+
+	/** Whether the character is held by crowd control now, for `WhileCrowdControlled`. The War trees' slice E1. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bSelfCrowdControlled = false;
+
+	/** Whether the hit taken in hand was blocked: 1, 0, or -1 with none. For `HitTakenWasUnblocked`. War trees E2. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 HitTakenBlocked = -1;
 
 	/**
 	 * How much maximum health the character has. Issue #1515.
@@ -4510,6 +4733,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	TArray<float> CrippledHostileDistancesMetres;
 
 	/**
+	 * The distances, in metres, of the hostile characters within the widest bleeding-enemy reach a row asks about that
+	 * carry a Bleed. The War trees' slice E1 (2026-11-27), for `PerBleedingEnemyInReach`. Filled the way the crippled
+	 * list above is, and only when a row asks; empty and "nobody bleeding is near" are the same answer.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> BleedingHostileDistancesMetres;
+
+	/**
 	 * How far each of the character's OWN remains lies from it, in metres along the floor, within the widest reach a row
 	 * asks about. The Death finish's slice D (2026-11-26), for `PerOwnRemainsInReach`. FILLED ONLY WHEN A ROW ASKS, by
 	 * `UCataclysmAbilitySystemComponent::WithEnemiesInReach` through `UCataclysmRemains::DistancesOfOwnRemains`; empty
@@ -4878,6 +5109,30 @@ enum class ECataclysmNearbyAction : uint8
 	 * event's own character. The War vow options' second slice, V2b, 2026-11-25: Warlord.
 	 */
 	ArmourRemoved UMETA(DisplayName = "Remove the armour of nearby enemies"),
+
+	/**
+	 * Direct damage of `Percent` of the wearer's maximum health on every enemy within `EventValue` metres. The War trees'
+	 * engine slice E2 (2026-11-27): The Inevitable's "flat damage per second to all nearby enemies equal to 1% of your
+	 * Maximum HP" and Seismic Slam's "This bonus damage hits all enemies within 2 meters".
+	 */
+	SmiteByMaximumHealth UMETA(DisplayName = "Smite nearby enemies by a share of maximum health"),
+
+	/**
+	 * A direct blow of `Percent` per cent of all the damage the wearer took in the last 5 seconds
+	 * (`UCataclysmAbilitySystemComponent::DamageTakenRecently`) on every enemy within the larger of the row's Event Value
+	 * in metres and the wearer's retaliation radius. The War trees' engine slice E3 (2026-11-27), Wrathful Presence:
+	 * "Your retaliation aura now pulses every second, dealing damage equal to 5% of all damage you have taken in the last
+	 * 5 seconds to all nearby enemies."
+	 */
+	SmiteByRecentDamageTaken UMETA(DisplayName = "Smite nearby enemies by a share of damage taken recently"),
+
+	/**
+	 * A direct blow of `Percent` per cent of what the event's hit took from health on every enemy in a line from the
+	 * wearer along the way it faces, `EventValue` metres long and 2 metres wide. The War trees' engine slice E2
+	 * (2026-11-27), Seismic Slam's "the shockwave from the attack travels along the ground dealing 30% per point of the
+	 * hit's damage to all enemies in a line". The length is the row's; the width is a judgement of that slice.
+	 */
+	SmiteLineByHit UMETA(DisplayName = "Smite enemies in a line by a share of the hit"),
 };
 
 /**
@@ -5099,6 +5354,13 @@ enum class ECataclysmEveryNth : uint8
 
 	/** "Every 10th attack deals no damage": the Nth attack deals none. */
 	Attack UMETA(DisplayName = "Nth attack"),
+
+	/**
+	 * "Every 5th consecutive melee attack deals 50% more damage per point" (Flurry, R11): the Nth attack deals `Percent`
+	 * more, a multiplier on everything that use deals itself. Counted with the attacks `Attack` counts. The War trees'
+	 * engine slice E2 (2026-11-27).
+	 */
+	AttackMore UMETA(DisplayName = "Nth attack deals more"),
 };
 
 UENUM(BlueprintType)
@@ -5307,6 +5569,12 @@ struct CATACLYSM_API FCataclysmPoolAction
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bPlacedRaisesRetaliationTaken = false;
 
+	/** The placed stack raises the damage its carrier takes: `enemy_damage_taken`. The War trees' engine slice E2. */
+	bool bPlacedRaisesDamageTaken = false;
+
+	/** The placed stack lowers its carrier's damage reduction: `enemy_damage_reduction_removed`. The same slice. */
+	bool bPlacedRemovesDamageReduction = false;
+
 	/**
 	 * Set, this action COUNTS ITS KIND OF EVENT, and acts on every Nth. Issue
 	 * #1833, phase 2. `EveryNth` is N, `Percent` what the Nth is worth (unused
@@ -5349,6 +5617,82 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	ECataclysmCooldownReset CooldownReduce = ECataclysmCooldownReset::None;
+
+	/**
+	 * The reduction takes `Percent` PER CENT of each running cooldown's remaining time rather than `Percent` seconds:
+	 * `cooldown_reduce_all_percent`. The War trees' engine slice E2 (2026-11-27), Apex Predator's "instantly reduces all
+	 * cooldowns by 50%". On the keys only; a skill's kept cooldown off the keys is left as it is.
+	 */
+	bool bCooldownReduceShare = false;
+
+	/**
+	 * Direct damage of `Percent` per cent of the HEALTH THE EVENT'S OTHER CHARACTER IS MISSING: `strike_target_of_target_missing_health`.
+	 * The War trees' engine slice E2 (2026-11-27), Coup de Grace's "Your critical strikes deal bonus damage equal to 2%
+	 * of the target's missing HP".
+	 */
+	bool bStrikeTargetOfTargetMissingHealth = false;
+
+	/**
+	 * The event's other character is knocked back `Percent` metres from the wearer: `knock_back_target`. The War trees'
+	 * engine slice E2 (2026-11-27), Whirlwind's "Enemies hit while you are at maximum Fervour are knocked back".
+	 */
+	bool bKnockBackTarget = false;
+
+	/**
+	 * Removes every own stack of every row of the same node: `own_stacks_removed`. The War trees' engine slice E2
+	 * (2026-11-27): Killing Rhythm's "Missing a critical strike or your Fervour reaching 0 resets the streak" and
+	 * Consecutive Blocks' "Resets if you take an unblocked hit". The node is `OwnStacksRemovedOf`, the row's own name less
+	 * the `_From<N>` and `_Row<N>` the passive tree adds to it.
+	 */
+	bool bRemoveOwnStacks = false;
+
+	/**
+	 * The next retaliation payment deals `Percent` more: `next_retaliation_more`, the larger of it and what is held. The
+	 * War trees' engine slice E2 (2026-11-27), Spiteful's "when your Fervour becomes full, your next retaliation deals 50%
+	 * more damage" (the coordinating session's reading).
+	 */
+	bool bNextRetaliationMore = false;
+
+	/**
+	 * The class resource raised by `Percent` for each 1% of maximum health the event's amount is, never above the pool's
+	 * maximum: `fervour_per_percent_of_max_health_leeched`. The War trees' engine slice E2 (2026-11-27), Vampiric Fury's
+	 * "Life leech now also restores Fervour at a rate of 1 Fervour per 2% of maximum HP leeched. Fervour cannot be
+	 * restored above maximum by this effect", on `life_leeched`, whose amount is the health the leech promises.
+	 */
+	bool bFervourPerPercentOfMaxHealth = false;
+
+	/**
+	 * The class resource raised by `Percent` seconds of the wearer's Frenzy drain (`fervour_drain_per_second`, asked
+	 * now): `fervour_of_frenzy_drain_seconds`. Carnage, as ruled by the coordinating session on 2026-11-27: "Killing an
+	 * enemy while in Frenzy restores Fervour equal to 1 second of Frenzy's drain per point. This can happen at most once
+	 * every 1 second" -- the second is the row's Trigger Cooldown. Nothing for a wearer with no drain.
+	 */
+	bool bFrenzyDrainFervour = false;
+
+	/**
+	 * A kill inside the wearer's retaliation radius sets off a blow of `Percent` per cent of the wearer's last
+	 * retaliation payment to one enemy on every enemy within `EventValue` metres of the slain one:
+	 * `retaliation_burst_on_kill`. Spreading Thorns, ruled 2026-11-27. The blow is marked retaliation.
+	 */
+	bool bRetaliationBurstOnKill = false;
+
+	/**
+	 * The event's hit struck again on the same enemy `EventValue` seconds later at `Percent` per cent of weapon damage:
+	 * `echo_strike_later`. Phantom Blades, ruled 2026-11-27. The echo rolls its own critical strike and leeches on its own;
+	 * it raises no event, so no row acts on it and it makes no echo, and it earns no Fervour.
+	 */
+	bool bEchoStrikeLater = false;
+
+	/**
+	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed
+	 * (`UCataclysmAbilitySystemComponent::CanBeExecuted`: alive, no Boss, damage reaches it), loses the health it has left:
+	 * `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27), Killing Blow's "when you attack at maximum
+	 * Fervour, all enemies within 8 metres below 25% HP are instantly killed" (the coordinating session's 8 metres).
+	 */
+	bool bExecuteNearbyBelow = false;
+
+	/** See `bRemoveOwnStacks`. */
+	FString OwnStacksRemovedOf;
 
 	/**
 	 * Set, this action CLEANSES ITS WEARER instead of moving a pool: `UCataclysmDebuffs::Cleanse`. For "You are
@@ -5778,6 +6122,13 @@ struct CATACLYSM_API FCataclysmPoolAction
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bStrikeStrongestNear = false;
 
+	/**
+	 * The same strike on the NEAREST living enemy within the same 10 metres: `strike_nearest_near`. The War trees' engine
+	 * slice E2 (2026-11-27): Frenetic's bonus strike and Unstoppable Force's ("entering Frenzy strikes the nearest enemy
+	 * three times", the coordinating session's reading).
+	 */
+	bool bStrikeNearestNear = false;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bDashToStrongestAndStrike = false;
 
@@ -5800,6 +6151,24 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * `UCataclysmAbilitySystemComponent::ActOnEvent`.
 	 */
 	bool bStrikeTarget = false;
+
+	/**
+	 * Direct damage of `Percent` of the wearer's maximum health to the event's other character: `strike_target_of_max_health`.
+	 * The War trees' engine slice E2 (2026-11-27): Dead Weight's and Immovable Object's "deals damage equal to 3% of your
+	 * Maximum HP to the enemy that applied it", Fortified Mind's and Seismic Slam's. For the events `STRIKE_TARGET_EVENTS`
+	 * lists. Meets the struck one's mitigation as a direct blow does.
+	 */
+	bool bStrikeTargetOfMaximumHealth = false;
+
+	/**
+	 * What a next-attack bonus is sized by: nought for none, 1 the wearer's maximum health, 2 its armour. The War trees'
+	 * engine slice E2 (2026-11-27): Mountain's Wrath's "your next attack deals bonus damage equal to 5% of your Maximum HP"
+	 * and Shield Slam's "equal to 5% of your Armor". `Percent` of the stat is stored for the next attack
+	 * (`UCataclysmAbilitySystemComponent::NextAttackBonusStore`), the larger of it and what was stored.
+	 */
+	int32 NextAttackBonusOf = 0;
+	// AND 3, THE BLOCKED DAMAGE THE `block` EVENT CARRIES, ADDED TO WHAT IS HELD rather than the larger kept: Unbreakable
+	// Will's "+2% of blocked damage is added to your next attack per point" (2026-11-27).
 
 	/**
 	 * Set, this action EXECUTES THE ENEMY A HIT OF ITS WEARER'S LEAVES BELOW A SHARE OF ITS HEALTH. `Percent` is the
@@ -6228,7 +6597,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-sixteenth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-twenty-sixth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -6245,7 +6614,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FIFTY-FOUR OF THE HUNDRED-AND-FIFTEEN COMPARE NOTHING. They are the case labels
+	 * SIXTY-THREE OF THE HUNDRED-AND-TWENTY-FIVE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

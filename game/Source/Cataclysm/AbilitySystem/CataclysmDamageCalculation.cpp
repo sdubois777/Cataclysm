@@ -41,6 +41,7 @@ const TCHAR* UCataclysmDamageCalculation::BlockDamageReductionStat =
 const TCHAR* UCataclysmDamageCalculation::BlockNegationChanceStat =
 	TEXT("block_negation_chance");
 const TCHAR* UCataclysmDamageCalculation::EveryBlockNegatesStat = TEXT("every_block_negates");
+const TCHAR* UCataclysmDamageCalculation::BlockChanceFloorStat = TEXT("block_chance_floor");
 const TCHAR* UCataclysmDamageCalculation::SpellAbsorbChanceStat = TEXT("spell_absorb_chance");
 const TCHAR* UCataclysmDamageCalculation::MinionDefencesPercentOfYoursStat =
 	TEXT("minion_defences_percent_of_yours");
@@ -106,6 +107,7 @@ const TCHAR* UCataclysmDamageCalculation::ArmorOverwhelmHalvedStat =
 	TEXT("armor_overwhelm_halved");
 const TCHAR* UCataclysmDamageCalculation::CriticalArmorPenetrationStat =
 	TEXT("critical_armor_penetration");
+const TCHAR* UCataclysmDamageCalculation::CriticalPenetrationStat = TEXT("critical_penetration");
 const TCHAR* UCataclysmDamageCalculation::MeleeEvasionSuppressedStat =
 	TEXT("melee_evasion_suppressed");
 const TCHAR* UCataclysmDamageCalculation::EvasionAgainstAreaPercentStat =
@@ -973,8 +975,19 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// time decides both.
 		//
 		// LESS THE OVERWHELM, held at nought. Issue #2824, slice b, ruling Q7.
-		if (Roll < FMath::Max(0.0f, DefenderStat(Defender, TEXT("block_chance"), Combat->GetBlockChance(), BlowOf(Hit))
-										 - Hit.OverwhelmPoints))
+		//
+		// AND NO LOWER THAN EYE OF THE STORM'S FLOOR (the War trees' engine slice E3, 2026-11-27): the floor, or what the
+		// chance was before anything reduced it -- the larger of the asked chance and the attribute -- whichever is less.
+		const float AskedBlockChance =
+			DefenderStat(Defender, TEXT("block_chance"), Combat->GetBlockChance(), BlowOf(Hit));
+		float BlockChance = FMath::Max(0.0f, AskedBlockChance - Hit.OverwhelmPoints);
+		const float BlockFloor = DefenderStat(Defender, BlockChanceFloorStat, 0.0f, BlowOf(Hit));
+		if (BlockFloor > 0.0f)
+		{
+			BlockChance = FMath::Max(
+				BlockChance, FMath::Min(BlockFloor, FMath::Max(AskedBlockChance, Combat->GetBlockChance())));
+		}
+		if (Roll < BlockChance)
 		{
 			Result.bBlocked = true;
 			const float Pinned = CVarBlockNegationRoll.GetValueOnAnyThread();
@@ -1138,7 +1151,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			+ InheritedResistance(Inherited, Hit.DamageType, Tier),
 		// AND THE OVERWHELM BESIDE THE PENETRATION, before the cap, which is where the design's damage order puts it "at
 		// the same point and for the same reason". Issue #2824, slice b.
-		Hit.ResistancePenetration + Hit.OverwhelmPoints, ResistanceCapOf(Defender));
+		Hit.ResistancePenetration + Hit.OverwhelmPoints
+			// AND A CRITICAL STRIKE'S OWN, Glass Cannon (the War trees' engine slice E2, 2026-11-27).
+			+ (Result.bWasCritical ? Hit.CriticalResistancePenetration : 0.0f),
+		ResistanceCapOf(Defender));
 	const float Resist = Hit.bCannotBeMitigated ? FMath::Min(ResistanceMet, 0.0f) : ResistanceMet;
 	if (bMeetsDefences)
 	{
@@ -1186,10 +1202,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// this the only lookup a conditioned row could be dropped by. Both were
 		// false. The count was measured correctly and then transcribed wrongly,
 		// which is why the figure is now written beside the names it counts.
+		// LESS WHAT REND'S STACKS PLACED ON THE DEFENDER TAKE AWAY, before the cap and floored at nought by it: "Each
+		// melee hit reduces the target's damage reduction by 1% per point" (the War trees' engine slice E2, 2026-11-27).
 		Damage *= 1.0f
 			- EffectiveDamageReduction(
 				  DefenderStat(Defender, TEXT("damage_reduction"),
-							   Combat->GetDamageReduction(), BlowOf(Hit)))
+							   Combat->GetDamageReduction(), BlowOf(Hit))
+				  - UCataclysmAbilitySystemComponent::PlacedDamageReductionRemovedOn(Defender))
 				  / 100.0f;
 
 		// AND THE MULTIPLICATIVE BUCKET, WHICH THAT CAP DOES NOT REACH. Twelve
@@ -1268,7 +1287,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			// AND A DEATHMARK'S PERCENT, "Marked enemies take +3% increased damage per point from all sources" (the
 			// Berserker's Deathmark, 2026-11-25): from every attacker, minions and allies included (question 3), as the
 			// rider beside it is.
-			+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender)) / 100.0f;
+			+ UCataclysmAbilitySystemComponent::DeathmarkPercentOn(Defender)
+			// AND ISSUE #964'S MARK, "the target takes +3% increased damage per point from all sources" (Open Wound,
+			// Marked Territory), the stacks placed on it summed, the same way (the War trees' engine slice E2).
+			+ UCataclysmAbilitySystemComponent::PlacedDamageTakenPercentOn(Defender)) / 100.0f;
 		Damage *= DamageTakenFactor;
 
 		// AND A BLOW THE DEFENDER CANNOT MITIGATE IS PUT BACK TO WHAT IT WAS

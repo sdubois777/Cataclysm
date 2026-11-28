@@ -4970,6 +4970,97 @@ namespace CataclysmStatExemptionTest
 	 * stack; one holds a stack. A blocked hit of 100 keeps 50 on the one and 40 on
 	 * the other.
 	 */
+	// DECLARED HERE, DEFINED BELOW: the probe that follows uses the holder the Ravager rework's probes made.
+	ACataclysmEnemyCharacter* RavagerReworkHolder(FAutomationTestBase& Test, UWorld* World);
+
+	void ProbeScaledFervourPerHitDealt(FAutomationTestBase& Test)
+	{
+		// `fervour_per_hit_dealt`, asked by `FCataclysmWarFervour::GainByRate` through `StatForSkill`. The War trees'
+		// slice E1 (2026-11-27), shipped under `own_stacks` (Sanguine). A holder at 50 of 100 carries the line at nought
+		// with 3 per own stack: it gains nothing with no stack, and 3 holding one.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FName Key(TEXT("Probe:fervour_per_hit_dealt"));
+		FCataclysmStatModifier PerStack;
+		PerStack.Bucket = ECataclysmStatBucket::Flat;
+		PerStack.Source = ECataclysmModifierSource::Enchantment;
+		PerStack.Value = 3.0f;
+		PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+		PerStack.ScaleStep = 1.0f;
+		PerStack.ScaleMaxSteps = 1;
+		PerStack.StackKey = Key;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(FCataclysmWarFervour::PerHitDealtStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {PerStack};
+		System->SetStatInputs(MoveTemp(Inputs));
+		const float Plain = FCataclysmWarFervour::GainOnHitDealt(System, FGameplayTagContainer());
+		System->GrantOwnStack(Key, /*WindowSeconds=*/3.0f, /*Cap=*/1);
+		const float Stacked = FCataclysmWarFervour::GainOnHitDealt(System, FGameplayTagContainer());
+		Test.TestEqual(TEXT("fervour_per_hit_dealt: control, nothing is gained with no stack"), Plain, 0.0f);
+		Test.TestEqual(TEXT("and 3 holding a stack, so the scaled row is asked for"), Stacked, 3.0f, 0.001f);
+	}
+
+	void ProbeScaledBlockChance(FAutomationTestBase& Test)
+	{
+		// `block_chance`, asked by `UCataclysmDamageCalculation::Resolve` at the block step. The War trees' slice E1
+		// (2026-11-27), shipped under `own_stacks` (Unyielding Guard), `class_resource_held` and `enemies_in_reach`.
+		// Two defenders carry the line at nought with 100 per own stack; one holds a stack. A roll of 50 is blocked by
+		// the one holding it and not by the other.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Key(TEXT("Probe:block_chance"));
+		const auto Prepare = [&Key](FScopedFighter& Defender)
+		{
+			FCataclysmStatModifier PerStack;
+			PerStack.Bucket = ECataclysmStatBucket::Flat;
+			PerStack.Source = ECataclysmModifierSource::Enchantment;
+			PerStack.Value = 100.0f;
+			PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+			PerStack.ScaleStep = 1.0f;
+			PerStack.ScaleMaxSteps = 1;
+			PerStack.StackKey = Key;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("block_chance")));
+			Line.Base = 0.0f;
+			Line.Modifiers = {PerStack};
+			Defender.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		};
+		FScopedFighter Clean(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Stacked(World, /*AttackDamage=*/0.0f);
+		Prepare(Clean);
+		Prepare(Stacked);
+		Cast<UCataclysmAbilitySystemComponent>(Stacked.AbilitySystem)
+			->GrantOwnStack(Key, /*WindowSeconds=*/3.0f, /*Cap=*/1);
+
+		FCataclysmIncomingHit Blow;
+		Blow.Damage = 100.0f;
+		const auto Blocks = [&Blow](FScopedFighter& Defender)
+		{
+			return UCataclysmDamageCalculation::Resolve(
+				Blow, Defender.AbilitySystem, /*Tier=*/1, /*EvasionRoll=*/100.0f, /*BlockRoll=*/50.0f).bBlocked;
+		};
+		Test.TestFalse(TEXT("block_chance: control, with no stack a roll of 50 is not blocked"), Blocks(Clean));
+		Test.TestTrue(TEXT("and with a stack the scaled 100 is asked for, so the same roll is blocked"),
+					  Blocks(Stacked));
+	}
+
 	void ProbeScaledBlockDamageReduction(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -6554,6 +6645,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("movement_speed"),             &ProbeScaledMovementSpeed},
 			{TEXT("evasion"),                    &ProbeScaledEvasion},
 			{TEXT("block_damage_reduction"),     &ProbeScaledBlockDamageReduction},
+			// THE WAR TREES' SLICE E1 (2026-11-27): Unyielding Guard, Resolve to Steel and Living Fortress.
+			{TEXT("block_chance"),               &ProbeScaledBlockChance},
+			{TEXT("fervour_per_hit_dealt"),      &ProbeScaledFervourPerHitDealt},
 			{TEXT("resistance_cap"),             &ProbeScaledResistanceCap},
 			{TEXT("life_leech"),                 &ProbeScaledLifeLeech},
 			{TEXT("mana_leech"),                 &ProbeScaledManaLeech},
@@ -8321,6 +8415,307 @@ namespace CataclysmStatExemptionTest
 					  WhenHurt.DealtToHealth > AtFull.DealtToHealth * 1.2f);
 	}
 
+	/**
+	 * `crit_chance_past_cap_to_multiplier`, read where a hit is priced. The War trees' engine slice E3 (2026-11-27), Hair
+	 * Trigger. Two strikers with 200% critical strike chance and a multiplier of 150; the one holding it adds 50, so its
+	 * certain critical strike deals more. The 200 come through the pipeline (`crit_chance` flat 200 on a line of base
+	 * nought), because the attribute itself is clamped to its ceiling when it is written.
+	 */
+	void ProbeCritChancePastCapToMultiplier(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll AlwaysCritical(0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		for (FScopedFighter* Striker : {&Plain, &Holding})
+		{
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritMultiplierAttribute(), 150.0f);
+		}
+		// 200 ON A LINE WHOSE BASE IS NOUGHT: `GrantFlats` writes the line from nothing, so the attribute's 100 is not
+		// under it (war-w1's first run: with 100 here both blows dealt 1500).
+		GrantFlats(Plain.Actor, {{FName(TEXT("crit_chance")), 200.0f}});
+		GrantFlats(Holding.Actor,
+				   {{FName(TEXT("crit_chance")), 200.0f}, {FName(TEXT("crit_chance_past_cap_to_multiplier")), 1.0f}});
+		const FCataclysmDamageResult Without = OneBlow(Plain, Defender);
+		const FCataclysmDamageResult With = OneBlow(Holding, Defender);
+		if (!Test.TestTrue(TEXT("both blows landed and critically struck"),
+				Without.bWasCritical && With.bWasCritical && Without.DealtToHealth > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(FString::Printf(TEXT("crit_chance_past_cap_to_multiplier is read: the 100 past the cap add 50 to the "
+										   "multiplier, so the critical strike deals more: %.1f against %.1f"),
+						  With.DealtToHealth, Without.DealtToHealth),
+					  With.DealtToHealth > Without.DealtToHealth * 1.1f);
+	}
+
+	/**
+	 * One blow of 1000 at a defender whose block chance attribute is 50 and whose `block_chance` line is 50 less 80%,
+	 * so 10, with the block roll pinned at 20 by the caller. Returns whether it was blocked. War trees E3.
+	 */
+	bool BlockedUnderAFloor(UWorld* World, FScopedFighter& Defender, TMap<FName, FCataclysmStatInputs>&& Extra)
+	{
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 50.0f);
+		FCataclysmStatModifier Less;
+		Less.Bucket = ECataclysmStatBucket::More;
+		Less.Source = ECataclysmModifierSource::Enchantment;
+		Less.Value = -80.0f;
+		FCataclysmStatInputs& Chance = Extra.FindOrAdd(FName(TEXT("block_chance")));
+		Chance.Base = 50.0f;
+		Chance.Modifiers.Add(Less);
+		Cast<UCataclysmAbilitySystemComponent>(Defender.AbilitySystem)->SetStatInputs(MoveTemp(Extra));
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Result);
+		return Result.bBlocked;
+	}
+
+	/**
+	 * `block_chance_floor`, read by `UCataclysmDamageCalculation::Resolve` at the block step. The War trees' engine slice
+	 * E3 (2026-11-27), Eye of the Storm. A chance reduced from 50 to 10 misses a roll of 20; with a floor of 30 it is
+	 * held at 30 and blocks.
+	 */
+	void ProbeBlockChanceFloor(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 20.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Floored(World, /*AttackDamage=*/0.0f);
+		TMap<FName, FCataclysmStatInputs> Floor;
+		FCataclysmStatModifier Thirty;
+		Thirty.Value = 30.0f;
+		Floor.FindOrAdd(FName(UCataclysmDamageCalculation::BlockChanceFloorStat)).Modifiers.Add(Thirty);
+		Test.TestFalse(TEXT("control: a chance reduced to 10 does not block a roll of 20"),
+					   BlockedUnderAFloor(World, Plain, {}));
+		Test.TestTrue(TEXT("block_chance_floor is read: held at 30, it blocks the roll of 20"),
+					  BlockedUnderAFloor(World, Floored, MoveTemp(Floor)));
+	}
+
+	/**
+	 * `block_chance_floor` under a condition. The War trees' engine slice E3, shipped under `enemies_in_reach_at_least`
+	 * (Eye of the Storm); a Fervour condition stands for it, on a defender holding 50 of 100.
+	 */
+	void ProbeConditionedBlockChanceFloor(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 20.0f);
+		const auto Floored = [World](float AbovePercent)
+		{
+			FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+			GiveAFervourPool(Defender);
+			Defender.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+			TMap<FName, FCataclysmStatInputs> Floor;
+			FCataclysmStatModifier Thirty;
+			Thirty.Value = 30.0f;
+			Thirty.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			Thirty.ConditionValue = AbovePercent;
+			Floor.FindOrAdd(FName(UCataclysmDamageCalculation::BlockChanceFloorStat)).Modifiers.Add(Thirty);
+			return BlockedUnderAFloor(World, Defender, MoveTemp(Floor));
+		};
+		Test.TestFalse(TEXT("block_chance_floor under a refused condition: the reduced chance misses"), Floored(60.0f));
+		Test.TestTrue(TEXT("and under one that holds, the floor blocks"), Floored(30.0f));
+	}
+
+	/**
+	 * The Last Bastion's three figures, read where a lethal blow is saved (`UCataclysmVitalAttributeSet`). The War trees'
+	 * engine slice E3 (2026-11-27). A blow of 100,000 that is blocked would still kill a defender of 10,000 health; one
+	 * holding the save is left at 1 health, gains 100 Fervour and is immune to damage. A second blocked lethal blow at
+	 * once is not saved: the clock is 120 seconds. The plain defender dies.
+	 */
+	void ProbeBlockedLethalHitSurvived(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedRoll Critical(TEXT("Cataclysm.CritRoll"), 100.0f);
+		const FPinnedRoll Block(TEXT("Cataclysm.BlockRoll"), 0.0f);
+		FScopedFighter Attacker(World, /*AttackDamage=*/100000.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Holding);
+		for (FScopedFighter* Defender : {&Plain, &Holding})
+		{
+			Defender->AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 100.0f);
+		}
+		GrantFlats(Holding.Actor, {{FName(UCataclysmAbilitySystemComponent::BlockedLethalHitSurvivedEverySecondsStat), 120.0f},
+								   {FName(UCataclysmAbilitySystemComponent::ImmuneAfterBlockedLethalHitSecondsStat), 2.0f},
+								   {FName(UCataclysmAbilitySystemComponent::FervourOnBlockedLethalHitSurvivedStat), 100.0f}});
+		const auto Strike = [&Attacker](FScopedFighter& Defender)
+		{
+			FCataclysmDamageResult Result;
+			UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f, FGameplayTagContainer(),
+											 FCataclysmHitDelivery(), &Result);
+			return Result;
+		};
+		const FCataclysmDamageResult OnPlain = Strike(Plain);
+		const FCataclysmDamageResult OnHolding = Strike(Holding);
+		UCataclysmAbilitySystemComponent* Saved = Cast<UCataclysmAbilitySystemComponent>(Holding.AbilitySystem);
+		if (!Test.TestTrue(TEXT("both blows were blocked"), OnPlain.bBlocked && OnHolding.bBlocked) || !Saved)
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("control: the plain defender is killed"),
+					   Plain.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()), 0.0f, 0.001f);
+		Test.TestEqual(TEXT("blocked_lethal_hit_survived_every_seconds is read: the holder is left at 1 health"),
+					   Holding.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute()), 1.0f, 0.001f);
+		Test.TestEqual(TEXT("fervour_on_blocked_lethal_hit_survived is read: 100 Fervour gained"),
+					   Holding.AbilitySystem->GetNumericAttribute(
+						   UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()),
+					   100.0f, 0.001f);
+		Test.TestTrue(TEXT("damage_immunity_after_blocked_lethal_hit_seconds is read: the holder is immune to damage"),
+					  Saved->IsDamageImmune());
+		Test.TestFalse(TEXT("and the save waits its 120 seconds"), Saved->MaySurviveBlockedLethalHit());
+	}
+
+	/**
+	 * `combat_seconds_fall_slower`, read by `UCataclysmAbilitySystemComponent::CombatSecondsHeld`. The War trees' engine
+	 * slice E3 (2026-11-27), Grinding Advance. Two characters each take one combat event and the world runs on past the
+	 * lapse; the seconds held fall half as fast for the one holding the flag, so it holds more.
+	 */
+	void ProbeCombatSecondsFallSlower(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		GrantFlat(Holding.Actor, TEXT("combat_seconds_fall_slower"), 1.0f);
+		UCataclysmAbilitySystemComponent* PlainSystem = Cast<UCataclysmAbilitySystemComponent>(Plain.AbilitySystem);
+		UCataclysmAbilitySystemComponent* HoldingSystem = Cast<UCataclysmAbilitySystemComponent>(Holding.AbilitySystem);
+		if (!PlainSystem || !HoldingSystem)
+		{
+			return;
+		}
+		PlainSystem->NoteHitDealt();
+		HoldingSystem->NoteHitDealt();
+		// TEN SECONDS IN COMBAT: an event each second keeps the combat going.
+		for (int32 Second = 0; Second < 10; ++Second)
+		{
+			World->TimeSeconds += 1.0f;
+			PlainSystem->NoteHitDealt();
+			HoldingSystem->NoteHitDealt();
+		}
+		// THEN OUT OF COMBAT: the 3 second lapse and 4 more.
+		for (int32 Second = 0; Second < 7; ++Second)
+		{
+			World->TimeSeconds += 1.0f;
+		}
+		const float PlainHeld = PlainSystem->CombatSecondsHeld();
+		const float HoldingHeld = HoldingSystem->CombatSecondsHeld();
+		Test.TestTrue(*FString::Printf(TEXT("control: out of combat, the plain character's seconds held fell: %.2f"),
+					  PlainHeld), PlainHeld >= 0.0f && PlainHeld < 12.0f);
+		Test.TestTrue(*FString::Printf(TEXT("combat_seconds_fall_slower is read: the holder keeps more, %.2f against %.2f"),
+									   HoldingHeld, PlainHeld),
+					  HoldingHeld > PlainHeld + 1.0f);
+	}
+
+	/**
+	 * `critical_penetration`, asked in `UCataclysmVitalAttributeSet` where resistance penetration is and added in
+	 * `UCataclysmDamageCalculation::Resolve` only once the blow has critically struck. The War trees' engine slice E2
+	 * (2026-11-27), Glass Cannon. Two attackers critically strike, at a multiplier of 100 so the crit changes nothing, a
+	 * defender with 50 of every resistance; the one carrying 50 meets none and deals twice as much.
+	 */
+	void ProbeCriticalPenetration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll AlwaysCritical(0.0f);
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Piercing(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 50.0f);
+		for (FScopedFighter* Striker : {&Plain, &Piercing})
+		{
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
+			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritMultiplierAttribute(), 100.0f);
+		}
+		GrantFlat(Piercing.Actor, UCataclysmDamageCalculation::CriticalPenetrationStat, 50.0f);
+		const FCataclysmDamageResult Kept = OneBlow(Plain, Defender);
+		const FCataclysmDamageResult Pierced = OneBlow(Piercing, Defender);
+		if (!Test.TestTrue(TEXT("both blows critically struck and dealt something"),
+				Kept.bWasCritical && Pierced.bWasCritical && Kept.DealtToHealth > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("critical_penetration is read: the critical blow meets no resistance and deals twice as much"),
+					   Pierced.DealtToHealth / Kept.DealtToHealth, 2.0f, 0.01f);
+	}
+
+	/**
+	 * `blood_for_blood_reflect_percent`, read by `UCataclysmAbilitySystemComponent::ReflectBloodForBlood` for a blow
+	 * taken. Blood for Blood, ruled 2026-11-27. A defender holding 50 with an empty Fervour pool sends half of what got
+	 * through back to its attacker; with a full pool, all of it; a plain defender sends nothing.
+	 */
+	void ProbeBloodForBloodReflectPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll NeverCritical(100.0f);
+		const auto Reflected = [World](bool bHolds, float FervourHeld, float& OutDealt)
+		{
+			FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+			FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+			GiveAFervourPool(Defender);
+			Defender.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), FervourHeld);
+			if (bHolds)
+			{
+				GrantFlat(Defender.Actor, UCataclysmAbilitySystemComponent::BloodForBloodReflectPercentStat, 50.0f);
+			}
+			const float Before = Attacker.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+			OutDealt = OneBlow(Attacker, Defender).DealtToHealth;
+			return Before - Attacker.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		};
+		float Dealt = 0.0f;
+		const float Plain = Reflected(false, 0.0f, Dealt);
+		Test.TestEqual(TEXT("control: a plain defender sends nothing back"), Plain, 0.0f, 0.01f);
+		const float Half = Reflected(true, 0.0f, Dealt);
+		if (!Test.TestTrue(TEXT("the blow got through"), Dealt > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("blood_for_blood_reflect_percent is read: an empty pool sends back half"), Half / Dealt, 0.5f,
+					   0.01f);
+		const float Whole = Reflected(true, 100.0f, Dealt);
+		Test.TestEqual(TEXT("and a full pool all of it"), Whole / Dealt, 1.0f, 0.01f);
+	}
+
 	// ------------------------------------------------------------------------
 	// THE SEVEN THE SHIPPED PASSIVES CONDITION THAT WERE READ AND NOT RUN.
 	// Issue #2236. Each was listed in `READ_FROM_THE_CODE_AND_NOT_PROBED` in
@@ -8484,6 +8879,210 @@ namespace CataclysmStatExemptionTest
 	 * health condition stands for it here, as for every conditioned probe: this measures the ask. A flag: any value
 	 * above 0 makes the character immune.
 	 */
+	/**
+	 * `immune_to_crowd_control`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27); a health
+	 * condition stands for the shipped one, as for every conditioned probe: this measures the ask.
+	 */
+	void ProbeConditionedImmuneToCrowdControl(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("immune_to_crowd_control"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("immune_to_crowd_control at full health: a knockdown takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Knockdown")));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("immune_to_crowd_control is asked for, so below half health a knockdown does not"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Knockdown")));
+		Test.TestTrue(TEXT("and it is every crowd control: a stun is refused too"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+	}
+
+	/**
+	 * `immune_to_stun`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27); a health
+	 * condition stands for the shipped one, as for every conditioned probe: this measures the ask.
+	 */
+	void ProbeConditionedImmuneToStun(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("immune_to_stun"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("immune_to_stun at full health: a stun takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("immune_to_stun is asked for, so below half health a stun does not"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+		Test.TestFalse(TEXT("and it is immunity to stun only: a knockdown still takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Knockdown")));
+	}
+
+	/**
+	 * `immune_to_stagger`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27); a health
+	 * condition stands for the shipped one, as for every conditioned probe: this measures the ask.
+	 */
+	void ProbeConditionedImmuneToStagger(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("immune_to_stagger"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("immune_to_stagger at full health: a stagger takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stagger")));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("immune_to_stagger is asked for, so below half health a stagger does not"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stagger")));
+		Test.TestFalse(TEXT("and it is immunity to stagger only: a stun still takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+	}
+
+	/**
+	 * `retaliation_cannot_be_mitigated`, read by `UCataclysmRetaliation` through `StatForSkill`. The War trees' slice E1
+	 * (2026-11-27), shipped under `health_below` (Undying Rage). Below half health the whole retaliation reaches the
+	 * attacker's health through its armour; at full health the armour takes a share.
+	 */
+	/**
+	 * `retaliation_radius_metres`, read by `UCataclysmRetaliation::RadiusMetresFor` through `StatForSkill`. The War trees'
+	 * slice E1 (2026-11-27), shipped under `class_resource_at_maximum` (Outnumbered); a health condition stands for it.
+	 */
+	void ProbeConditionedRetaliationRadius(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("retaliation_radius_metres"), ECataclysmStatBucket::Flat, 4.0f, 0.0f);
+		const float AtFull = UCataclysmRetaliation::RadiusMetresFor(Fighter.AbilitySystem);
+		AtHealthShare(Fighter, 0.4f);
+		const float BelowHalf = UCataclysmRetaliation::RadiusMetresFor(Fighter.AbilitySystem);
+		Test.TestEqual(TEXT("retaliation_radius_metres at full health: no radius"), AtFull, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and it is asked for, so below half health the radius is 4 metres"), BelowHalf, 4.0f, 0.001f);
+	}
+
+	/**
+	 * `melee_arc_full_circle`, asked by `UCataclysmStrikeSkill::ArcDegrees` through `StatForSkill`. The War trees' engine
+	 * slice E2 (2026-11-27), shipped under `class_resource_at_maximum` (Whirlwind); a health condition stands for it.
+	 */
+	void ProbeConditionedMeleeArcFullCircle(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmStrikeSkill::MeleeArcFullCircleStat, ECataclysmStatBucket::Flat, 1.0f,
+							 0.0f);
+		const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/1, Fighter.Actor);
+		FGameplayAbilitySpec* Spec = Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmStrikeSkill* Swing = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a melee swing is granted"), Swing))
+		{
+			return;
+		}
+		Swing->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3; Angle=60"));
+		Swing->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
+		Test.TestEqual(TEXT("melee_arc_full_circle at full health: the swing keeps its 60 degrees"),
+					   Swing->ArcDegrees(), 60.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("and it is asked for, so below half health the swing is a full circle"),
+					   Swing->ArcDegrees(), 360.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_per_enemy_hit`, asked by `UCataclysmFervour::GainForEnemiesHit` through `StatForSkill`. The War trees'
+	 * engine slice E2 (2026-11-27), shipped under `attack_at_full_fervour` (Whirlwind). A holder at 50 of 100 carries 3
+	 * per enemy under "Fervour above 40%", which holds, and then under "above 60%", which does not.
+	 */
+	void ProbeConditionedFervourPerEnemyHit(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const auto Hold = [System](float AbovePercent)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = 3.0f;
+			Row.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			Row.ConditionValue = AbovePercent;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmFervour::PerEnemyHitStat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Row};
+			System->SetStatInputs(MoveTemp(Inputs));
+		};
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Hold(60.0f);
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		const float Refused = UCataclysmFervour::GainForEnemiesHit(System, FGameplayTagContainer(), /*EnemiesHit=*/1);
+		Hold(40.0f);
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		const float Held = UCataclysmFervour::GainForEnemiesHit(System, FGameplayTagContainer(), /*EnemiesHit=*/1);
+		Test.TestEqual(TEXT("fervour_per_enemy_hit under a condition that refuses: nothing is gained"), Refused, 0.0f);
+		Test.TestEqual(TEXT("and under one that holds, 3: so it is asked for with its condition"), Held, 3.0f, 0.001f);
+	}
+
+	void ProbeConditionedRetaliationCannotBeMitigated(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
+		Attacker.AbilitySystem->SetNumericAttributeBase(Combat::GetArmorAttribute(), 5000.0f);
+		Holding.AbilitySystem->SetNumericAttributeBase(Combat::GetRetaliationAttribute(), 20.0f);
+		AtHealthShare(Holding, 1.0f);
+		ConditionedBelowHalf(Holding, TEXT("retaliation_cannot_be_mitigated"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		const float AtFull =
+			UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, /*DamageTaken=*/500.0f);
+		AtHealthShare(Holding, 0.4f);
+		const float BelowHalf =
+			UCataclysmRetaliation::Pay(Holding.AbilitySystem, Holding.Actor, Attacker.Actor, /*DamageTaken=*/500.0f);
+		Test.TestTrue(*FString::Printf(TEXT("retaliation_cannot_be_mitigated at full health: the attacker's armour "
+											"takes a share, %.2f reached health"), AtFull),
+					  AtFull > 0.0f && AtFull < 99.0f);
+		Test.TestTrue(*FString::Printf(TEXT("and it is asked for, so below half health more reaches it: %.2f"),
+									   BelowHalf),
+					  BelowHalf > AtFull + 1.0f);
+	}
+
 	void ProbeConditionedImmuneToSlow(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -13891,6 +14490,11 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmGems::SocketedGemEffectOf(Piece, Effects), 0.5f, 0.0001f);
 	}
 
+	// THE TWO BERSERKING PROBES ARE DEFINED BELOW THIS TABLE, beside the Ravager rework holder's other users, so they are
+	// declared here (the War trees' engine slice E3, 2026-11-27; the compile of 26d02a690 refused them undeclared).
+	void ProbeConditionedBerserkingOnEveryMeleeHit(FAutomationTestBase& Test);
+	void ProbeConditionedBerserkingSpendsHalf(FAutomationTestBase& Test);
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -13914,6 +14518,17 @@ namespace CataclysmStatExemptionTest
 			{TEXT("max_health"), &ProbeConditionedMaxHealth},
 			// AND THE SLICE C6d1's RINGED IN BONE (2026-11-25).
 			{TEXT("immune_to_slow"), &ProbeConditionedImmuneToSlow},
+			// AND THE WAR TREES' THREE IMMUNITIES, slice E1 (2026-11-27).
+			{TEXT("immune_to_crowd_control"), &ProbeConditionedImmuneToCrowdControl},
+			{TEXT("immune_to_stun"), &ProbeConditionedImmuneToStun},
+			{TEXT("immune_to_stagger"), &ProbeConditionedImmuneToStagger},
+			{TEXT("retaliation_cannot_be_mitigated"), &ProbeConditionedRetaliationCannotBeMitigated},
+			{TEXT("retaliation_radius_metres"), &ProbeConditionedRetaliationRadius},
+			{TEXT("melee_arc_full_circle"), &ProbeConditionedMeleeArcFullCircle},
+			{TEXT("fervour_per_enemy_hit"), &ProbeConditionedFervourPerEnemyHit},
+			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
+			{TEXT("berserking_spends_half"), &ProbeConditionedBerserkingSpendsHalf},
+			{TEXT("block_chance_floor"), &ProbeConditionedBlockChanceFloor},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -14106,6 +14721,140 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("with 10 of it the 40 held buy 400%, so SpendBerserking really reads it"), Held, 400.0f,
 					   0.001f);
 		Test.TestEqual(TEXT("and the whole pool is consumed"), System->GetNumericAttribute(Pool), 0.0f, 0.001f);
+	}
+
+	/**
+	 * `berserking_spends_half`, read by `FCataclysmBerserkerStates::SpendBerserking`. The War trees' engine slice E3
+	 * (2026-11-27), Berserker's Rage. An armed holder with 40 Fervour and 10 a point spends all 40 without it, and 20 with it.
+	 */
+	void ProbeBerserkingSpendsHalf(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		GrantFlat(Holder, FCataclysmBerserkerStates::BerserkingDamagePerFervourStat, 10.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Whole = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		GrantFlats(Holder, {{FName(FCataclysmBerserkerStates::BerserkingDamagePerFervourStat), 10.0f},
+							{FName(FCataclysmBerserkerStates::BerserkingSpendsHalfStat), 1.0f}});
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Half = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Test.TestEqual(TEXT("berserking_spends_half: control, without it the 40 held buy 400%"), Whole, 400.0f, 0.001f);
+		Test.TestEqual(TEXT("and with it 20 are spent for 200%, so SpendBerserking reads it"), Half, 200.0f, 0.001f);
+		Test.TestEqual(TEXT("and 20 are left"), System->GetNumericAttribute(Pool), 20.0f, 0.001f);
+	}
+
+	/**
+	 * `berserking_on_every_melee_hit`, read by `FCataclysmBerserkerStates::SpendBerserking`. The War trees' engine slice E3
+	 * (2026-11-27), Bloodied, shipped under `health_below`; a Fervour condition stands for it. A holder NOT armed, with 40
+	 * Fervour and 10 a point, spends nothing under a condition that refuses and all 40 under one that holds.
+	 */
+	void ProbeConditionedBerserkingOnEveryMeleeHit(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const auto Hold = [System](float AbovePercent)
+		{
+			FCataclysmStatModifier PerFervour;
+			PerFervour.Bucket = ECataclysmStatBucket::Flat;
+			PerFervour.Source = ECataclysmModifierSource::PassiveKeystone;
+			PerFervour.Value = 10.0f;
+			FCataclysmStatModifier EveryHit = PerFervour;
+			EveryHit.Value = 1.0f;
+			EveryHit.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			EveryHit.ConditionValue = AbovePercent;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(FCataclysmBerserkerStates::BerserkingDamagePerFervourStat)).Modifiers = {PerFervour};
+			Inputs.FindOrAdd(FName(FCataclysmBerserkerStates::BerserkingOnEveryMeleeHitStat)).Modifiers = {EveryHit};
+			System->SetStatInputs(MoveTemp(Inputs));
+		};
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Hold(60.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(false);
+		const float Refused = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Hold(30.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(false);
+		const float Held = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Test.TestEqual(TEXT("berserking_on_every_melee_hit under a refused condition: an unarmed holder buys nothing"),
+					   Refused, 0.0f);
+		Test.TestEqual(TEXT("and under one that holds it spends its 40 for 400%, so it is asked with its condition"), Held,
+					   400.0f, 0.001f);
+	}
+
+	/**
+	 * `berserking_spends_half` under a condition, read by `FCataclysmBerserkerStates::SpendBerserking`. The War trees'
+	 * engine slice E3 (2026-11-27), shipped under `wielding_two_handed_weapon` (Berserker's Rage); a Fervour condition
+	 * stands for it. An armed holder with 40 Fervour and 10 a point spends all 40 under a condition that refuses, and 20
+	 * under one that holds.
+	 */
+	void ProbeConditionedBerserkingSpendsHalf(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const auto Hold = [System](float AbovePercent)
+		{
+			FCataclysmStatModifier PerFervour;
+			PerFervour.Bucket = ECataclysmStatBucket::Flat;
+			PerFervour.Source = ECataclysmModifierSource::PassiveKeystone;
+			PerFervour.Value = 10.0f;
+			FCataclysmStatModifier Half = PerFervour;
+			Half.Value = 1.0f;
+			Half.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			Half.ConditionValue = AbovePercent;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			Inputs.FindOrAdd(FName(FCataclysmBerserkerStates::BerserkingDamagePerFervourStat)).Modifiers = {PerFervour};
+			Inputs.FindOrAdd(FName(FCataclysmBerserkerStates::BerserkingSpendsHalfStat)).Modifiers = {Half};
+			System->SetStatInputs(MoveTemp(Inputs));
+		};
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Hold(60.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Refused = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Hold(30.0f);
+		System->SetNumericAttributeBase(Pool, 40.0f);
+		System->SetBerserkingArmed(true);
+		const float Held = FCataclysmBerserkerStates::SpendBerserking(System, FGameplayTagContainer(), 1);
+		Test.TestEqual(TEXT("berserking_spends_half under a refused condition: the whole 40 buy 400%"), Refused, 400.0f,
+					   0.001f);
+		Test.TestEqual(TEXT("and under one that holds, half of it: 200%"), Held, 200.0f, 0.001f);
 	}
 
 	/** A holder for the Fervour spends' probes, with 50 of 100 Fervour and 10,000 maximum health. 2026-11-25. */
@@ -14708,6 +15457,72 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/** `immune_to_slow`, read by `UCataclysmSkillTemplate::IsImmuneTo` for "Slow" (Ringed in Bone). */
+	/** `immune_to_crowd_control`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27). */
+	void ProbeImmuneToCrowdControl(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Knockdown"));
+		SiphonLines(Holder, {SiphonStat(TEXT("immune_to_crowd_control"), 1.0f)});
+		const bool bHeld = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Knockdown"));
+		Test.TestFalse(TEXT("immune_to_crowd_control: control, a character without it is not immune"), bPlain);
+		Test.TestTrue(TEXT("and with it IsImmuneTo answers Knockdown, so it really reads it"), bHeld);
+	}
+
+	/** `immune_to_stun`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27). */
+	void ProbeImmuneToStun(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Stun"));
+		SiphonLines(Holder, {SiphonStat(TEXT("immune_to_stun"), 1.0f)});
+		const bool bHeld = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Stun"));
+		Test.TestFalse(TEXT("immune_to_stun: control, a character without it is not immune"), bPlain);
+		Test.TestTrue(TEXT("and with it IsImmuneTo answers Stun, so it really reads it"), bHeld);
+	}
+
+	/** `immune_to_stagger`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27). */
+	void ProbeImmuneToStagger(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Stagger"));
+		SiphonLines(Holder, {SiphonStat(TEXT("immune_to_stagger"), 1.0f)});
+		const bool bHeld = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Stagger"));
+		Test.TestFalse(TEXT("immune_to_stagger: control, a character without it is not immune"), bPlain);
+		Test.TestTrue(TEXT("and with it IsImmuneTo answers Stagger, so it really reads it"), bHeld);
+	}
+
 	void ProbeImmuneToSlow(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -16107,6 +16922,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("overkill_explosion_radius_metres"), &ProbeOverkillExplosionRadiusMetres},
 			// THE DEATH TREES' SEVEN STATS WITH NO ATTRIBUTE, probed since window death3-w3 found them unprobed.
 			{TEXT("immune_to_slow"), &ProbeImmuneToSlow},
+			{TEXT("immune_to_crowd_control"), &ProbeImmuneToCrowdControl},
+			{TEXT("immune_to_stun"), &ProbeImmuneToStun},
+			{TEXT("immune_to_stagger"), &ProbeImmuneToStagger},
 			{TEXT("minion_movement_speed"), &ProbeMinionMovementSpeed},
 			{TEXT("minions_turn_on_your_last_attacker"), &ProbeMinionsTurnOnYourLastAttacker},
 			{TEXT("minion_damage_taken"), &ProbeMinionDamageTaken},
@@ -16172,6 +16990,17 @@ namespace CataclysmStatExemptionTest
 										  ECataclysmBerserkerState::Frenzy); }},
 			{TEXT("fervour_drain_per_second"), &ProbeBerserkerDrain},
 			{TEXT("berserking_damage_per_fervour"), &ProbeBerserkingSpend},
+			// THE WAR TREES' ENGINE SLICE E3 (2026-11-27).
+			{TEXT("berserking_spends_half"), &ProbeBerserkingSpendsHalf},
+			{TEXT("crit_chance_past_cap_to_multiplier"), &ProbeCritChancePastCapToMultiplier},
+			{TEXT("block_chance_floor"), &ProbeBlockChanceFloor},
+			{TEXT("blocked_lethal_hit_survived_every_seconds"), &ProbeBlockedLethalHitSurvived},
+			{TEXT("damage_immunity_after_blocked_lethal_hit_seconds"), &ProbeBlockedLethalHitSurvived},
+			{TEXT("fervour_on_blocked_lethal_hit_survived"), &ProbeBlockedLethalHitSurvived},
+			{TEXT("combat_seconds_fall_slower"), &ProbeCombatSecondsFallSlower},
+			{TEXT("critical_penetration"), &ProbeCriticalPenetration},
+			{TEXT("blood_for_blood_reflect_percent"), &ProbeBloodForBloodReflectPercent},
+			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			// THE FERVOUR SPENDS, 2026-11-25.
 			{TEXT("fervour_cost_per_negated_block"), &ProbeCostPerNegatedBlock},
 			{TEXT("health_percent_per_ten_fervour_on_lethal_blow"), &ProbeLethalBlowHealthPerTenFervour},
@@ -16455,7 +17284,10 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
 	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
 	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
-	if (!TestEqual(TEXT("the thirty-eight probes are all here"), ConditionedProbes().Num(), 38))
+	// FORTY-EIGHT SINCE THE WAR TREES' ENGINE SLICES E1 TO E3 (2026-11-27): E1's three immunities, unmitigated
+	// retaliation and the retaliation radius, E2's full-circle swing and Fervour per enemy hit, and E3's Bloodied,
+	// Berserker's Rage and Eye of the Storm.
+	if (!TestEqual(TEXT("the forty-eight probes are all here"), ConditionedProbes().Num(), 48))
 	{
 		return false;
 	}

@@ -1297,6 +1297,11 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					const bool bRetaliationTaken = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::AttackerRetaliationTakenAction,
 						ESearchCase::IgnoreCase);
+					// AND THE WAR TREES' TWO, engine slice E2 (2026-11-27): issue #964's mark and Rend's.
+					const bool bDamageTakenRaised = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EnemyDamageTakenAction, ESearchCase::IgnoreCase);
+					const bool bDamageReductionRemoved = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EnemyDamageReductionRemovedAction, ESearchCase::IgnoreCase);
 					// AN "EVERY Nth" ROW, keyed by the enchantment and the action.
 					// Issue #1833, phase 2. The action names what is counted, so
 					// the row has no Action Event.
@@ -1307,6 +1312,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						 ECataclysmEveryNth::SpellCast},
 						{UCataclysmAbilitySystemComponent::NthAttackNoDamageAction,
 						 ECataclysmEveryNth::Attack},
+						// AND FLURRY'S, the War trees' engine slice E2 (2026-11-27).
+						{UCataclysmAbilitySystemComponent::NthAttackMoreDamageAction,
+						 ECataclysmEveryNth::AttackMore},
 					};
 					for (const TPair<const TCHAR*, ECataclysmEveryNth>& Nth : NthActions)
 					{
@@ -1344,7 +1352,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 								TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
 						}
 					}
-					if (bArmourRemoved || bDamageRemoved || bRetaliationTaken)
+					if (bArmourRemoved || bDamageRemoved || bRetaliationTaken || bDamageTakenRaised
+						|| bDamageReductionRemoved)
 					{
 						Action.PlacedKey = FName(*FString::Printf(
 							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
@@ -1352,6 +1361,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						Action.StackCap = Effect->ScaleMaxSteps;
 						Action.bPlacedCutsDamage = bDamageRemoved;
 						Action.bPlacedRaisesRetaliationTaken = bRetaliationTaken;
+						Action.bPlacedRaisesDamageTaken = bDamageTakenRaised;
+						Action.bPlacedRemovesDamageReduction = bDamageReductionRemoved;
 					}
 					// A NEXT-SPELL COOLDOWN CHARGE, the fourth next-use kind. Issue
 					// #1833, the cooldown reduction action.
@@ -1373,6 +1384,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 							ESearchCase::IgnoreCase))
 					{
 						Action.CooldownReduce = ECataclysmCooldownReset::All;
+					}
+					// OR A SHARE OF WHAT IS LEFT, every cooldown on the keys: Apex Predator (the War trees' engine slice
+					// E2, 2026-11-27).
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceAllPercentAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.CooldownReduce = ECataclysmCooldownReset::All;
+						Action.bCooldownReduceShare = true;
 					}
 					else if (Effect->Action.Equals(
 								 UCataclysmAbilitySystemComponent::CooldownReduceHeavyAction,
@@ -1671,6 +1691,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::StrikeStrongestNearAction, ESearchCase::IgnoreCase);
 					Action.bDashToStrongestAndStrike = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::DashToStrongestAndStrikeAction, ESearchCase::IgnoreCase);
+					// AND THE NEAREST ENEMY'S, the War trees' engine slice E2 (2026-11-27).
+					Action.bStrikeNearestNear = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeNearestNearAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.
@@ -1758,6 +1781,69 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.Nearby = ECataclysmNearbyAction::SmiteByHit;
 					}
+					// AND THE WAR TREES' ACTIONS SIZED BY MAXIMUM HEALTH OR ARMOUR, engine slice E2 (2026-11-27).
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteNearbyOfMaximumHealthAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteByMaximumHealth;
+					}
+					// AND THE LINE SIZED BY THE HIT, engine slice E2 (2026-11-27), Seismic Slam (Berserker).
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteLineByHitAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteLineByHit;
+					}
+					// AND THE ONE SIZED BY DAMAGE TAKEN RECENTLY, engine slice E3 (2026-11-27), Wrathful Presence.
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteNearbyOfRecentDamageTakenAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteByRecentDamageTaken;
+					}
+					Action.bStrikeTargetOfMaximumHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeTargetOfMaximumHealthAction, ESearchCase::IgnoreCase);
+					Action.bStrikeTargetOfTargetMissingHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeTargetOfTargetMissingHealthAction, ESearchCase::IgnoreCase);
+					Action.bKnockBackTarget = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::KnockBackTargetAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT EXECUTES EVERY ENEMY NEAR AND LOW, the same slice (Killing Blow).
+					Action.bExecuteNearbyBelow = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ExecuteNearbyBelowAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT RAISES FERVOUR BY THE SHARE OF MAXIMUM HEALTH LEECHED, the same slice (Vampiric Fury).
+					Action.bFervourPerPercentOfMaxHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FervourPerPercentOfMaxHealthLeechedAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT STORES MORE FOR THE NEXT RETALIATION, the same slice (Spiteful).
+					Action.bNextRetaliationMore = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::NextRetaliationMoreAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT REMOVES ITS NODE'S OWN STACKS, the War trees' engine slice E2 (2026-11-27).
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::OwnStacksRemovedAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.bRemoveOwnStacks = true;
+						Action.OwnStacksRemovedOf = UCataclysmAbilitySystemComponent::NodeOfRowName(Effect->Enchantment);
+					}
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::NextAttackBonusOfMaximumHealthAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.NextAttackBonusOf = 1;
+					}
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::NextAttackBonusOfArmourAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.NextAttackBonusOf = 2;
+					}
+					// AND THE RIDERS OF 2026-11-27: Unbreakable Will's blocked damage, Carnage, Spreading Thorns and Phantom
+					// Blades.
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::NextAttackBonusOfBlockedDamageAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.NextAttackBonusOf = 3;
+					}
+					Action.bFrenzyDrainFervour = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FervourOfFrenzyDrainSecondsAction, ESearchCase::IgnoreCase);
+					Action.bRetaliationBurstOnKill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::RetaliationBurstOnKillAction, ESearchCase::IgnoreCase);
+					Action.bEchoStrikeLater = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EchoStrikeLaterAction, ESearchCase::IgnoreCase);
 					if (bArmourRemovedNearby)
 					{
 						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;

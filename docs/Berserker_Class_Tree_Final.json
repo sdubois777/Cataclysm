@@ -331,7 +331,7 @@
       "data": {
         "kind": "basic",
         "name": "Momentum",
-        "description": "Two-handed weapons only. Each consecutive melee hit on the same target increases your damage by 3% per point up to 5 consecutive hits. While in Wrath, this bonus is gained twice as fast. Switching targets resets the bonus.",
+        "description": "Two-handed weapons only. Each consecutive melee hit on the same target increases your damage by 3% per point up to 5 consecutive hits. While in Wrath, this bonus is doubled. Switching targets resets the bonus.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -617,7 +617,7 @@
       "data": {
         "kind": "basic",
         "name": "Killing Blow",
-        "description": "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fervour, all enemies below 25% HP are instantly killed.",
+        "description": "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fervour, all enemies within 8 metres below 25% HP are instantly killed.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12
@@ -683,7 +683,7 @@
       "data": {
         "kind": "keystone",
         "name": "Berserker's Rage",
-        "description": "Two-handed weapons only. Effects that trigger at maximum Fervour no longer drain your Fervour when they fire.",
+        "description": "Two-handed weapons only. Berserking spends half your Fervour instead of all of it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -749,7 +749,7 @@
       "data": {
         "kind": "basic",
         "name": "Flurry",
-        "description": "Dual wield only. Every 5th consecutive melee attack triggers an additional offhand strike dealing 50% weapon damage per point.",
+        "description": "Dual wield only. Every 5th consecutive melee attack deals 50% more damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -771,7 +771,7 @@
       "data": {
         "kind": "basic",
         "name": "Weaving",
-        "description": "Dual wield only. Alternating main hand and offhand attacks increases damage by 2% per point up to 6 stacks. While in Frenzy, each alternating strike costs 3 Fervour but the damage bonus per stack is doubled.",
+        "description": "Dual wield only. Using a different melee skill from the one you used last increases your damage by 2% per point, stacking up to 6 times. Using the same melee skill twice in a row removes the stacks. While in Frenzy, each stack you gain costs 3 Fervour and the damage per stack is doubled.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1035,7 +1035,7 @@
       "data": {
         "kind": "basic",
         "name": "Unrelenting",
-        "description": "Dual wield only. Killing an enemy refunds 20% of your maximum Fervour per point up to a maximum of 60%.",
+        "description": "Dual wield only. Killing an enemy refunds 10% of your maximum Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1079,7 +1079,7 @@
       "data": {
         "kind": "basic",
         "name": "Carnage",
-        "description": "Dual wield only. Killing an enemy while in Frenzy extends the current Frenzy duration by 1 second per point, up to a maximum extension of 6 seconds. This can trigger multiple times per Frenzy.",
+        "description": "Dual wield only. Killing an enemy while in Frenzy restores Fervour equal to 1 second of Frenzy's drain per point. This can happen at most once every 1 second.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1145,7 +1145,7 @@
       "data": {
         "kind": "keystone",
         "name": "Unstoppable Force",
-        "description": "Dual wield only. Killing an enemy while in Frenzy immediately resets the Frenetic auto-strike timer. Additionally, entering Frenzy instantly triggers three bonus strikes at full damage.",
+        "description": "Dual wield only. Killing an enemy while in Frenzy triggers one Frenetic strike. Additionally, entering Frenzy strikes the nearest enemy three times at full damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1167,7 +1167,7 @@
       "data": {
         "kind": "keystone",
         "name": "Phantom Blades",
-        "description": "Dual wield only. Each melee strike creates a phantasmal echo that replays the attack 0.75 seconds later at 60% damage. Phantom strikes can trigger leech and critical strikes independently but do not generate Fervour.",
+        "description": "Dual wield only. Each melee hit creates a phantasmal echo that strikes the same enemy 0.75 seconds later for 60% of the attack's damage. Echoes can trigger leech and critical strikes independently, do not generate Fervour and create no echoes.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1387,7 +1387,7 @@
       "data": {
         "kind": "basic",
         "name": "Vital Strike",
-        "description": "+1% life leech per point on critical melee strikes only. Critical strike leech is not subject to the normal leech cap. Excess leech beyond your HP cap is stored and added as bonus Fervour generation on your next hit, up to 10 Fervour per point.",
+        "description": "+1% life leech per point on critical melee strikes. While your health is full, your critical melee strikes generate 1 additional Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
