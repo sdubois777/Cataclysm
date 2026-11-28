@@ -28,8 +28,8 @@
     {
       "asset": "DT_ClassStats",
       "csv": "ClassStats.csv",
-      "rows": 49,
-      "csv_sha256": "f9fe47c55aa295477094fbb1594770c3158b743a8cab0f6e1900a1b0a0d064e2"
+      "rows": 65,
+      "csv_sha256": "24fa8306e016bbd139f672a837b9ea23bbf287e911c76ac57e004ffc37b95883"
     },
     {
       "asset": "DT_CraftingMaterials",
@@ -178,14 +178,14 @@
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 1007,
-      "csv_sha256": "3d0d2c11f4276c08743c6dc4fdba482673a060e78e0c94faf7677ac1fd22c191"
+      "rows": 1181,
+      "csv_sha256": "a9279be2a0f9ce94d24dfa02b7206e83ea5780e06de67c682ae65ed211019819"
     },
     {
       "asset": "DT_PassiveNodes",
       "csv": "PassiveNodes.csv",
       "rows": 661,
-      "csv_sha256": "338c02033ff49abe9132e155e51ff7f6e4ba0dd529f0b6de8d116d1bce7a4d41"
+      "csv_sha256": "cf129b7a7d914c2ee9ab1849b4f77203b679fe0815f3bdf353b3802e1cf73ad8"
     },
     {
       "asset": "DT_SkillSlots",
