@@ -30,7 +30,33 @@ state of a node stays where it was, on its label, rather than in a second colour
 80% of its picture's height because the picture had no title or buttons; the screen cannot, and 87% of the panel is
 what the 24 unit margin gives.
 
-**Not built or run when this was written.**
+**Built and run in window emp-w2, 2026-11-27.** Try 1 failed one test, which was not predicted:
+`TheWholeTreesViewHoldsItsOutermostRing`'s control fitted the nodes at the class tree's 90 unit margin and compared the
+ring with the whole view's new 24, so it no longer showed anything ("the ring's lowest point would be at 867.7, past
+877.0"). The screen did what was intended in that run ("the ring is 686.4 across, 86.9% of the height; at the class
+tree's margin 564.2, 71.4%"). b57263528 fits the control at the same margin as the screen; try 2 was narrowed by the
+coordinating session to the build, the group and the proof.
+
+| Step | Printed |
+| :-- | :-- |
+| Python at 4e9108761 | `9735 passed, 10 skipped`; the JUnit file: tests 9745, failures 0, errors 0, skipped 10 |
+| Try 1, 86b6655ea: three compiles | all `Build: Succeeded`, 0 compiler warning or error lines |
+| Try 1: `Cataclysm.EmpireTreeScreen.` alone | `15 tests performed, 14 succeeded, 1 failed: TheWholeTreesViewHoldsItsOutermostRing` |
+| Try 1: the whole Unreal suite | performed 6132, succeeded 6131, failed 1, the same test and no other; `895 written and deleted, 0 left behind`; 62 skipped halves |
+| Try 1: Python beside it | `9735 passed, 10 skipped`; JUnit tests 9745, failures 0; `ruff check .` clean |
+| Try 2, b57263528: build | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.27.cpp` |
+| Try 2: `Cataclysm.EmpireTreeScreen.` alone | `15 tests performed, 15 succeeded, 0 failed` |
+| Try 2: C++ guard proof, three breaks in one call | `PROVED: with the break in: 15 tests performed, 12 succeeded, 3 failed: EachKindOfMarkIsDrawnInItsOwnColour, TheRingsLinesAndLabelsAreTheBuildersOwn, TheWholeTreesViewHoldsItsOutermostRing \| restored: 15 tests performed, 15 succeeded, 0 failed` |
+
+The three breaks: `FitToBranch` fitting the whole view at the 90 unit margin; `MarkColourFor` drawing a capstone in the
+keystone's colour; `DecorationThicknessPx` allowing 1.5 units again. The three named failures are exactly the three
+predicted.
+
+**The render.** The coordinating session packaged the game at b57263528 on 2026-11-27 and opened the whole-tree view at
+1280 by 720 (`.claude/windows/emp_ingame/after_fix_b57263528.jpg`). It drew a solid dark background with no map behind
+it, the vertical quadrant line the full height, gold capstones, larger light blue-grey keystones and grey ordinary
+nodes, and the ring about 455 pixels across. That shows the vertical line draws at a 2 unit minimum; it does not prove
+the one pixel explanation above.
 
 ---
 
