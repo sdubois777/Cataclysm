@@ -333,6 +333,47 @@ with the coordinating session before the run:
 **Not shown by any test:** the line drawn on the screen, a real key reaching `InputKey` through the game viewport, and
 whether the floor's modifier panel takes a click. The coordinating session checks the first two in the packaged game.
 
+**The packaged check, 2026-11-28, and the camera follow-up.** The coordinating session packaged 1dda47127 and resumed a
+copy of the test saves. The line was drawn, centred, in white; the creatures stood in the same places 4 seconds apart;
+Space ended the hold and did not also fire its skill as far as could be seen. ONE FLAW: during the hold the view sat at
+ground level beside the character, looking along the floor, with a weapon filling the left of the screen, and it moved
+to the top-down view when the hold ended. The cause is in the engine: `UWorld::Tick` updates a player's camera only
+while the world is not paused (UE 5.8 `LevelTick.cpp`, about line 1845), and a resume pauses before the level's first
+tick, so the camera manager had never worked out a view. `HoldUntilFirstInput` now calls `UpdateCameraManager(0.0f)`
+before it pauses, which takes the view from the character's top-down camera at the end of its boom. Test:
+`Cataclysm.ResumeHold.TheHoldPutsTheViewAtTheTopDownCameraBeforeItPauses`. Window camera-w1, 2026-11-28, at e0a690c97,
+every figure registered before the run: three compiles succeeded with 0 warning or error lines; the whole Unreal suite
+`6152 tests performed, 6152 succeeded, 0 failed`, 63 skipped halves, `898 written and deleted, 0 left behind`; Python
+`9763 passed, 10 skipped` (JUnit tests 9773, failures 0, errors 0), `ruff check .` clean; the C++ guard proof (the camera
+update run only when already paused) `PROVED: with the break in: 4 tests performed, 3 succeeded, 1 failed:
+TheHoldPutsTheViewAtTheTopDownCameraBeforeItPauses | restored: 4 tests performed, 4 succeeded, 0 failed`. The test's own
+line: the view before the hold at the origin, 2265 cm from the top-down camera; during the hold 0.0 cm from it, pitch -60.
+
+**THAT UPDATE DID NOT FIX THE PACKAGED VIEW, AND THE CAUSE WAS ELSEWHERE.** The coordinating session packaged e0a690c97:
+the hold still showed the ground-level view. `HoldUntilFirstInput` then logged the view ("Resume hold," lines, kept), and
+a package of a99c644ab logged: before the update the view target is the pawn and the camera manager at the origin with
+its cache from game time 0.000; after it, the camera manager at the top-down camera, pitch -60, cache still from game
+time 0.000; the same at the first frame drawn and at the first press. A second run, screenshotted during the hold, still
+showed ground level. So the camera manager held the right view and the screen did not use it. The engine says why:
+`APlayerController::GetPlayerViewPoint` uses the camera manager's view only when its cache's time is above 0 (UE 5.8
+PlayerController.cpp lines 1009-1013), and otherwise returns the view target's own location and rotation (lines
+1016-1021), the pawn's centre facing along the floor; the renderer takes the view's location and rotation from it
+(`ULocalPlayer::GetViewPoint`, LocalPlayer.cpp line 716). A resume holds before the world's first tick, so the cache is
+stamped 0. Reading identified by the coordinating session and checked in the source by this one.
+**What was built:** `ACataclysmPlayerController::GetPlayerViewPoint` returns the camera manager's view while held,
+whatever its timestamp, and the engine's answer otherwise. The test above checked the camera manager's location, which
+was right all along, and not what is drawn; the new test,
+`Cataclysm.ResumeHold.WhatIsDrawnDuringTheHoldIsTheTopDownCameraAtWorldTimeZero`, asserts on `GetPlayerViewPoint` with
+the world's time at 0, its control the engine's own answer (the pawn's location). Window camera-w2, 2026-11-28, at
+caafff52a (with development ecfa38bc0 merged in), every figure registered before the run: three compiles succeeded with
+0 warning or error lines; the whole Unreal suite `6158 tests performed, 6158 succeeded, 0 failed`, 63 skipped halves,
+`898 written and deleted, 0 left behind`; Python `9763 passed, 10 skipped` (JUnit tests 9773, failures 0, errors 0),
+`ruff check .` clean; the C++ guard proof (the engine's own condition, a cache time above 0, put back) `PROVED: with the
+break in: 5 tests performed, 4 succeeded, 1 failed: WhatIsDrawnDuringTheHoldIsTheTopDownCameraAtWorldTimeZero |
+restored: 5 tests performed, 5 succeeded, 0 failed`. The test's own line: at world time 0.000, the controller's view
+point 0.0 cm from the top-down camera, pitch -60; the engine's own 0.0 cm from the pawn. The packaged screen is not shown
+by any test.
+
 ---
 
 ## 2026-11-27 — The game holds every loaded object of the Paragon art packs for the rest of the session, which stops the packaged game's crash when a Paragon creature is drawn again after a garbage collection (#2968)

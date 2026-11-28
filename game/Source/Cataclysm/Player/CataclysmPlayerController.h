@@ -230,6 +230,20 @@ public:
 	virtual bool InputKey(const FInputKeyEventArgs& Params) override;
 
 	/**
+	 * While a resumed walk is held, the view is the camera manager's, whatever its timestamp. Issue #2970's follow-up.
+	 *
+	 * WHY. `APlayerController::GetPlayerViewPoint` uses the camera manager's view only when its cache's time is above 0
+	 * (UE 5.8 PlayerController.cpp lines 1009-1013), and otherwise returns the view target's own location and rotation
+	 * (lines 1016-1021): the pawn's centre, facing along the floor. The renderer takes the view's location and rotation
+	 * from it (`ULocalPlayer::GetViewPoint`, LocalPlayer.cpp line 716). A resume holds before the level's first frame, so
+	 * the world's time is 0, the cache `HoldUntilFirstInput` fills is stamped 0, and the engine ignored it for the whole
+	 * hold. The package of a99c644ab logged the camera manager at the top-down camera while the screen showed ground level.
+	 *
+	 * Otherwise, and always once the hold ends, the engine's own answer.
+	 */
+	virtual void GetPlayerViewPoint(FVector& OutLocation, FRotator& OutRotation) const override;
+
+	/**
 	 * What a press of Esc does, as `InputKey` runs it: what `EscapeDoes` decides from whether a screen is open and
 	 * whether the game is paused, done. Public so a test can press it; a test world has no viewport to press from.
 	 */
@@ -272,6 +286,10 @@ public:
 	 * minions, cooldowns, damage over time and every dungeon timer stop together, with no rule of their own for each.
 	 * NO PAUSE SCREEN: the heads-up display draws `HeldUntilFirstInputLine` instead, while `IsHeldUntilFirstInput`.
 	 *
+	 * THE CAMERA IS UPDATED ONCE BEFORE THE PAUSE (`UpdateCameraManager`), because the engine does not update a camera
+	 * while paused and a resume pauses before the level's first tick; without it the hold showed the camera manager's
+	 * default view. Issue #2970's follow-up.
+	 *
 	 * THE HOLD IS RECORDED BEFORE THE PAUSE IS ASKED FOR, as `PauseTheGame` records the pause screen: a world with no
 	 * game mode to ask (a client, or a test world) refuses the pause, and the line and the first press still work.
 	 * True when the game is paused afterwards. Called by `FCataclysmSaveLoad::CharacterAndRun` when it resumes a walk.
@@ -293,6 +311,16 @@ public:
 	 * events are not presses. Static, so a test can ask the rule with no controller.
 	 */
 	static bool PressEndsTheHold(const FKey& Key, EInputEvent Event);
+
+	/**
+	 * The view as the camera manager holds it, the view target, the pawn's top-down camera and the conditions the
+	 * engine's camera update asks, in one line for the log. The package of e0a690c97 still showed the ground-level view
+	 * during the hold; these lines are to find out why from the real game.
+	 */
+	FString DescribeTheView() const;
+
+	/** Logs `DescribeTheView` once per hold, while held; the heads-up display calls it each frame it draws the line. */
+	void LogTheHeldViewOnce();
 
 	/** The line the heads-up display draws while the walk is held. */
 	static const TCHAR* HeldUntilFirstInputLine() { return TEXT("Press any key or button to resume"); }
@@ -1310,6 +1338,9 @@ private:
 
 	/** See `IsHeldUntilFirstInput`. Issue #2970. */
 	bool bHeldUntilFirstInput = false;
+
+	/** Whether `LogTheHeldViewOnce` has logged during this hold. */
+	bool bLoggedTheHeldView = false;
 
 	/** See `SetAScreenOpenForTest`. */
 	bool bScreenOpenForTest = false;

@@ -469,11 +469,12 @@ void ACataclysmHUD::DrawDeathCostNotice()
 
 void ACataclysmHUD::DrawResumeHoldLine()
 {
-	const ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(GetOwningPlayerController());
+	ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(GetOwningPlayerController());
 	if (Controller == nullptr || Canvas == nullptr || !Controller->IsHeldUntilFirstInput())
 	{
 		return;
 	}
+	Controller->LogTheHeldViewOnce(); // The first frame drawn during the hold, once: what the screen shows.
 
 	// IN THE NOTICE INK THE DEATH COST AND THE SKILL BAR'S NOTICES USE, centred.
 	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(UCataclysmSkillBar::LockedNoticeInkHex);
