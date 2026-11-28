@@ -91,6 +91,16 @@ SENTENCES: tuple[Sentence, ...] = (
              "block streak is active, your next attack deals bonus flat damage equal to 5% of your Armor value.",
              "+2% damage per point for every 10% Block Chance you have. At 6 points: after you block, your next attack "
              "deals bonus damage equal to 5% of your Armor."),
+    Sentence("Momentum (coordinator, 2026-11-27)", "Berserker", "twoh_002",
+             "Two-handed weapons only. Each consecutive melee hit on the same target increases your damage by 3% per "
+             "point up to 5 consecutive hits. While in Wrath, this bonus is gained twice as fast. Switching targets "
+             "resets the bonus.",
+             "Two-handed weapons only. Each consecutive melee hit on the same target increases your damage by 3% per "
+             "point up to 5 consecutive hits. While in Wrath, this bonus is doubled. Switching targets resets the "
+             "bonus."),
+    Sentence("Unrelenting (coordinator, 2026-11-27)", "Berserker", "dw_015",
+             "Dual wield only. Killing an enemy refunds 20% of your maximum Fervour per point up to a maximum of 60%.",
+             "Dual wield only. Killing an enemy refunds 10% of your maximum Fervour per point."),
     Sentence("The Inevitable (coordinator, 2026-11-27)", "Bulwark", "keystone_jg_t3",
              "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all nearby "
              "enemies equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every "

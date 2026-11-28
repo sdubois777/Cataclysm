@@ -237,6 +237,19 @@ E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R(None, "", 1 if seconds == 10 else 0.5, action="smite_nearby_of_max_health", action_event="every_seconds",
           every_seconds=1, event_value=4, cond="in_combat_for_seconds", cond_value=seconds)
         for seconds in (10, 20, 30, 40, 50))),
+    # OVERWHELMING FORCE: "When you attack at maximum Fervour, the force of the attack releases a shockwave that deals
+    # 30% of your attack damage per point to all enemies within 5 meters." `smite_nearby` is that: a hit of the value's
+    # share of attack damage on every enemy within 5 metres. A one-point keystone, so 30.
+    ("Berserker_twoh_008", "Overwhelming Force", (
+        R(None, "", 30, action="smite_nearby", action_event="attack_at_full_fervour", **TWO_HANDED),)),
+    # MOMENTUM, the coordinating session's reading: "While in Wrath, this bonus is doubled" for "gained twice as fast".
+    ("Berserker_twoh_002", "Momentum", (
+        *_damage(3, tags=MELEE, scale="consecutive_hits", step=1, cap=5, action_event="hit_dealt", **TWO_HANDED),
+        *_damage(3, tags=MELEE, scale="consecutive_hits", step=1, cap=5, action_event="hit_dealt", cond="in_wrath",
+                 cond2="wielding_two_handed_weapon"))),
+    # UNRELENTING, the coordinating session's reading: "Killing an enemy refunds 10% of your maximum Fervour per point."
+    ("Berserker_dw_015", "Unrelenting", (
+        R(None, "", 10, action="class_resource", action_event="kill", fraction_of="maximum", **DUAL),)),
     # SHATTER: "Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times."
     ("Berserker_twoh_009", "Shatter", (
         R(None, "", 5, tags=MELEE, action="enemy_armor_removed", action_event="critical_strike", stack_seconds=5,
