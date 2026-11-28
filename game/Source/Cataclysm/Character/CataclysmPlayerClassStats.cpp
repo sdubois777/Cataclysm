@@ -514,6 +514,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("minion_movement_speed"),
 		TEXT("minion_damage_taken"),
 		TEXT("immune_to_slow"),
+		// And the War trees' three immunities, slice E1 (2026-11-27): whether the character is immune to all crowd
+		// control, to a stun and to a stagger, each read by UCataclysmSkillTemplate::IsImmuneTo. No attribute and no base.
+		TEXT("immune_to_crowd_control"),
+		TEXT("immune_to_stun"),
+		TEXT("immune_to_stagger"),
 		// Whether a minion explodes when it dies, read by
 		// ACataclysmMinion::HandleDeath. A flag: a row sets it to one.
 		TEXT("minion_explodes_on_death"),

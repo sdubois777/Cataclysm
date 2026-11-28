@@ -1533,6 +1533,20 @@ bool UCataclysmSkillTemplate::IsImmuneTo(const AActor* Who,
 		{
 			return true;
 		}
+		// AND THE WAR TREES' THREE IMMUNITY ROWS, each with its conditions judged (slice E1, 2026-11-27):
+		// `immune_to_crowd_control`, every effect this function is asked about (Immovable Object, R4: "While above 50%
+		// health, you are immune to crowd control"); `immune_to_stun` (Unbroken, Juggernaut); `immune_to_stagger`
+		// (Juggernaut's "cannot be staggered", asked by `UCataclysmSkillEffects::ApplyStagger`). Read as
+		// `immune_to_slow` below is; nothing that lookup reaches asks this function, so it cannot recurse.
+		const FGameplayTagContainer NoTags;
+		if (Cataclysm->StatForSkill(FName(TEXT("immune_to_crowd_control")), NoTags, 0.0f) > 0.0f
+			|| (Effect.Equals(TEXT("Stun"), ESearchCase::IgnoreCase)
+				&& Cataclysm->StatForSkill(FName(TEXT("immune_to_stun")), NoTags, 0.0f) > 0.0f)
+			|| (Effect.Equals(TEXT("Stagger"), ESearchCase::IgnoreCase)
+				&& Cataclysm->StatForSkill(FName(TEXT("immune_to_stagger")), NoTags, 0.0f) > 0.0f))
+		{
+			return true;
+		}
 		// AND A ROW THAT MAKES THE CHARACTER IMMUNE TO SLOWS, `immune_to_slow`: Ringed in Bone, "you cannot be ...
 		// slowed" while five or more of your minions are within 6 metres. The Death trees' slice C6d1 (2026-11-25), as
 		// ruled (a): read HERE, the one function every slow check goes through, bundle 1's player movement refresh
@@ -2815,6 +2829,21 @@ bool UCataclysmSkillTemplate::BeginAttackOn(const TArray<AActor*>& Targets)
 
 	AttackEnemiesStruckTogether = Targets.Num();
 
+	// WHETHER THIS ATTACK BEGAN AT A FULL FERVOUR POOL, TAKEN BEFORE ANYTHING BELOW SPENDS IT: the Berserker's "when you
+	// attack at maximum Fervour", read by `attack_at_full_fervour` on this attack's blows and kills until `EndAttack`.
+	// And the event of the same name, for a row granting a stack on it (War Cry, Rapid Fire). The War trees' slice E1
+	// (2026-11-27). Berserking empties the pool on this same attack, so a check after it would never hold.
+	if (UCataclysmAbilitySystemComponent* Attacking =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+	{
+		const bool bFull = Attacking->IsClassResourceFull();
+		Attacking->SetAttackBeganAtFullFervour(bFull);
+		if (bFull)
+		{
+			Attacking->ActOnEvent(FName(TEXT("attack_at_full_fervour")), &SkillTags);
+		}
+	}
+
 	// PAID ONCE FOR THE WHOLE ATTACK, BEFORE ITS FIRST BLOW. Bought With Ruin:
 	// "Each enemy your melee attack hits beyond the first costs 2 Fervour".
 	// Nothing is bought or paid by a character without the node, by an attack
@@ -2846,6 +2875,12 @@ void UCataclysmSkillTemplate::EndAttack()
 {
 	AttackEnemiesStruckTogether = -1;
 	AttackIncreasedDamageBoughtPercent = 0.0f;
+	// AND THE FULL-POOL SNAPSHOT, the War trees' slice E1 (2026-11-27): no attack in hand, so nothing began full.
+	if (UCataclysmAbilitySystemComponent* Attacking =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo()))
+	{
+		Attacking->SetAttackBeganAtFullFervour(false);
+	}
 }
 
 AActor* UCataclysmSkillTemplate::Avatar() const

@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+
+// For ON_SCOPE_EXIT, which puts back the hit-in-hand critical flag around the leech (the War trees' slice E1).
+#include "Misc/ScopeExit.h"
 // For asking the attacker what a stat is worth with this hit's tags and the
 // attacker's own state in hand, rather than reading the attribute. Issue #959.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -2078,6 +2081,23 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					FGameplayTagContainer LeechTags = AssetTags;
 					LeechTags.AppendTags(Hit.DamageOverTimeTags);
+					// WITH WHETHER THE HIT WAS CRITICAL IN HAND, for Vital Strike's "+1% life leech per point on
+					// critical melee strikes" (the War trees' slice E1, 2026-11-27), put back when this block ends. A tick
+					// is never critical, so a tick reads 0. A SCOPE GUARD AND NOT A CALL AFTER, so nothing stands between
+					// this call and the minion's share below, which `test_charge_and_placed_action_names_match_the_engine`
+					// reads as one shape.
+					UCataclysmAbilitySystemComponent* Leeching = Cast<UCataclysmAbilitySystemComponent>(
+						const_cast<UAbilitySystemComponent*>(
+							Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent()));
+					const int32 WasCritical =
+						Leeching ? Leeching->SetHitBeingAnnouncedCritical(Resolved.bWasCritical ? 1 : 0) : -1;
+					ON_SCOPE_EXIT
+					{
+						if (Leeching)
+						{
+							Leeching->SetHitBeingAnnouncedCritical(WasCritical);
+						}
+					};
 					UCataclysmLeech::NoteHit(
 						const_cast<UAbilitySystemComponent*>(
 							Data.EffectSpec.GetContext()

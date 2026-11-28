@@ -4818,6 +4818,40 @@ public:
 		return Was;
 	}
 
+	/**
+	 * Whether the hit being announced, or whose leech is being paid, was a critical strike: 1 yes, 0 no, -1 no hit in
+	 * hand. For the conditions `blow_was_critical` and `blow_was_not_critical`. The War trees' slice E1 (2026-11-27). Set by
+	 * whoever announces the hit (`ACataclysmPlayerCharacter::OnSomethingWasHit`, around the Fervour a blow gains) and
+	 * whoever pays its leech (`UCataclysmVitalAttributeSet`, around `UCataclysmLeech::NoteHit`); returns what it held
+	 * before, for the caller to put back.
+	 */
+	int32 SetHitBeingAnnouncedCritical(int32 Critical)
+	{
+		const int32 Was = HitBeingAnnouncedCritical;
+		HitBeingAnnouncedCritical = Critical;
+		return Was;
+	}
+
+	/** See `SetHitBeingAnnouncedCritical`. */
+	int32 HitBeingAnnouncedCriticalNow() const { return HitBeingAnnouncedCritical; }
+
+	/**
+	 * Whether the attack in hand began at a full Fervour pool, for the condition `attack_at_full_fervour`. The War trees'
+	 * slice E1 (2026-11-27). Set by `UCataclysmSkillTemplate::BeginAttackOn` before anything that attack spends, and
+	 * cleared by `EndAttack`.
+	 */
+	void SetAttackBeganAtFullFervour(bool bFull) { bAttackBeganAtFullFervour = bFull; }
+
+	/** See `SetAttackBeganAtFullFervour`. */
+	bool AttackBeganAtFullFervour() const { return bAttackBeganAtFullFervour; }
+
+	/**
+	 * Whether the pool is full now, by the full-bar judgement `ClassResourceAtMaximum` makes: held at or above the
+	 * maximum less what an army reserves, with a maximum above nothing. False with no class resource attribute set.
+	 * The War trees' slice E1 (2026-11-27), for `BeginAttackOn`'s snapshot.
+	 */
+	bool IsClassResourceFull() const;
+
 	/** What an ailment-laying row action asks to be above nought: the hit's whole landed figure, or the event's amount
 	 *  when no hit is being announced. */
 	float DealtForAnAilment(float EventAmount) const { return FMath::Max(EventAmount, HitBeingAnnouncedLanded); }
@@ -5783,6 +5817,13 @@ public:
 	 * the frame of the event.
 	 */
 	void NoteCrowdControlApplied();
+
+	/**
+	 * A crowd control effect landed on this character, or was refused by its immunity: raises `crowd_control_taken` or
+	 * `crowd_control_refused`, with `From` -- whose act it was -- as the event's own character, so a row may strike it
+	 * back. The War trees' slice E1 (2026-11-27). See `UCataclysmSkillEffects::NoteCrowdControlReceived`.
+	 */
+	void NoteCrowdControlReceived(AActor* From, bool bRefused);
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceCrowdControlApplied() const;
@@ -6883,6 +6924,12 @@ protected:
 
 	/** See `SetHitBeingAnnouncedLanded`. The owner's ruling of 2026-11-26 on ailments. */
 	float HitBeingAnnouncedLanded = 0.0f;
+
+	/** See `SetHitBeingAnnouncedCritical`. The War trees' slice E1 (2026-11-27). */
+	int32 HitBeingAnnouncedCritical = -1;
+
+	/** See `SetAttackBeganAtFullFervour`. The War trees' slice E1 (2026-11-27). */
+	bool bAttackBeganAtFullFervour = false;
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;

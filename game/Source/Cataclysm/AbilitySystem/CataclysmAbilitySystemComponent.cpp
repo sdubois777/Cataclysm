@@ -1771,6 +1771,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceMoved = SecondsSinceMoved();
 	State.SecondsSinceOwnAttack = SecondsSinceOwnAttack();
 
+	// AND THE TWO FACTS OF THE ATTACK AND THE HIT IN HAND, for `attack_at_full_fervour`, `blow_was_critical` and
+	// `blow_was_not_critical`. The War trees' slice E1 (2026-11-27). Copied whatever the caller, because the members
+	// are set only while an attack or a hit is in hand and are their "none" otherwise.
+	State.bAttackBeganAtFullFervour = bAttackBeganAtFullFervour;
+	// AND WHETHER THIS CHARACTER IS HELD BY CROWD CONTROL NOW, for `while_crowd_controlled` (Dead Weight, R27). The War
+	// trees' slice E1 (2026-11-27). The one reading every "is held" question uses.
+	State.bSelfCrowdControlled = UCataclysmSkillEffects::IsCrowdControlled(GetAvatarActor());
+	State.HitInHandCritical = HitBeingAnnouncedCritical;
+
 	// AND HOW MANY HANDS THE EQUIPPED WEAPON TAKES. Issue #1515, for
 	// `wielding_two_handed_weapon` and the Two Hands node. Off the avatar's
 	// weapon slots, which read the item base table; an avatar with none -- every
@@ -1792,6 +1801,25 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		{
 			State.WeaponsWorn = (Equipment->EquippedAt(ECataclysmGearSlot::Weapon1) ? 1 : 0)
 				+ (Equipment->EquippedAt(ECataclysmGearSlot::Weapon2) ? 1 : 0);
+
+			// AND HOW MANY OF THEM ARE SHIELDS, for `holding_shield` and `not_holding_shield`. The War trees' slice E1
+			// (2026-11-27). A Shield is an item whose base row's weapon type is `Shield`; a missing base table leaves
+			// the reading -1, which refuses both conditions rather than guessing either.
+			if (const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable())
+			{
+				State.ShieldsHeld = 0;
+				for (const ECataclysmGearSlot Slot : {ECataclysmGearSlot::Weapon1, ECataclysmGearSlot::Weapon2})
+				{
+					const FCataclysmItem* Item = Equipment->EquippedAt(Slot);
+					const FCataclysmItemBaseRow* Base = Item
+						? Bases->FindRow<FCataclysmItemBaseRow>(Item->Base, TEXT("ShieldsHeld"), false)
+						: nullptr;
+					if (Base && Base->WeaponType.Equals(TEXT("Shield"), ESearchCase::IgnoreCase))
+					{
+						++State.ShieldsHeld;
+					}
+				}
+			}
 		}
 	}
 
@@ -1926,6 +1954,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// crippled -- and a lookup asking only about crippled enemies must not pay
 	// for the distances-only walk, nor the reverse.
 	float WidestCrippled = -1.0f;
+	// AND THE WIDEST REACH A BLEEDING-ENEMY ROW ASKS ABOUT, walked with the bodies as the crippled walk is. The War
+	// trees' slice E1 (2026-11-27).
+	float WidestBleeding = -1.0f;
 	// AND THE WIDEST REACH AN `EnemyOfRarityInReach` ROW ASKS ABOUT, walked with the bodies so each can be asked its
 	// rung, as the crippled walk is. The Death trees' slice C6b3 (2026-11-25).
 	float WidestRarity = -1.0f;
@@ -1976,6 +2007,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		if (Modifier.Scale == ECataclysmStatScale::PerCrippledEnemyInReach)
 		{
 			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
+		}
+		if (Modifier.Scale == ECataclysmStatScale::PerBleedingEnemyInReach)
+		{
+			WidestBleeding = FMath::Max(WidestBleeding, Modifier.ReachMetres);
 		}
 		if (Modifier.Scale == ECataclysmStatScale::PerOwnRemainsInReach)
 		{
@@ -2063,7 +2098,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 												 State.OwnRemainsDistancesMetres);
 	}
 
-	if (Widest <= 0.0f && WidestCrippled <= 0.0f && WidestRarity <= 0.0f && WidestMinions <= 0.0f)
+	if (Widest <= 0.0f && WidestCrippled <= 0.0f && WidestBleeding <= 0.0f && WidestRarity <= 0.0f
+		&& WidestMinions <= 0.0f)
 	{
 		return State;
 	}
@@ -2162,6 +2198,27 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 				}
 			}
 		}
+
+		// AND THE BLEEDING ONES, THE SAME WALK ON THE BLEED'S TAG. The War trees' slice E1 (2026-11-27). A tag the
+		// vocabulary does not hold matches nobody, as the Cripple's does.
+		if (WidestBleeding > 0.0f)
+		{
+			TArray<float> Distances;
+			TArray<ACataclysmCharacterBase*> Bodies;
+			Candidates->HostileActorsWithinMetres(
+				Character, Character->GetActorLocation(), WidestBleeding, Distances, Bodies);
+			const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+			if (Bleed.IsValid())
+			{
+				for (int32 Index = 0; Index < Bodies.Num(); ++Index)
+				{
+					if (Bodies[Index] && UCataclysmDebuffs::TagsOnActor(Bodies[Index]).HasTag(Bleed))
+					{
+						State.BleedingHostileDistancesMetres.Add(Distances[Index]);
+					}
+				}
+			}
+		}
 	}
 
 	return State;
@@ -2225,6 +2282,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			// AND THE TWO THAT ASK ABOUT ANY DEBUFF. Issue #1815.
 			case ECataclysmStatCondition::TargetCarriesAnyDebuff:
 			case ECataclysmStatCondition::TargetCarriesADot:
+			// AND A BLEED, the War trees' slice E1 (2026-11-27).
+			case ECataclysmStatCondition::TargetCarriesBleed:
 				bWantsAilments = true;
 				break;
 			case ECataclysmStatCondition::TargetHealthBelowPercent:
@@ -2324,6 +2383,12 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		if (Modifier.Scale == ECataclysmStatScale::PerTargetDebuff)
 		{
 			bWantsAilments = true;
+		}
+		// AND THE TARGET'S MISSING HEALTH, the War trees' slice E1 (2026-11-27): the same health share the condition
+		// `target_health_below` reads.
+		if (Modifier.Scale == ECataclysmStatScale::PerPercentOfTargetHealthMissing)
+		{
+			bWantsHealth = true;
 		}
 
 		// EVERY FLAG DECLARED ABOVE IS IN THIS LIST AND THE ONE BELOW. The Death trees' slice C4c2 (2026-11-25) found
@@ -5080,6 +5145,21 @@ void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
 	}
 }
 
+bool UCataclysmAbilitySystemComponent::IsClassResourceFull() const
+{
+	// THE FULL-BAR JUDGEMENT `ClassResourceAtMaximum` MAKES: against the maximum less what an army reserves, which is
+	// what every gain stops at. The War trees' slice E1 (2026-11-27).
+	const UCataclysmClassResourceAttributeSet* Resource = GetSet<UCataclysmClassResourceAttributeSet>();
+	if (!Resource)
+	{
+		return false;
+	}
+	const float Ceiling = Resource->MaximumClassResourceAsked();
+	return Ceiling > 0.0f
+		&& GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute())
+			>= Ceiling - KINDA_SMALL_NUMBER;
+}
+
 float UCataclysmAbilitySystemComponent::StatAsIfAgainstRarity(FName Stat, int32 RarityStep, float Fallback) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
@@ -6049,6 +6129,20 @@ float UCataclysmAbilitySystemComponent::SecondsSinceMeleeHitTaken() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMeleeHitTakenAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteCrowdControlReceived(AActor* From, bool bRefused)
+{
+	// THE NAMES WRITTEN OUT, as every raise spells its event (`tools/tests/test_pool_action_names_match_the_engine.py`
+	// reads the calls as text). The War trees' slice E1 (2026-11-27).
+	if (bRefused)
+	{
+		ActOnEvent(FName(TEXT("crowd_control_refused")), nullptr, 0.0f, /*bLanded=*/true, From);
+	}
+	else
+	{
+		ActOnEvent(FName(TEXT("crowd_control_taken")), nullptr, 0.0f, /*bLanded=*/true, From);
+	}
 }
 
 void UCataclysmAbilitySystemComponent::NoteCrowdControlApplied()

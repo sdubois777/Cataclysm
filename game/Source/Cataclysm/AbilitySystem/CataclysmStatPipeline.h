@@ -2235,6 +2235,71 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	FervourHeldAddsDamage
 		UMETA(DisplayName = "Fervour Held Adds Damage"),
+
+	/**
+	 * The character being struck carries a Bleed, whoever laid it: Open Wounds (R10), "your hits deal 20% increased
+	 * damage to bleeding enemies". The War trees' slice E1 (2026-11-27). Read from `TargetDebuffs`, which
+	 * `UCataclysmAbilitySystemComponent::WithTargetState` fills when a row asks about an ailment, against
+	 * `UCataclysmDebuffs::BleedTag`, exactly as `TargetCarriesVoidSplinter` reads its tag. NOT
+	 * `TargetCarriesYourPoisonOrBleed`, which asks whether the ASKER laid it and counts a poison too. IT TAKES NO VALUE:
+	 * it names an ailment.
+	 */
+	TargetCarriesBleed
+		UMETA(DisplayName = "Target Carries Bleed"),
+
+	/**
+	 * The character holds a Shield in one of its two weapon slots: Stalwart and Reinforced Guard, "while a shield is
+	 * equipped". The War trees' slice E1 (2026-11-27). Read from `ShieldsHeld`, which `CurrentConditions` counts from
+	 * the equipment; -1 with no equipment component (every enemy) refuses. IT TAKES NO VALUE: it names a state.
+	 */
+	HoldingShield
+		UMETA(DisplayName = "Holding Shield"),
+
+	/**
+	 * The character holds no Shield in either weapon slot: the complement of `HoldingShield`, for Flesh Fortress (R16),
+	 * "While you do not hold a shield". The War trees' slice E1 (2026-11-27). AN UNKNOWN READING REFUSES, as the
+	 * complement's does: a character with no equipment component is neither. IT TAKES NO VALUE: it names a state.
+	 */
+	NotHoldingShield
+		UMETA(DisplayName = "Not Holding Shield"),
+
+	/**
+	 * The attack this blow or kill belongs to began at a full Fervour pool: the Berserker's "when you attack at maximum
+	 * Fervour" (Overwhelming Force, Executioner, Apex Predator, Whirlwind, Coup de Grace and the rest). The War trees'
+	 * slice E1 (2026-11-27). Read from `bAttackBeganAtFullFervour`, which `CurrentConditions` copies from the ability
+	 * system component; `UCataclysmSkillTemplate::BeginAttackOn` sets it before anything that attack spends
+	 * (Bought With Ruin, Cleave's trade, Berserking) and `EndAttack` clears it. "Full" is the full-bar judgement
+	 * `ClassResourceAtMaximum` makes. IT TAKES NO VALUE: it names a fact of the attack.
+	 */
+	AttackAtFullFervour
+		UMETA(DisplayName = "Attack At Full Fervour"),
+
+	/**
+	 * The hit being announced or leeched from was a critical strike: Vital Strike (R13), "+1% life leech per point on
+	 * critical melee strikes". The War trees' slice E1 (2026-11-27). Read from `HitInHandCritical`, which
+	 * `CurrentConditions` copies from the ability system component; `UCataclysmAbilitySystemComponent::
+	 * SetHitBeingAnnouncedCritical` is set by whoever announces a hit or pays its leech, and put back after. -1, no hit
+	 * in hand, refuses. IT TAKES NO VALUE: it names a fact of the hit.
+	 */
+	HitIsCritical
+		UMETA(DisplayName = "Hit Is Critical"),
+
+	/**
+	 * The hit being announced was NOT a critical strike: Relentless, "every melee hit that does not crit still
+	 * generates +1 Fervour per point". The complement of `HitIsCritical`, read from the same field; -1 refuses here too,
+	 * so a stat asked with no hit in hand is neither. IT TAKES NO VALUE.
+	 */
+	HitIsNotCritical
+		UMETA(DisplayName = "Hit Is Not Critical"),
+
+	/**
+	 * The character is held by crowd control now: Dead Weight (R27), "+3% damage reduction per point while crowd
+	 * controlled". The War trees' slice E1 (2026-11-27). Read from `bSelfCrowdControlled`, which `CurrentConditions`
+	 * fills from `UCataclysmSkillEffects::IsCrowdControlled`, the reading every "is held" question uses. IT TAKES NO
+	 * VALUE: it names a state.
+	 */
+	WhileCrowdControlled
+		UMETA(DisplayName = "While Crowd Controlled"),
 };
 
 /**
@@ -3164,6 +3229,34 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerMinionKindBeyondTheFirst
 		UMETA(DisplayName = "Per Minion Kind Beyond The First"),
+
+	/**
+	 * `Value` per BLEEDING hostile character within the row's own reach: Open Wounds (R10), "+3% retaliation damage per
+	 * point for each bleeding enemy within 4 metres, up to 5 enemies". The War trees' slice E1 (2026-11-27). The walk
+	 * `PerCrippledEnemyInReach` makes, on a list of the bleeding ones
+	 * (`FCataclysmStatConditions::BleedingHostileDistancesMetres`); the row's `ScaleMaxSteps` holds the "up to 5".
+	 */
+	PerBleedingEnemyInReach
+		UMETA(DisplayName = "Per Bleeding Enemy In Reach"),
+
+	/**
+	 * `Value` per `ScaleStep` PER CENT OF THE MAXIMUM the class resource holds: Thick Skin, "1% damage reduction for
+	 * every 4% of your maximum Fervour you currently hold". The War trees' slice E1 (2026-11-27). The Fervour counted as
+	 * held (`UCataclysmStatPipeline::FervourHeldCounted`) over `ClassResourceMaximum`, in whole steps, rounded down, less
+	 * the row's `ScaleOffset` in per cent ("for each point above 50% of your maximum" counts from 50). A maximum of
+	 * nothing, or an unknown reading, scales to nothing.
+	 */
+	PerPercentOfClassResourceHeld
+		UMETA(DisplayName = "Per Percent Of Class Resource Held"),
+
+	/**
+	 * `Value` per `ScaleStep` PER CENT OF ITS MAXIMUM HEALTH the character being struck is MISSING: Executioner, "+1%
+	 * damage per point for every 1% of HP the target is missing", and Death Strike. The War trees' slice E1
+	 * (2026-11-27). 100 less `TargetHealthPercent`, which `WithTargetState` fills when a row asks; a target whose health
+	 * cannot be read (-1) scales to nothing.
+	 */
+	PerPercentOfTargetHealthMissing
+		UMETA(DisplayName = "Per Percent Of Target Health Missing"),
 };
 
 /**
@@ -3747,6 +3840,34 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 WeaponsWorn = -1;
+
+	/**
+	 * How many Shields the character holds in its weapon slots: 0, 1 or 2, or -1 with no equipment component, which is
+	 * every enemy. Read by `HoldingShield` and `NotHoldingShield`. The War trees' slice E1 (2026-11-27). A Shield is an
+	 * item whose base row's weapon type is `Shield` (`docs/Cataclysm_GDD_v2.md`: "a weapon that grants no attack
+	 * damage").
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 ShieldsHeld = -1;
+
+	/**
+	 * Whether the attack in hand began at a full Fervour pool, for `AttackAtFullFervour`. The War trees' slice E1
+	 * (2026-11-27). Copied from `UCataclysmAbilitySystemComponent::AttackBeganAtFullFervour`; false with no attack in hand.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bAttackBeganAtFullFervour = false;
+
+	/**
+	 * Whether the hit in hand was a critical strike: 1 yes, 0 no, -1 no hit in hand. For `HitIsCritical` and
+	 * `HitIsNotCritical`. The War trees' slice E1 (2026-11-27). Copied from
+	 * `UCataclysmAbilitySystemComponent::HitBeingAnnouncedCritical`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 HitInHandCritical = -1;
+
+	/** Whether the character is held by crowd control now, for `WhileCrowdControlled`. The War trees' slice E1. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bSelfCrowdControlled = false;
 
 	/**
 	 * How much maximum health the character has. Issue #1515.
@@ -4508,6 +4629,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	TArray<float> CrippledHostileDistancesMetres;
+
+	/**
+	 * The distances, in metres, of the hostile characters within the widest bleeding-enemy reach a row asks about that
+	 * carry a Bleed. The War trees' slice E1 (2026-11-27), for `PerBleedingEnemyInReach`. Filled the way the crippled
+	 * list above is, and only when a row asks; empty and "nobody bleeding is near" are the same answer.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> BleedingHostileDistancesMetres;
 
 	/**
 	 * How far each of the character's OWN remains lies from it, in metres along the floor, within the widest reach a row

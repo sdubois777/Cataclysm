@@ -3616,7 +3616,15 @@ namespace CataclysmPassiveConditionTest
 			// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25: the two that name a state. `own_gadget_within_metres` and
 			// `seconds_after_gadget_struck` compare their metres and seconds and are deliberately absent.
 			|| Name == TEXT("target_not_yet_triggered_your_trap")
-			|| Name == TEXT("no_room_for_a_trap");
+			|| Name == TEXT("no_room_for_a_trap")
+			// THE WAR TREES' SLICE E1 (2026-11-27): an ailment the target carries, and whether a Shield is held.
+			|| Name == TEXT("target_carries_bleed")
+			|| Name == TEXT("holding_shield")
+			|| Name == TEXT("not_holding_shield")
+			|| Name == TEXT("attack_at_full_fervour")
+			|| Name == TEXT("blow_was_critical")
+			|| Name == TEXT("blow_was_not_critical")
+			|| Name == TEXT("while_crowd_controlled");
 	}
 }
 

@@ -6320,6 +6320,24 @@ CONDITIONS = {
     "in_wrath": None,
     "in_frenzy": None,
 
+    # THE WAR TREES' SLICE E1 (2026-11-27). "bleeding enemies" is `target_carries_bleed`, a Bleed whoever laid it
+    # (Open Wounds, R10); "while a shield is equipped" is `holding_shield` (Stalwart, Reinforced Guard) and "While you do
+    # not hold a shield" its complement `not_holding_shield` (Flesh Fortress, R16). Each names a state or an ailment
+    # and takes no value.
+    "target_carries_bleed": None,
+    "holding_shield": None,
+    "not_holding_shield": None,
+    # AND THREE FACTS OF THE ATTACK OR HIT IN HAND, the same slice: "when you attack at maximum Fervour" is
+    # `attack_at_full_fervour`, the pool full when the attack began, before Berserking spends it (Executioner, Apex
+    # Predator, Whirlwind, Coup de Grace); "on critical melee strikes" on a leech row is `blow_was_critical` (Vital
+    # Strike, R13); "every melee hit that does not crit" is `blow_was_not_critical` (Relentless).
+    "attack_at_full_fervour": None,
+    "blow_was_critical": None,
+    "blow_was_not_critical": None,
+    # AND "while crowd controlled" is `while_crowd_controlled` (Dead Weight, R27): held by a stun, knockdown, fear,
+    # silence, taunt or the like now, by `UCataclysmSkillEffects::IsCrowdControlled`. It names a state.
+    "while_crowd_controlled": None,
+
     # "Enemies that survive more than 5 seconds after first being hit gain
     # 20%-40% increased damage" is `opponent_first_struck_by_you_seconds_ago`
     # with 5, on a `damage_taken` row. Ruled 2026-10-12 under the owner's
@@ -6746,6 +6764,16 @@ SCALES = {
     # count, which is itself uncapped.
     "crippled_enemies_in_reach": (0.0, 10.0, "a number of crippled enemies"),
 
+    # THE WAR TREES' SLICE E1 (2026-11-27). "for each bleeding enemy within 4 metres, up to 5 enemies" is
+    # `bleeding_enemies_in_reach` with a step of 1, a reach and a cap (Open Wounds, R10); "for every 4% of your maximum
+    # Fervour you currently hold" is `class_resource_held_percent` with a step of 4 (Thick Skin), which takes an offset in
+    # per cent for "above 50% of your maximum" (Steady Power).
+    "bleeding_enemies_in_reach": (0.0, 10.0, "a number of bleeding enemies"),
+    "class_resource_held_percent": (0.0, 100.0, "a percentage of the pool's maximum"),
+    # AND "for every 1% of HP the target is missing" is `target_health_missing` with a step of 1 (Executioner, Death
+    # Strike), the same slice.
+    "target_health_missing": (0.0, 100.0, "a percentage of the target's maximum health"),
+
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish
     # (2026-11-26). Counted within the row's own Reach Metres, as the two above.
@@ -7120,7 +7148,9 @@ BASE_PLUS_RANGE_ENCHANTMENTS: dict[str, float] = {
 #: AND `class_resource_held`, SINCE 2026-11-27: the Soul Collector's Heavy Urn,
 #: "0.5% more damage for each Fervour you hold above 50" (issue #2951), is an
 #: offset of 50. `UCataclysmStatPipeline::ValidateModifier` allows the same three.
-SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent", "traps_active", "class_resource_held"})
+SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent", "traps_active", "class_resource_held",
+                                        # AND THE SHARE OF THE POOL, the War trees' slice E1 (2026-11-27).
+                                        "class_resource_held_percent"})
 
 #: The largest offset a row may state: the 230 point budget. Issue #1686.
 MAX_SCALE_OFFSET = 230
@@ -7264,6 +7294,8 @@ PASSIVE_PORT_FIELDS = tuple(field for field, _ in PASSIVE_PORT_DEFAULTS)
 #: #1597, and the crippled-enemy scale of issue #1515.
 PASSIVE_REACH_NAMES = frozenset({"enemies_in_reach_at_least", "enemies_in_reach",
                                  "crippled_enemies_in_reach",
+                                 # AND THE WAR TREES' SLICE E1'S BLEEDING ENEMIES.
+                                 "bleeding_enemies_in_reach",
                                  # AND THE DEATH TREES' SLICE C6b3'S TWO.
                                  "enemy_of_rarity_in_reach", "no_enemy_in_reach",
                                  # AND SLICE C6d1'S OWN MINIONS.
@@ -9067,6 +9099,16 @@ MAX_TEMPORARY_ABSORB_PERCENT = 100.0
 #: one blow. `seconds_after_hit_taken` is stamped on the character that was
 #: hit; `hit_dealt` fires on the character that hit.
 ACTION_ONLY_EVENTS = (
+    # AN ATTACK BEGUN AT A FULL FERVOUR POOL, raised by `UCataclysmSkillTemplate::BeginAttackOn` before anything that
+    # attack spends: War Cry and Rapid Fire's "after attacking at maximum Fervour" (the War trees' slice E1, 2026-11-27).
+    "attack_at_full_fervour",
+    # A CROWD CONTROL EFFECT LANDED ON THE CHARACTER, OR WAS REFUSED BY ITS IMMUNITY, raised by
+    # `UCataclysmAbilitySystemComponent::NoteCrowdControlReceived` with whose act it was as the event's character: Iron
+    # Mind ("Each crowd control effect applied to you generates 10 Fervour"), Dead Weight (R27) and Immovable Object
+    # (R4). The War trees' slice E1 (2026-11-27). NOT `crowd_control`, which is raised on the character that APPLIED
+    # it.
+    "crowd_control_taken",
+    "crowd_control_refused",
     "critical_strike",
     "nearby_death",
     # EACH 5 FERVOUR A DECAY TAKES, raised by
@@ -12932,6 +12974,8 @@ CONDITIONS_OF_A_BLOW_TAKEN = frozenset({
 #: many were struck together, and what the skill cost or how far its user moved
 #: before it. Only a stat asked for while a hit is priced is handed those.
 CONDITIONS_OF_A_HIT_DEALT = frozenset({
+    # THE WAR TREES' SLICE E1 (2026-11-27): a Bleed the character struck carries.
+    "target_carries_bleed",
     "enemies_hit_at_least",
     "enemies_hit_at_most",
     "metres_moved_before_attack",
@@ -13070,6 +13114,10 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     "max_health": ASKER_PASSES_NOTHING_MORE,
     # The Death trees' slice C6d1 (2026-11-25): Ringed in Bone. Read by UCataclysmSkillTemplate::IsImmuneTo.
     "immune_to_slow": ASKER_PASSES_NOTHING_MORE,
+    # AND THE WAR TREES' THREE IMMUNITIES, slice E1 (2026-11-27), asked where `immune_to_slow` is.
+    "immune_to_crowd_control": ASKER_PASSES_NOTHING_MORE,
+    "immune_to_stun": ASKER_PASSES_NOTHING_MORE,
+    "immune_to_stagger": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,
@@ -17236,6 +17284,8 @@ def refuse_a_gem_enchantment_row_the_game_cannot_read(
 SCALES_THAT_COUNT_ENEMIES_IN_A_RADIUS = frozenset({
     "enemies_in_reach",
     "crippled_enemies_in_reach",
+    # AND THE BLEEDING ONES, the War trees' slice E1 (2026-11-27).
+    "bleeding_enemies_in_reach",
     # AND THE SUMMONER'S OTHER MINIONS NEAR THE MINION ASKING, the finishing of
     # the Death Cataclysm, slice C (2026-11-26): bodies inside the row's radius,
     # counted from a minion rather than from the character, and needing the

@@ -149,6 +149,8 @@ bool UCataclysmTaunt::ApplyTaunt(AActor* Taunter, AActor* Target, float Seconds)
 	{
 		Noting->NoteCrowdControlApplied();
 	}
+	// AND THE CHARACTER IT LANDED ON RECEIVED IT, the War trees' slice E1 (2026-11-27).
+	UCataclysmSkillEffects::NoteCrowdControlReceived(Taunter, Target, /*bRefused=*/false);
 	return true;
 }
 

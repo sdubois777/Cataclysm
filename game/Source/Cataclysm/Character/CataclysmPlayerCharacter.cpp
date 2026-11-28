@@ -1300,7 +1300,11 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// reason the cull above gives: Conduit credits one here, and the minion dealt it. The Berserker's states, 2026-11-25.
 	if (!Cast<ACataclysmMinion>(Notice.DealtBy))
 	{
+		// WITH WHETHER THE BLOW WAS CRITICAL IN HAND, for Relentless' "every melee hit that does not crit" (the War
+		// trees' slice E1, 2026-11-27), put back after.
+		const int32 WasCritical = Acting->SetHitBeingAnnouncedCritical(Notice.bCritical ? 1 : 0);
 		FCataclysmWarFervour::GainOnHitDealt(Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+		Acting->SetHitBeingAnnouncedCritical(WasCritical);
 	}
 
 	// THE ATTACKER'S FIRST BLOW TO GET THROUGH TO THIS TARGET is a third event.

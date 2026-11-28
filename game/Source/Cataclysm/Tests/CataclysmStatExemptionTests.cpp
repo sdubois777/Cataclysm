@@ -8484,6 +8484,78 @@ namespace CataclysmStatExemptionTest
 	 * health condition stands for it here, as for every conditioned probe: this measures the ask. A flag: any value
 	 * above 0 makes the character immune.
 	 */
+	/**
+	 * `immune_to_crowd_control`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27); a health
+	 * condition stands for the shipped one, as for every conditioned probe: this measures the ask.
+	 */
+	void ProbeConditionedImmuneToCrowdControl(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("immune_to_crowd_control"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("immune_to_crowd_control at full health: a knockdown takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Knockdown")));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("immune_to_crowd_control is asked for, so below half health a knockdown does not"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Knockdown")));
+		Test.TestTrue(TEXT("and it is every crowd control: a stun is refused too"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+	}
+
+	/**
+	 * `immune_to_stun`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27); a health
+	 * condition stands for the shipped one, as for every conditioned probe: this measures the ask.
+	 */
+	void ProbeConditionedImmuneToStun(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("immune_to_stun"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("immune_to_stun at full health: a stun takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("immune_to_stun is asked for, so below half health a stun does not"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+		Test.TestFalse(TEXT("and it is immunity to stun only: a knockdown still takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Knockdown")));
+	}
+
+	/**
+	 * `immune_to_stagger`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27); a health
+	 * condition stands for the shipped one, as for every conditioned probe: this measures the ask.
+	 */
+	void ProbeConditionedImmuneToStagger(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("immune_to_stagger"), ECataclysmStatBucket::Flat, 1.0f, 0.0f);
+		Test.TestFalse(TEXT("immune_to_stagger at full health: a stagger takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stagger")));
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestTrue(TEXT("immune_to_stagger is asked for, so below half health a stagger does not"),
+					  UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stagger")));
+		Test.TestFalse(TEXT("and it is immunity to stagger only: a stun still takes hold"),
+					   UCataclysmSkillTemplate::IsImmuneTo(Fighter.Actor, TEXT("Stun")));
+	}
+
 	void ProbeConditionedImmuneToSlow(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -13914,6 +13986,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("max_health"), &ProbeConditionedMaxHealth},
 			// AND THE SLICE C6d1's RINGED IN BONE (2026-11-25).
 			{TEXT("immune_to_slow"), &ProbeConditionedImmuneToSlow},
+			// AND THE WAR TREES' THREE IMMUNITIES, slice E1 (2026-11-27).
+			{TEXT("immune_to_crowd_control"), &ProbeConditionedImmuneToCrowdControl},
+			{TEXT("immune_to_stun"), &ProbeConditionedImmuneToStun},
+			{TEXT("immune_to_stagger"), &ProbeConditionedImmuneToStagger},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -14708,6 +14784,72 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/** `immune_to_slow`, read by `UCataclysmSkillTemplate::IsImmuneTo` for "Slow" (Ringed in Bone). */
+	/** `immune_to_crowd_control`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27). */
+	void ProbeImmuneToCrowdControl(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Knockdown"));
+		SiphonLines(Holder, {SiphonStat(TEXT("immune_to_crowd_control"), 1.0f)});
+		const bool bHeld = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Knockdown"));
+		Test.TestFalse(TEXT("immune_to_crowd_control: control, a character without it is not immune"), bPlain);
+		Test.TestTrue(TEXT("and with it IsImmuneTo answers Knockdown, so it really reads it"), bHeld);
+	}
+
+	/** `immune_to_stun`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27). */
+	void ProbeImmuneToStun(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Stun"));
+		SiphonLines(Holder, {SiphonStat(TEXT("immune_to_stun"), 1.0f)});
+		const bool bHeld = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Stun"));
+		Test.TestFalse(TEXT("immune_to_stun: control, a character without it is not immune"), bPlain);
+		Test.TestTrue(TEXT("and with it IsImmuneTo answers Stun, so it really reads it"), bHeld);
+	}
+
+	/** `immune_to_stagger`, read by `UCataclysmSkillTemplate::IsImmuneTo`. The War trees' slice E1 (2026-11-27). */
+	void ProbeImmuneToStagger(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		if (!Holder)
+		{
+			return;
+		}
+		SiphonLines(Holder, {});
+		const bool bPlain = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Stagger"));
+		SiphonLines(Holder, {SiphonStat(TEXT("immune_to_stagger"), 1.0f)});
+		const bool bHeld = UCataclysmSkillTemplate::IsImmuneTo(Holder, TEXT("Stagger"));
+		Test.TestFalse(TEXT("immune_to_stagger: control, a character without it is not immune"), bPlain);
+		Test.TestTrue(TEXT("and with it IsImmuneTo answers Stagger, so it really reads it"), bHeld);
+	}
+
 	void ProbeImmuneToSlow(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -16107,6 +16249,9 @@ namespace CataclysmStatExemptionTest
 			{TEXT("overkill_explosion_radius_metres"), &ProbeOverkillExplosionRadiusMetres},
 			// THE DEATH TREES' SEVEN STATS WITH NO ATTRIBUTE, probed since window death3-w3 found them unprobed.
 			{TEXT("immune_to_slow"), &ProbeImmuneToSlow},
+			{TEXT("immune_to_crowd_control"), &ProbeImmuneToCrowdControl},
+			{TEXT("immune_to_stun"), &ProbeImmuneToStun},
+			{TEXT("immune_to_stagger"), &ProbeImmuneToStagger},
 			{TEXT("minion_movement_speed"), &ProbeMinionMovementSpeed},
 			{TEXT("minions_turn_on_your_last_attacker"), &ProbeMinionsTurnOnYourLastAttacker},
 			{TEXT("minion_damage_taken"), &ProbeMinionDamageTaken},
