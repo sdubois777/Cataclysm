@@ -53,7 +53,22 @@ the loaded Paragon objects stops it, not which object it is. Narrowing the hold 
 **The scope, a judgement.** Everything of the Paragon packs that has been loaded once stays loaded for the session: the
 scope the bisect proved, at the cost of never unloading that content. The memory this costs was not measured; #2973 asks for it.
 
-**Not built or run when this was written.**
+**Built and run in window hold-w1, 2026-11-28, at 2066c8ca6.**
+
+| Step | Printed |
+| :-- | :-- |
+| Python, `python -u -m pytest --junit-xml=...` | `9741 passed, 10 skipped`; the JUnit file: tests 9751, failures 0, errors 0, skipped 10 |
+| Three compiles | all `Build: Succeeded`, 0 compiler warning or error lines; the second marked both new `.cpp` files to compile alone but reported compiling only two unity files, most likely because both had already been compiled alone in earlier builds and were unchanged |
+| `Cataclysm.ParagonHold.` alone | `1 tests performed, 1 succeeded, 0 failed. 1 skipped part of what they check` (the Paragon half, as the worktree has no Paragon art) |
+| The whole Unreal suite | performed 6134, succeeded 6134, failed 0; `895 written and deleted, 0 left behind`; 63 skipped halves |
+| Python beside it | tests 9751, failures 0, errors 0, skipped 10; `ruff check .` clean |
+| C++ guard proof: `HoldObjectsUnder` keeps nothing under the prefix | `PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed: WhatItHoldsSurvivesACollectionAndWhatItDoesNotIsFreed ... \| restored: 1 tests performed, 1 succeeded, 0 failed` |
+
+**The packaged game, 2026-11-28.** The coordinating session packaged 2066c8ca6, which carries no diagnostic switch, and
+ran it on a copy of the test character's saves with `gc.CollectGarbageEveryFrame 1` only. The log said "Paragon hold:
+1556 more objects held before this garbage collection, 1556 in all." It walked the route that had crashed every unheld
+run within 38 seconds, twice, and fought a crowd of Elite Imps in their own materials: still running at 95 seconds, with
+no crash. One run; it does not show the crash cannot come back after longer play.
 
 ---
 
@@ -85,7 +100,10 @@ added (`UEnhancedPlayerInput::AppliedInputContextData` is a `UPROPERTY`).
 editor holds the asset whatever the controller does; the test checks that the controller holds it, and the packaged
 game is the check that the right click still equips after two minutes.
 
-**Built and run in window icf-w1, 2026-11-27, at dc8ad9504.** Nothing has been checked in the packaged game yet.
+**Built and run in window icf-w1, 2026-11-27, at dc8ad9504.** **In the packaged game, 2026-11-28**: in the coordinating
+session's run of the package built from 2066c8ca6 (the Paragon hold, on a development that has this change), with
+`gc.CollectGarbageEveryFrame 1`, the skill bar kept its key letters (MB, Q, E, R, Space) for the whole 95-second run.
+The report of that run does not mention a right click over the inventory, so the click itself is not shown there.
 
 | Step | Printed |
 | :-- | :-- |
