@@ -3420,6 +3420,16 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsCrowdControlled(const AActor* Actor);
 
+	/**
+	 * Tell the character a crowd control effect landed on, or was refused by its immunity, that it happened, naming
+	 * whose act it was. Raises `crowd_control_taken` or `crowd_control_refused` on it, with that character as the event's
+	 * own (`UCataclysmAbilitySystemComponent::NoteCrowdControlReceived`). The War trees' slice E1 (2026-11-27), for
+	 * Iron Mind, Dead Weight (R27) and Immovable Object (R4). Called beside every `NoteCrowdControlApplied`: the stun,
+	 * the knockdown, the four displacements, a fear, a silence and a taunt; and where the stun, the knockdown, the
+	 * displacements and the stagger are refused by an immunity.
+	 */
+	static void NoteCrowdControlReceived(const AActor* Instigator, AActor* Target, bool bRefused);
+
 private:
 	/**
 	 * `ApplyNamedEffect` without the rules Madness takes. The public function asks

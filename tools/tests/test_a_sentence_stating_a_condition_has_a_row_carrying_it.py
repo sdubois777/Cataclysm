@@ -51,10 +51,25 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
                                       "and a spend of '10 or more Fervour at once'",
     "attacker_beyond_metres": "'more than' (7): 'no more than once every N seconds'",
     "opponent_within_metres": "'enemies within' (6): an area's size",
+    "dual_wielding_outside_frenzy": "'dual wield only' (every dual-wield node): the words dual_wielding is written with; "
+                                    "outside Frenzy is a second half the sentence states apart (the War trees' engine "
+                                    "slice E2, 2026-11-27)",
 }
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Berserker_dw_005", "0", "dual_wielding"):
+        "Relentless' 'Dual wield only' is carried by its row's 'in_frenzy': Frenzy begins only for a character the "
+        "dual_wielding condition holds for (Berserker_dw_001's frenzy_on_full_fervour), so a row under in_frenzy "
+        "is a dual wielder's (engine slice E1 of the War trees, 2026-11-27)",
+    ("Berserker_dw_007", "0", "dual_wielding"):
+        "Dancing Blades' 'Dual wield only' is carried by its rows' 'in_frenzy', for the reason Relentless gives "
+        "(engine slice E1 of the War trees, 2026-11-27)",
+    ("Bulwark_basic_trunk_005", "0", "in_combat_for_seconds"):
+        "Battle Scars' 'At 8 points: Fervour no longer decays while you are in combat' has no row because it is already "
+        "true: the Bulwark's Fervour decays only out of combat (Bulwark_basic_trunk_000's "
+        "fervour_decay_out_of_combat_per_second), so there is no decay in combat to remove (the War trees' data rows, "
+        "2026-11-27)",
     ("Shadow_capstone_50", "2", "target_rarity_at_least"):
         "Shadow Clone's 'Every third kill of an Elite or stronger' is the rung the kill counter asks of the slain "
         "creature (rarity rung 1 and up, UCataclysmShadowImages::NoteKillForShadowClone); its two rows are the count "
@@ -86,6 +101,28 @@ EXPRESSED_ANOTHER_WAY = {
         "in_frenzy, which only a dual-wielding character enters",
     ("Berserker_dw_014", "0", "dual_wielding"):
         "in_frenzy, which only a dual-wielding character enters",
+    # THE WAR TREES' ENGINE SLICES E2 AND E3 (2026-11-27), each for the reason the four above give.
+    ("Berserker_dw_012", "0", "dual_wielding"):
+        "Frenetic acts on frenzy_drained, which only Frenzy raises, and only a dual-wielding character enters Frenzy",
+    ("Berserker_dw_012", "0", "in_frenzy"):
+        "frenzy_drained is raised only by Frenzy's drain, so the row acts only in Frenzy",
+    ("Berserker_dw_018", "0", "dual_wielding"):
+        "Knife Dance acts on frenzy_drained, which only a dual wielder's Frenzy raises",
+    ("Berserker_dw_ks_002", "0", "dual_wielding"):
+        "Unstoppable Force's rows are under in_frenzy and on frenzy_entered, each only a dual wielder's",
+    ("Berserker_dw_009", "0", "attack_at_full_fervour"):
+        "Rapid Fire's 'Each time you attack at maximum Fervour' is its stack's event, attack_at_full_fervour, not a "
+        "condition on it",
+    ("Berserker_twoh_008", "0", "attack_at_full_fervour"):
+        "Overwhelming Force's shockwave acts on the event attack_at_full_fervour",
+    ("Berserker_twoh_015", "0", "attack_at_full_fervour"):
+        "Killing Blow's execute acts on the event attack_at_full_fervour",
+    ("Bulwark_basic_tw_t2_002", "0", "seconds_after_hit_taken"):
+        "Martyrdom's 'for 5 seconds after taking a hit that reduces you below 50% HP' is a 5-second stack granted on "
+        "health_falls_below, not a window after every hit",
+    ("Berserker_trunk_012", "0", "class_resource_at_maximum"):
+        "Bloodied's 'rather than only when Fervour is full' names the rule its row replaces below 30% health "
+        "(berserking_on_every_melee_hit), not a condition on it",
     ("Berserker_twoh_011", "0", "wielding_two_handed_weapon"):
         "in_wrath, which only a character with a two-handed weapon enters (wrath_on_full_fervour)",
     ("Berserker_twoh_016", "0", "wielding_two_handed_weapon"):

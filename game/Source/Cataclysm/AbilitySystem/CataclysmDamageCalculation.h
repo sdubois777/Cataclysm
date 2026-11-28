@@ -94,6 +94,14 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	float CriticalArmorPenetration = 0.0f;
 
 	/**
+	 * The resistance a critical strike ignores on top of `ResistancePenetration`, added only once the blow has critically
+	 * struck: `critical_penetration`, Glass Cannon's "Your critical melee strikes ignore 20% of enemy resistances". The
+	 * War trees' engine slice E2 (2026-11-27). A stat of its own for `CriticalArmorPenetration`'s reason.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float CriticalResistancePenetration = 0.0f;
+
+	/**
 	 * Whether this blow cannot be dodged at all.
 	 *
 	 * A PROPERTY OF THE BLOW AND NOT OF THE DEFENDER, which is what makes it
@@ -775,6 +783,14 @@ public:
 	static const TCHAR* EveryBlockNegatesStat;
 
 	/**
+	 * `block_chance_floor`: Eye of the Storm's "your Block Chance cannot be reduced below 30%". The War trees' engine
+	 * slice E3 (2026-11-27). Read at the block step: a reduction -- the attacker's overwhelm, or a row that lowers the
+	 * chance below the block chance attribute -- cannot take the chance below this, nor below what the chance was before
+	 * it was reduced. It never raises a chance that was low before anything reduced it.
+	 */
+	static const TCHAR* BlockChanceFloorStat;
+
+	/**
 	 * The chance, in per cent, that a SPELL that hits the defender is absorbed and deals nothing. Ruled 2026-10-06:
 	 * "Spells that hit you have a 15%-30% chance to be absorbed dealing no damage". On the DEFENDER, no gameplay
 	 * attribute, so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. See `SpellIsAbsorbed`.
@@ -1027,6 +1043,9 @@ public:
 	 * so it is in `UCataclysmPlayerClassStats::StatsWithNoAttribute()`.
 	 */
 	static const TCHAR* CriticalArmorPenetrationStat;
+
+	/** `critical_penetration`, carried on `FCataclysmIncomingHit::CriticalResistancePenetration`. War trees E2. */
+	static const TCHAR* CriticalPenetrationStat;
 
 	/**
 	 * The stat saying this character's melee attacks cannot be evaded. Issue

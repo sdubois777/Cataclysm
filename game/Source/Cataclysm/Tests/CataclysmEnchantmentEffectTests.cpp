@@ -7363,8 +7363,12 @@ bool FCataclysmHealingSkillUseOtherEventsTest::RunTest(const FString&)
 	// `healing_skill_use`. Handed the strike's `Type.Melee`, it raises the two ATTACK events, `attack_use` and then
 	// `melee_attack_use`, the second ruled 2026-10-17 (R1) for Spellblade's Will's six-piece bonus. No row here hangs
 	// on `melee_attack_use`, so the counts below do not move.
+	// AND `same_melee_skill_used` AFTER IT SINCE THE WAR TREES' ENGINE SLICE E2 (2026-11-27, Weaving): every use here is
+	// named "Carom", so the strike above and this basic attack are the same melee skill twice in a row. No row here hangs
+	// on it either.
 	TestEqual(TEXT("a melee basic attack raises attack_use, then melee_attack_use, and no skill event"),
-		EventsAsText(Holder.Use(&Strike, /*bBasicAttack=*/true)), FString(TEXT("attack_use, melee_attack_use")));
+		EventsAsText(Holder.Use(&Strike, /*bBasicAttack=*/true)),
+		FString(TEXT("attack_use, melee_attack_use, same_melee_skill_used")));
 	TestEqual(TEXT("and only the row on attack_use grants"), Counts(),
 		FString(TEXT("skill_use 3, attack_use 4, healing_skill_use 1")));
 

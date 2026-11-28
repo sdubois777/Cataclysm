@@ -67,6 +67,9 @@ SKILL_STUN_SECONDS = {
 #: Wording that mentions stun in order to say it does NOT happen. A row matching
 #: one of these is not required to state a duration.
 IMMUNITY = (
+    # AND THE STAT THAT GRANTS IT, since the War trees' engine slice E1 (2026-11-27): a row's text is its cells, and
+    # `immune_to_stun` (Juggernaut, Unbroken) is immunity, not application.
+    r"\bimmune_to_stun\b",
     r"cannot be stunned",
     r"immune to stun",
     r"immunity to stun",

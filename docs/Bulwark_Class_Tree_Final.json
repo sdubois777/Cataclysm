@@ -485,7 +485,7 @@
       "data": {
         "kind": "basic",
         "name": "Shield Slam",
-        "description": "+2% damage per point for every 10% Block Chance you have. At 6 points: Whenever you take a hit while your block streak is active, your next attack deals bonus flat damage equal to 5% of your Armor value.",
+        "description": "+2% damage per point for every 10% Block Chance you have. At 6 points: after you block, your next attack deals bonus damage equal to 5% of your Armor.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -529,7 +529,7 @@
       "data": {
         "kind": "basic",
         "name": "Unbreakable Will",
-        "description": "+2% of blocked damage is added to your next attack per point. At 5 points: This bonus is tripled if you block 5 times without attacking.",
+        "description": "+2% of blocked damage is added to your next attack per point. At 5 points: blocked damage is added at three times the rate.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -573,7 +573,7 @@
       "data": {
         "kind": "basic",
         "name": "Fortified Mind",
-        "description": "+3% Fervour generation from blocking per point. At 5 points: While at maximum Fervour, blocking deals 200 flat damage back to the attacker.",
+        "description": "+3% Fervour generation from blocking per point. At 5 points: While at maximum Fervour, blocking deals damage equal to 3% of your Maximum HP back to the attacker.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -859,7 +859,7 @@
       "data": {
         "kind": "basic",
         "name": "Colossus",
-        "description": "+200 flat HP per point for every 10,000 Maximum HP you have. Requires 10,000 Maximum HP to activate.",
+        "description": "+10 flat Maximum HP per point for every 1,000 Maximum HP you have from other sources.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -881,7 +881,7 @@
       "data": {
         "kind": "basic",
         "name": "Dead Weight",
-        "description": "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: Taking a crowd control effect retaliates with 500 flat damage.",
+        "description": "+3% damage reduction per point while crowd controlled (multiplicative). At 4 points: each crowd control effect applied to you deals damage equal to 3% of your Maximum HP to the enemy that applied it.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1057,7 +1057,7 @@
       "data": {
         "kind": "keystone",
         "name": "Immovable Object",
-        "description": "While above 15,000 Maximum HP, you are immune to all crowd control effects. Enemies that attempt to crowd control you instead take 500 flat damage.",
+        "description": "While above 50% health, you are immune to crowd control. Each crowd control effect you are immune to this way deals damage equal to 3% of your Maximum HP to the enemy that applied it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1079,7 +1079,7 @@
       "data": {
         "kind": "keystone",
         "name": "Mountain's Wrath",
-        "description": "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP as flat damage. Requires 20,000 Maximum HP to activate.",
+        "description": "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "keystone",
         "name": "The Inevitable",
-        "description": "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all nearby enemies equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second.",
+        "description": "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all enemies within 4 metres equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1211,7 +1211,7 @@
       "data": {
         "kind": "basic",
         "name": "Spiteful",
-        "description": "+3% Fervour generated from taking hits per point. At 5 points: When you reach maximum Fervour from taking hits, your next retaliation deals 50% bonus damage.",
+        "description": "+3% Fervour generated from taking hits per point. At 5 points: when your Fervour becomes full, your next retaliation deals 50% more damage.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1277,7 +1277,7 @@
       "data": {
         "kind": "basic",
         "name": "Outnumbered",
-        "description": "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at maximum Fervour, your retaliation damage hits all nearby enemies rather than just your attacker.",
+        "description": "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at maximum Fervour, your retaliation damage hits every enemy within 4 metres rather than just your attacker.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1365,7 +1365,7 @@
       "data": {
         "kind": "basic",
         "name": "Blood Price",
-        "description": "+5% bleed damage per point for each bleed stack on the target.",
+        "description": "+5% bleed damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1387,7 +1387,7 @@
       "data": {
         "kind": "basic",
         "name": "Spreading Thorns",
-        "description": "+1 meter to retaliation aura radius per point. At 4 points: Enemies killed within the aura explode, dealing retaliation damage to nearby enemies.",
+        "description": "+1 meter to retaliation aura radius per point. At 4 points: Enemies killed within the aura explode, dealing 100% of your retaliation damage to every enemy within 4 meters.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1431,7 +1431,7 @@
       "data": {
         "kind": "basic",
         "name": "Open Wounds",
-        "description": "+3% retaliation damage per point for each bleed stack on any nearby enemy. At 5 points: Enemies with 5 or more bleed stacks take 20% increased damage from all sources.",
+        "description": "+3% retaliation damage per point for each bleeding enemy within 4 metres, up to 5 enemies. At 5 points: your hits deal 20% increased damage to bleeding enemies.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1475,7 +1475,7 @@
       "data": {
         "kind": "keystone",
         "name": "Flesh Fortress",
-        "description": "Convert all of your Armor into flat HP. For every 1% Armor lost this way, gain 3% Maximum HP. You can no longer equip shields. Gain 50% increased Fervour from all sources.",
+        "description": "While you do not hold a shield: your Armor is 0, you gain 1% increased Maximum HP for every 50 Armor you would have had, and you gain 50% increased Fervour from all sources.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1497,7 +1497,7 @@
       "data": {
         "kind": "keystone",
         "name": "Hemorrhage",
-        "description": "Your retaliation damage no longer deals instant damage. Instead it is converted into a bleed whose total damage equals the amount that would have been reflected.",
+        "description": "Your retaliation also applies Bleed to the attacker, at twice its normal strength.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1541,7 +1541,7 @@
       "data": {
         "kind": "keystone",
         "name": "Blood for Blood",
-        "description": "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances and cannot be blocked or evaded. The reflection percentage increases by 1% for every 5 Fervour currently held, up to a maximum of 100% at full Fervour.",
+        "description": "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances, armour and damage reduction and cannot be blocked or evaded. The reflection percentage increases by 1% for every 2% of your maximum Fervour currently held, up to 100% at full Fervour.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

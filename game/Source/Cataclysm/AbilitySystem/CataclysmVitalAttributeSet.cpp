@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+
+// For ON_SCOPE_EXIT, which puts back the hit-in-hand critical flag around the leech (the War trees' slice E1).
+#include "Misc/ScopeExit.h"
 // For asking the attacker what a stat is worth with this hit's tags and the
 // attacker's own state in hand, rather than reading the attribute. Issue #959.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
@@ -1128,6 +1131,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								  /*Target=*/GetOwningActor(),
 								  EnemiesStruckTogether)
 							: 0.0f;
+						// AND THE RESISTANCE A CRITICAL STRIKE IGNORES, the same way: Glass Cannon (the War trees' engine
+						// slice E2, 2026-11-27).
+						Hit.CriticalResistancePenetration = AskingToPenetrate
+							? AskingToPenetrate->StatForSkill(
+								  FName(UCataclysmDamageCalculation::CriticalPenetrationStat),
+								  AssetTags, 0.0f,
+								  /*SkillHealthCostPercent=*/-1.0f,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  Hit.OpponentDistanceMetres,
+								  UCataclysmSkillEffects::IsStaggered(GetOwningActor()),
+								  /*Target=*/GetOwningActor(),
+								  EnemiesStruckTogether)
+							: 0.0f;
 					}
 
 					// AND THE CRITICAL STRIKE, read here for that same reason.
@@ -1314,6 +1331,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 													   GetOwningActor()),
 												   /*Target=*/GetOwningActor())
 							: Offence->GetCritMultiplier();
+
+						// AND HAIR TRIGGER'S "Critical strike chance past 100% is converted to critical strike multiplier at
+						// a 2:1 ratio": every 2% of chance above 100, before the ceiling, adds 1% to the multiplier (the War
+						// trees' engine slice E3, 2026-11-27). The chance the blow keeps is still held to the ceiling above.
+						if (Asking
+							&& Asking->StatForSkill(FName(TEXT("crit_chance_past_cap_to_multiplier")), AssetTags, 0.0f)
+								   > 0.0f)
+						{
+							const float Past = (Stated >= 0.0f ? Stated : OwnCritChance) + FromNails - 100.0f;
+							Hit.CritMultiplier += FMath::Max(0.0f, Past) / 2.0f;
+						}
 
 						// AND THE EDICT OF HUMILITY HOLDS IT AT 100: "a critical strike deals no extra damage".
 						// 2026-10-23, G7c. HELD, NOT ZEROED AND NOT REMOVED: 100 keeps the roll's guard in
@@ -1765,6 +1793,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						bSavedFromALethalBlow = true;
 						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
 					}
+					// THE LAST BASTION'S BLOCKED SAVE (the War trees' engine slice E3, 2026-11-27): a blocked blow only, with
+					// its own clock, before the Final Onslaught's so that save's cooldown is not spent on a blow this takes.
+					else if (Resolved.bBlocked && EmptiesHealthLessTheDelayedShare() && Guarded->MaySurviveBlockedLethalHit()
+						&& Guarded->StatForSkill(FName(UGuarded::BlockedLethalHitSurvivedEverySecondsStat),
+												 FGameplayTagContainer(), 0.0f)
+							   > 0.0f)
+					{
+						bSavedFromALethalBlow = true;
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+						Guarded->NoteBlockedLethalHitSurvived(
+							Guarded->StatForSkill(FName(UGuarded::BlockedLethalHitSurvivedEverySecondsStat),
+												  FGameplayTagContainer(), 0.0f),
+							Guarded->StatForSkill(FName(UGuarded::ImmuneAfterBlockedLethalHitSecondsStat),
+												  FGameplayTagContainer(), 0.0f));
+						UCataclysmFervour::GainStated(
+							Guarded, Guarded->StatForSkill(FName(UGuarded::FervourOnBlockedLethalHitSurvivedStat),
+														   FGameplayTagContainer(), 0.0f));
+					}
 					else if (Every > 0.0f && Guarded->MaySurviveLethalHit() && EmptiesHealthLessTheDelayedShare())
 					{
 						bSavedFromALethalBlow = true;
@@ -2078,6 +2124,23 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					FGameplayTagContainer LeechTags = AssetTags;
 					LeechTags.AppendTags(Hit.DamageOverTimeTags);
+					// WITH WHETHER THE HIT WAS CRITICAL IN HAND, for Vital Strike's "+1% life leech per point on
+					// critical melee strikes" (the War trees' slice E1, 2026-11-27), put back when this block ends. A tick
+					// is never critical, so a tick reads 0. A SCOPE GUARD AND NOT A CALL AFTER, so nothing stands between
+					// this call and the minion's share below, which `test_charge_and_placed_action_names_match_the_engine`
+					// reads as one shape.
+					UCataclysmAbilitySystemComponent* Leeching = Cast<UCataclysmAbilitySystemComponent>(
+						const_cast<UAbilitySystemComponent*>(
+							Data.EffectSpec.GetContext().GetInstigatorAbilitySystemComponent()));
+					const int32 WasCritical =
+						Leeching ? Leeching->SetHitBeingAnnouncedCritical(Resolved.bWasCritical ? 1 : 0) : -1;
+					ON_SCOPE_EXIT
+					{
+						if (Leeching)
+						{
+							Leeching->SetHitBeingAnnouncedCritical(WasCritical);
+						}
+					};
 					UCataclysmLeech::NoteHit(
 						const_cast<UAbilitySystemComponent*>(
 							Data.EffectSpec.GetContext()
@@ -2888,7 +2951,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					!Outcome.bEvaded,
 					UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext()),
 					Hit.bIsDamageOverTime,
-					MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f);
+					MaximumHealthNow > 0.0f ? HealthLostToTheBlow / MaximumHealthNow * 100.0f : -1.0f,
+					// AND WHETHER IT WAS BLOCKED, for `hit_taken_was_unblocked` (the War trees' engine slice E2).
+					Outcome.bBlocked);
 
 				// AND A BIG HIT IS ANNOUNCED, after the hit taken. The War vow options' third slice, V3a, ruled
 				// 2026-11-25: a landed hit, not a tick, that took more than 10% of maximum health after defences, counting
@@ -2900,8 +2965,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					const AActor* BigHitAttacker = UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext());
 					const float GotThrough = Outcome.DealtToHealth + Outcome.AbsorbedByShield + Outcome.AbsorbedByMana
 						+ Outcome.AbsorbedByTemporary;
+					// AND NOTED AS DAMAGE TAKEN, ticks included, for Wrathful Presence's "all damage you have taken in the
+					// last 5 seconds" (the War trees' engine slice E3, 2026-11-27).
+					if (!Outcome.bEvaded)
+					{
+						Cataclysm->NoteDamageTakenAmount(GotThrough);
+					}
 					const bool bOwnBlow = BigHitAttacker
 						&& (BigHitAttacker == Cataclysm->GetAvatarActor() || BigHitAttacker == Cataclysm->GetOwnerActor());
+					// AND BLOOD FOR BLOOD SENDS A SHARE OF WHAT GOT THROUGH BACK (2026-11-27): any blow not evaded, ticks
+					// included ("all damage you take"), never the character's own and never a retaliation blow, so two
+					// wearers do not answer each other for ever.
+					if (!Outcome.bEvaded && !bOwnBlow && BigHitAttacker && GotThrough > 0.0f
+						&& Data.EffectSpec.GetSetByCallerMagnitude(FName(UCataclysmSkillEffects::RetaliationDataName),
+																   /*WarnIfNotFound=*/false, 0.0f)
+							   <= 0.0f)
+					{
+						Cataclysm->ReflectBloodForBlood(GotThrough, const_cast<AActor*>(BigHitAttacker));
+					}
 					if (!Outcome.bEvaded && !Hit.bIsDamageOverTime && !bOwnBlow
 						&& UCataclysmAbilitySystemComponent::IsBigHit(GotThrough, GetMaxHealth()))
 					{

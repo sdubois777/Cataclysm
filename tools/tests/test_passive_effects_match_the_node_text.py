@@ -865,7 +865,11 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: `tools/reapply_soul_collector_keystones_rework_workbook.py`): twenty nodes rewritten, 37 rows out and 42 in.
 #: AND TO 1007 THE SAME DAY, THE AURA RESERVATION (`tools/apply_aura_reservation_2026_11_27.py`), on 1003: one row
 #: on each of four nodes that already had rows -- Wider Vessel, Reserve, Beacon of Despair and Aura of Pain.
-AUTHORED_ROWS = 1007
+#: AND TO 1046 THE SAME DAY, THE WAR TREES' DATA ROWS (`tools/reapply_war_trees_data_rows_workbook.py`), on 1007: 39
+#: rows on 23 War nodes that had none.
+#: AND TO 1082 THE SAME DAY, ENGINE SLICE E1's ROWS on the same script: 36 rows on 20 War nodes that had none.
+# 1,181 SINCE THE WAR TREES' ENGINE SLICES E2, E3 AND THE RIDERS (2026-11-27): 99 more rows.
+AUTHORED_ROWS = 1181
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1401,7 +1405,10 @@ AUTHORED_ROWS = 1007
 #: the War line's 323 less the 226 both had.
 #: AND TO 543 ON 2026-11-26, THE DEATH LINE'S FINISHING BUNDLE, every slice: C's ten Charnel nodes, E's Ever
 #: Moving, D's thirteen Ossuary nodes and Many Made One, A's five Soul Collector nodes and B's sixteen, on 497.
-AUTHORED_NODES = 543
+#: AND TO 566 ON 2026-11-27, THE WAR TREES' DATA ROWS: 23 War nodes that had no row, on 543.
+#: AND TO 586 THE SAME DAY, ENGINE SLICE E1's ROWS: 20 more War nodes.
+# 633 SINCE THE WAR TREES' ENGINE SLICES E2, E3 AND THE RIDERS (2026-11-27): 47 more nodes.
+AUTHORED_NODES = 633
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1855,6 +1862,10 @@ CONDITION_WORDS = {
     # bonus damage". Still the character's own health and never a cost: Grand
     # Tithe's sentence holds no "while above".
     "health_above": (("you are above", "while above"), "{value:g}%"),
+    # VITAL STRIKE, R13 (engine slice E1 of the War trees, 2026-11-27): "While your health is full", at or above 100%.
+    # THE VALUE FORM NAMES NO FIGURE, because the sentence states "full" for the 100: the form is the words, and the
+    # row's 100 is held by `test_war_trees_data_rows_scripts.py` instead.
+    "health_at_or_above": ("while your health is full", "while your health is full"),
 
     "seconds_after_health_cost": ("after you pay a health cost",
                                   "{value:g} second"),
@@ -1928,7 +1939,8 @@ CONDITION_WORDS = {
     # AND RIPOSTE'S "While at maximum Fervour this counter-attack also stuns"
     # (2026-11-25): a state held while the event happens, which "while" says,
     # unlike the seventeen "when you attack at maximum Fervour".
-    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full",
+    # AND WHIRLWIND'S "while you are at maximum Fervour" (the War trees' engine slice E2, 2026-11-27).
+    "class_resource_at_maximum": (("fervour is at maximum", "fervour is full", "you are at maximum fervour",
                                    "fervour is at its maximum",
                                    # AND THE FERRYMAN'S "While your bar is full",
                                    # the Death trees' slice C4c1 (2026-11-25).
@@ -1960,7 +1972,14 @@ CONDITION_WORDS = {
     #   Sustained Assault (Ravager)     "After 5 seconds in combat"
     #   Subjugator, Long Servitude      "enemies carrying your curse", a condition
     #     (Ritualist)                   the rework added to the game
-    "seconds_after_hit_taken": ("after you are hit", "{value:g} second"),
+    # AND COUNTER STANCE'S "for 3 seconds after taking a hit" (the War trees' engine slice E2, 2026-11-27).
+    "seconds_after_hit_taken": (("after you are hit", "after taking a hit"), "{value:g} second"),
+    # COUNTER STANCE'S "If you take two hits within 1 second", the War trees' engine slice E2 (2026-11-27).
+    "two_hits_taken_within_seconds": ("take two hits within", "{value:g} second"),
+    # AND ENGINE SLICE E2'S OTHER TWO (2026-11-27): Death Strike's and Feeding Frenzy's "Dual wield only" outside
+    # Frenzy, and Consecutive Blocks' "an unblocked hit".
+    "dual_wielding_outside_frenzy": ("dual wield only", None),
+    "hit_taken_was_unblocked": ("unblocked hit", None),
     # THE WAR ROWS OF SLICE D, plan_death_and_war.md, 2026-11-24: Punishing Blow's
     # "for 3 seconds after a successful block", On Your Toes' "for 3 seconds after
     # successfully evading", and "while above 50% Fervour" (Precision, Vital
@@ -2067,7 +2086,8 @@ CONDITION_WORDS = {
     # a form of `None` is worse, because that means "this predicate compares
     # nothing" and would assert the count must be zero.
     "enemies_in_reach_at_least": ("within",
-                                 {1.0: "an enemy", 3.0: "three or more"}),
+                                 # AND EYE OF THE STORM'S "3 or more" (the War trees' engine slice E3, 2026-11-27).
+                                 {1.0: "an enemy", 3.0: ("three or more", "3 or more")}),
 
     # AND THE COUNT OF ENEMIES ONE ATTACK STRUCK TOGETHER. Issue #1515.
     # Sundering reads "when they hit three or more enemies at once". The count
@@ -2133,6 +2153,21 @@ CONDITION_WORDS = {
     "target_within_metres": ("against enemies within", "{value:g} metres"),
     "in_wrath": ("while in wrath", None),
     "in_frenzy": ("while in frenzy", None),
+    # THE WAR TREES' SLICE E1 (2026-11-27): Executioner's "Melee attacks made at maximum Fervour", Vital Strike's "on
+    # critical melee strikes" (R13), Relentless' "every melee hit that does not crit", Stalwart's and Reinforced
+    # Guard's "while a shield is equipped", Open Wounds' "to bleeding enemies" (R10) and Dead Weight's "while crowd
+    # controlled" (R27).
+    # AND THE WAR TREES' ENGINE SLICES E2 AND E3 (2026-11-27): Apex Predator's "an attack made at maximum Fervour",
+    # Coup de Grace's "attacks made at maximum Fervour", Whirlwind's and Seismic Slam's "you attack at maximum Fervour".
+    "attack_at_full_fervour": (("melee attacks made at maximum fervour", "attack made at maximum fervour",
+                                "attacks made at maximum fervour", "you attack at maximum fervour"), None),
+    "blow_was_critical": ("on critical melee strikes", None),
+    # AND KILLING RHYTHM'S "Missing a critical strike" (the War trees' engine slice E2, 2026-11-27).
+    "blow_was_not_critical": (("does not crit", "missing a critical strike"), None),
+    "holding_shield": ("while a shield is equipped", None),
+    "not_holding_shield": ("do not hold a shield", None),
+    "target_carries_bleed": ("to bleeding enemies", None),
+    "while_crowd_controlled": ("while crowd controlled", None),
 
     # BRUTE FORCE, the War riders of 2026-11-25: "+10% damage per point against
     # staggered enemies". The character struck is staggered.
@@ -2141,7 +2176,9 @@ CONDITION_WORDS = {
     # SET UPON, `Ritualist_basic_a_b0`, and SET THE PACK ON, the first option of
     # `Ritualist_capstone_100`: "enemies you have damaged in the last 2
     # seconds". Issue #1515. The singular matches the plural, as elsewhere.
-    "target_damaged_by_you_within_seconds": ("damaged in the last", "{value:g} second"),
+    # AND DANCING BLADES' "each unique enemy you have hit in the last 3 seconds ... against that enemy" (the War trees'
+    # slice E1, 2026-11-27).
+    "target_damaged_by_you_within_seconds": (("damaged in the last", "you have hit in the last"), "{value:g} second"),
 
     # GRIM WAKE, `SoulCollector_basic_b_a2`: "Enemies within 3 metres of an enemy
     # you kill take 2% increased damage from you per point for 3 seconds." The
@@ -2262,7 +2299,8 @@ CONDITION_WORDS = {
     # "Your hits kill a non-Boss enemy below 15% health outright; Bosses take
     # double damage from you below 15%".
     "target_health_below": (("against enemies below", "enemy below"),
-                            {15.0: "15%", 25.0: "25%", 30.0: "30%", 35.0: "35%",
+                            # 20 FOR DEATH STRIKE (the War trees' engine slice E2, 2026-11-27).
+                            {15.0: "15%", 20.0: "20%", 25.0: "25%", 30.0: "30%", 35.0: "35%",
                              50.0: ("half health", "50%")}),
 
     # THE DEATH CLASSES' KILL GENERATOR, 2026-11-24 (slice B). The slain or
@@ -2330,6 +2368,14 @@ CONDITION_WORDS = {
 #: "at or below" is not in it. This is the other way round.
 #: A VALUE MAY BE ONE PHRASE OR SEVERAL, and several means "none of these may
 #: appear". Widened for issue #1515, which added the second phrase below.
+#: (node, condition, value): a threshold the node states as a step from its first rather than as a number of its own.
+#: The Inevitable (the War trees' engine slice E2, 2026-11-27): "After 10 seconds in continuous combat ... for every
+#: additional 10 seconds in combat", so its rows at 20, 30, 40 and 50 seconds say "10 seconds" and "every additional".
+CONDITION_VALUES_COUNTED_IN_STEPS = {
+    ("Bulwark_keystone_jg_t3", "in_combat_for_seconds", value): "every additional 10 seconds in combat"
+    for value in (20.0, 30.0, 40.0, 50.0)
+}
+
 CONDITION_WORDS_MUST_NOT_SAY = {
     # "at or below" -- the inclusive twin, as the paragraphs above explain.
     #
@@ -2480,6 +2526,10 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
             )
         else:
             printed = value_form.format(value=value)
+        stepped = CONDITION_VALUES_COUNTED_IN_STEPS.get((row["Node"], condition, value))
+        if stepped is not None:
+            assert stepped in words, (row["Node"], condition, value, stepped)
+            continue
 
         assert printed.lower() in words, (
             f"{row['Node']} carries {condition!r} with a value written "
@@ -2552,6 +2602,24 @@ SCALE_WORDS = {
     "class_resource_held": ([(("fervour you", "fervour held"),), ("fervour currently held",), ("per 10 fervour",)],
                             "{value:g} fervour", "each point of fervour"),
     "health_owed": (("for every", "owe"), "{value:g}%", None),
+    # War of Attrition's "for every 5 seconds in continuous combat" (the War trees' data rows, 2026-11-27).
+    "seconds_in_combat": (("for every", "seconds in continuous combat"), "{value:g} seconds", None),
+    # ENGINE SLICE E1'S SIX (2026-11-27): Thick Skin's "for every 4% of your maximum Fervour you currently hold",
+    # Executioner's "for every 1% of HP the target is missing", Iron Will's "for every 2% maximum HP bonus you have",
+    # Dancing Blades' "each unique enemy you have hit in the last 3 seconds", Outnumbered's "each unique enemy that
+    # has hit you in the last 10 seconds" and Open Wounds' "each bleeding enemy within 4 metres" (R10).
+    "class_resource_held_percent": (("for every", "of your maximum fervour you currently hold"), "{value:g}%", None),
+    # AND DEATH STRIKE'S "+2% per point of the target's missing HP percentage" (engine slice E2, 2026-11-27).
+    "target_health_missing": ([("for every", "the target is missing"), ("of the target's missing hp",)], "{value:g}%",
+                              None),
+    "increased_max_health": (("for every", "maximum hp bonus"), "{value:g}%", None),
+    "enemies_struck_recently": (("each unique enemy you have hit",), None, "each unique enemy"),
+    "enemies_that_struck_you_recently": (("each unique enemy that has hit you",), None, "each unique enemy"),
+    "bleeding_enemies_in_reach": (("each bleeding enemy within",), None, "each bleeding enemy"),
+    # ENGINE SLICE E3 (2026-11-27): Colossus's "for every 1,000 Maximum HP you have from other sources" (R3).
+    "max_health_from_other_sources": (("for every", "maximum hp you have from other sources"), "{value:,g}", None),
+    # AND GRINDING ADVANCE'S "for every 10 seconds in continuous combat", held and falling slowly.
+    "combat_seconds_held": (("for every", "seconds in continuous combat"), "{value:g} seconds", None),
 
     # A READING OF A STAT RATHER THAN OF A STATE. Issue #1045. Glutton reads
     # "for every 1% of life leech you have", and naming the stat is what stops
@@ -2629,7 +2697,9 @@ SCALE_WORDS = {
     # SWOLLEN, "for each full second it has stood": the bundle (2026-11-26) gave
     # both slices' entries one key, since a later duplicate replaced the earlier
     # and failed Old Bones. A step of 30 is stated in digits, a step of 1 in words.
-    "minion_seconds_active": ((("seconds it has stood", "second it has stood"),),
+    # AND SYMBIOSIS' "for each second a gadget has been continuously active" (the War trees' data rows, 2026-11-27), a
+    # second word set with its own step of one in words (`STEP_OF_ONE_ON_ONE_NODE`).
+    "minion_seconds_active": ([(("seconds it has stood", "second it has stood"),), ("continuously active",)],
                               "every full {value:g} seconds", "for each full second"),
     "minions_held": (("minion", ("you have", "alive")),
                      ("for every {value:g} minions", "{value:g} or more minions"),
@@ -2649,7 +2719,12 @@ SCALE_WORDS = {
     # AND BORROWED TIME'S "for every 2 kills in your current chain" (the Soul Collector keystone rework, issue #2951).
     "own_stacks": ([(("for each", "after you spend", "your minions gain"),), ("for", "second"),
                     ("for every", "kills in your current chain"), ("while your current chain of kills has",),
-                    ("each stack gives",)], None, None),
+                    ("each stack gives",),
+                    # AND SANGUINE'S "Each time you leech HP ... stacking up to 5 times" (engine slice E1, 2026-11-27).
+                    ("each time you leech", "stacking up to"),
+                    # AND ENGINE SLICE E2'S (2026-11-27): Consecutive Blocks' "per successive block" and Weaving's
+                    # "stacking up to 6 times".
+                    ("per successive block",), ("stacking up to",)], None, None),
 
     # THE ENEMIES IN THE CHARACTER'S SIPHON, the Death trees' slice C2
     # (2026-11-25): Sapping Cold, Stolen Strength, Life Siphon and Living Harvest
@@ -2659,13 +2734,18 @@ SCALE_WORDS = {
     # THE FERVOUR THRESHOLDS REACHED, the Death trees' slice C3d (2026-11-25):
     # Steady Count's "for each Fervour threshold you are at or above".
     "fervour_thresholds_reached": (("each fervour threshold",), None, None),
-    "consecutive_hits": ((("hit in a row", "hits in a row"),), None, None),
+    # AND MOMENTUM'S "Each consecutive melee hit on the same target" (the War trees' engine slice E2, 2026-11-27).
+    "consecutive_hits": ([(("hit in a row", "hits in a row"),), ("consecutive melee hit",)], None, None),
     # FESTERING, the Death trees' slice C6b4 (2026-11-25): "for each second the
     # enemy has stayed poisoned by you without a break, up to 10 seconds".
     "seconds_poisoned_by_you": (("for each second the enemy has stayed poisoned by you",), None, None),
     # OVERFLOW, the Death trees' slice C6c (2026-11-25): "Each Fervour above it
     # gives 1% increased Attack Speed for 5 seconds, up to 30%".
-    "fervour_overflow_stacks": (("each fervour above it",), None, None),
+    # AND OVERKILL'S "When Fervour is generated while already at maximum, gain a stack of Overkill" (the War trees'
+    # data rows, 2026-11-27), a second word set.
+    # AND GLASS CANNON'S "Each point of Fervour above your normal maximum" (the War trees' engine slice E2, 2026-11-27).
+    "fervour_overflow_stacks": ([("each fervour above it",), ("already at maximum", "stack of overkill"),
+                                 ("fervour above your normal maximum",)], None, None),
 
     # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
     # nodes read it: "You deal 2% more damage for each enemy within 4 metres
@@ -2757,7 +2837,9 @@ SCALE_WORDS = {
     # 10 armour); Army of One's "Each active gadget" and Mobile Armory's "for each
     # active gadget"; Saturation's "for each of your active traps".
     # AND WRATH INCARNATE'S "increased by 1% for every 100 Armor you have" (R18, written 2026-11-25).
-    "armor": ([("of your armor",), ("armor you have",)], ("{value:g}%", "every {value:g} armor"), None),
+    # AND FLESH FORTRESS'S "for every 50 Armor you would have had" (R16, the War trees' engine slice E3, 2026-11-27).
+    "armor": ([("of your armor",), ("armor you have",), ("armor you would have had",)],
+              ("{value:g}%", "every {value:g} armor"), None),
     "gadgets_active": (("active gadget",), None, "each active gadget"),
     # AND SNAP BACK'S "while you have at least one active trap" (2026-11-25), the
     # trap count capped at one step, which is exactly "at least one"; and SUPPORT
@@ -2791,7 +2873,10 @@ SCALE_WORDS = {
     # held, and the step form carries the number beside "points of maximum
     # fervour". Bastion reads "for every 1% Block Chance you have".
     "max_class_resource": (("maximum fervour", "you have"), "{value:g} points of maximum fervour", None),
-    "block_chance": (("for every", "block chance you have"), "{value:g}% block chance", None),
+    # AND INDOMITABLE'S "+2% of your total Block Chance" (the War trees' data rows, 2026-11-27), a second word set; its
+    # step of one is `STEP_OF_ONE_ON_ONE_NODE`'s.
+    "block_chance": ([("for every", "block chance you have"), ("of your total block chance",)],
+                     "{value:g}% block chance", None),
 
     # THE CHARACTER'S CURRENT HEALTH, the War vow options' third slice, second
     # half (V3b, 2026-11-25): Colossus Eternal's "bonus damage equal to 2% of your
@@ -2838,6 +2923,13 @@ STEP_OF_ONE_ON_ONE_NODE = {
     # Heavy Urn's "for each Fervour you hold above 50" (the Soul Collector keystone rework, issue #2951): a step of 1
     # counted past an offset of 50.
     ("SoulCollector_keystone_a_kB", "class_resource_held"): "for each fervour you hold above",
+    # Indomitable's "+2% of your total Block Chance is added as flat damage reduction" (the War trees' data rows,
+    # 2026-11-27): 0.02 for each 1% of block chance, a step of 1.
+    ("Bulwark_basic_ic_final_001", "block_chance"): "of your total block chance",
+    ("Saboteur_basic_gadget_sus_004", "minion_seconds_active"): "for each second a gadget",
+    # Death Strike's "+2% per point of the target's missing HP percentage" (the War trees' engine slice E2, 2026-11-27):
+    # a step of 1% of the target's health.
+    ("Berserker_dw_013", "target_health_missing"): "of the target's missing hp percentage",
 }
 
 
@@ -2870,6 +2962,20 @@ OWN_STACK_EVENT_WORDS = {
     "minion_detonated": ("for each detonation of yours",),
     # AND GATHERED SOULS' "Each enemy that dies within 6 metres of you" (the Soul Collector keystone rework, issue #2951).
     "nearby_death": ("dies within",),
+    # AND THE WAR TREES' DATA ROWS (2026-11-27, `tools/reapply_war_trees_data_rows_workbook.py`): Flurry of Blows'
+    # "each melee attack you have landed", Blur's "Each melee hit", and Martyrdom's "a hit that reduces you below 50% HP".
+    "melee_attack_use": ("melee attack",),
+    "hit_dealt": ("melee hit",),
+    "health_falls_below": ("reduces you below",),
+    # AND ENGINE SLICE E1'S (2026-11-27): War Cry's and Rapid Fire's "attacking at maximum Fervour", Sanguine's "Each
+    # time you leech HP" and Unyielding Guard's "Every block".
+    "attack_at_full_fervour": ("at maximum fervour",),
+    "life_leeched": ("each time you leech",),
+    "block": ("every block",),
+    # AND ENGINE SLICE E2'S (2026-11-27): Killing Rhythm's "each consecutive critical strike" and Weaving's "a different
+    # melee skill from the one you used last" (R12).
+    "critical_strike": ("consecutive critical strike",),
+    "different_melee_skill_used": ("different melee skill",),
 }
 
 #: A kill stack's event in other words than "kills within", by node: the Soul Collector keystone rework (issue #2951).
@@ -2880,6 +2986,22 @@ OWN_STACK_EVENT_IN_OTHER_WORDS = {
     "SoulCollector_keystone_b_kC": ("chain of kills",),
     "SoulCollector_basic_b_c0": ("chain of kills",),
     "SoulCollector_basic_b_c1": ("kills in your current chain",),
+    # The War trees' data rows (2026-11-27): Bloodlust's "Killing an enemy" and Thick Hide's "Each hit you survive".
+    "Berserker_dw_016": ("killing an enemy",),
+    "Bulwark_basic_tw_stem_002": ("each hit you survive",),
+    # Engine slice E2 (2026-11-27): Feeding Frenzy's "each melee attack you have landed" (on `hit_dealt`) and
+    # Consecutive Blocks' "per successive block".
+    "Berserker_dw_008": ("melee attack you have landed",),
+    "Bulwark_basic_ic_t2_002": ("successive block",),
+}
+
+#: A stack whose window its sentence does not state, by node, with the judgement that chose it. The War trees' engine
+#: slice E2 (2026-11-27): a stack needs a window and these three sentences name none, so each took 10 seconds, recorded
+#: as a judgement in the decisions entry "The War passive trees finished".
+STACK_SECONDS_NOT_STATED = {
+    "Berserker_crit_005": "Killing Rhythm's streak: 10 seconds, a judgement",
+    "Bulwark_basic_ic_t2_002": "Consecutive Blocks: 10 seconds, the same judgement",
+    "Berserker_dw_003": "Weaving's stacks: 10 seconds, the same judgement",
 }
 
 #: A stack's seconds written in other words than "for N seconds", by node. Kill Chain (the Death trees' slice C1): "Kills
@@ -2892,9 +3014,16 @@ STACK_SECONDS_IN_OTHER_WORDS = {
     # AND THE SOUL COLLECTOR KEYSTONE REWORK (issue #2951): Gathered Souls' one shared window, "lasts 6 seconds", and the
     # three chain nodes' 2 seconds, which is the window of the chain Kill Chain defines and their sentences name.
     "SoulCollector_keystone_spine_001": "lasts {seconds:g} seconds",
+    # Feeding Frenzy (the War trees' engine slice E2, 2026-11-27): "in the last 2 seconds".
+    "Berserker_dw_008": "in the last {seconds:g} seconds",
     "SoulCollector_keystone_b_kC": "your current chain",
     "SoulCollector_basic_b_c0": "your current chain",
     "SoulCollector_basic_b_c1": "your current chain",
+    # FLURRY OF BLOWS (the War trees' data rows, 2026-11-27): "in the last 2 seconds", and from 5 points "The tracking
+    # window is extended to 3 seconds". Two rows on one node, so the node names both forms and a row passes on either.
+    "Berserker_dw_010": ("in the last {seconds:g} seconds", "extended to {seconds:g} seconds"),
+    # SANGUINE (engine slice E1, 2026-11-27): "Stacks reset if you go 2 seconds without leeching".
+    "Berserker_leech_005": "go {seconds:g} seconds without leeching",
 }
 
 
@@ -2918,8 +3047,12 @@ def test_an_own_stack_states_its_event_and_its_seconds(effects, nodes):
             f"{row['Name']} grants its own stack on {event!r} and its node does not say "
             f"{said_event}: {words_of(row, nodes)}")
         seconds = float(row["StackSeconds"] or 0)
-        said = STACK_SECONDS_IN_OTHER_WORDS.get(row["Node"], "for {seconds:g} second").format(seconds=seconds)
-        assert seconds > 0 and said in words, (
+        if row["Node"] in STACK_SECONDS_NOT_STATED:
+            assert seconds > 0, row["Name"]
+            continue
+        forms = STACK_SECONDS_IN_OTHER_WORDS.get(row["Node"], "for {seconds:g} second")
+        forms = (forms,) if isinstance(forms, str) else forms
+        assert seconds > 0 and any(form.format(seconds=seconds) in words for form in forms), (
             f"{row['Name']}'s stack lasts {seconds:g} seconds and its node does not say "
             f"\"for {seconds:g} second(s)\": {words_of(row, nodes)}")
 
@@ -3061,6 +3194,11 @@ def test_a_scale_is_actually_used(effects):
 #: that is a plain count, like Low Life's "10 Fervour per second", still has
 #: nowhere to say so.
 VALUE_FORMS = {
+    # THE LAST BASTION'S THREE (the War trees' engine slice E3, 2026-11-27): "Can only trigger once every 120 seconds",
+    # "immune to damage for 2 seconds" and "gain 100 Fervour".
+    "blocked_lethal_hit_survived_every_seconds": "every {value:g} seconds",
+    "damage_immunity_after_blocked_lethal_hit_seconds": "for {value:g} seconds",
+    "fervour_on_blocked_lethal_hit_survived": "{value:g} Fervour",
     # THE NECROMANCER'S DETONATIONS, the finishing of the Death Cataclysm, slice C (2026-11-26): two or three flat rows on
     # one node each, told apart by the words after each number. Lingering Rot's "1 second for every 2 points" and "10% of
     # the detonation's damage"; Mass Grave's "within 3 metres" and "each for 40% damage"; Living Bombs' "a 50% chance to
@@ -3514,6 +3652,17 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # THE WAR TREES' ENGINE SLICES E1 TO E3 (2026-11-27): flags at 1, each a clause that switches a rule on, and
+    # Bloodied's "tripled", a More of 200.
+    ("Bulwark_keystone_jg_t1", "immune_to_crowd_control"): ("you are immune to crowd control", 1.0),
+    ("Berserker_twoh_ks_002", "berserking_spends_half"): ("spends half your fervour", 1.0),
+    ("Berserker_trunk_012", "berserking_on_every_melee_hit"): ("berserking triggers on every melee hit", 1.0),
+    ("Berserker_trunk_012", "class_resource_generation"): ("your fervour generation is tripled", 200.0),
+    ("Berserker_crit_ks_002", "crit_chance_past_cap_to_multiplier"):
+        ("converted to critical strike multiplier at a 2:1 ratio", 1.0),
+    ("Bulwark_basic_jg_t3_002", "combat_seconds_fall_slower"): ("lost 50% slower", 1.0),
+    ("Berserker_dw_ks_001", "melee_arc_full_circle"): ("spinning attack hitting all enemies", 1.0),
+    ("Berserker_dw_ks_001", "fervour_per_enemy_hit"): ("each enemy hit generates 3 fervour", 3.0),
     # THE NECROMANCER'S REMAINS, the Death finish's slice D (2026-11-26): six flags at 1, each a clause that switches a
     # mechanism on. Bone Fuse's "Dead creatures leave remains"; Mantle of Bone's "Your weapon skills that land on remains
     # detonate them"; Plague Pit's "pass every ailment"; the Abomination's "their remains combine into an Abomination";
@@ -3584,6 +3733,34 @@ VALUE_IN_WORDS = {
     # row with no condition (its other drain row is under the 50 Fervour one).
     ("Bulwark_basic_jg_t1_001", "fervour_per_hit_taken"): ("is doubled", 100.0),
     ("Bulwark_basic_trunk_009", "fervour_drain_per_second", "", "flat"): ("reduces the drain rate to 2", -3.0),
+    # Battle Cry's "Reduce your passive Fervour loss by 0.2 per point" (the War trees' data rows, 2026-11-27): 0.2 less
+    # of the decay out of combat, the Berserker's only passive loss.
+    ("Berserker_trunk_007", "fervour_decay_out_of_combat_per_second"): ("reduce your passive fervour loss by 0.2", -0.2),
+    # Indomitable's "+2% of your total Block Chance is added as flat damage reduction" (the same): 0.02 for each 1%.
+    ("Bulwark_basic_ic_final_001", "damage_reduction"): ("2% of your total block chance", 0.02),
+    # Overkill's "lasts 2 seconds" (the same): the window of the overflow stacks, whose stat is named for the attack
+    # speed node that first read it.
+    ("Saboteur_basic_trunk_002", "fervour_overflow_attack_speed_seconds"): ("lasts 2 seconds", 2.0),
+    # JUGGERNAUT (engine slice E1, 2026-11-27): "At 5 points: You cannot be staggered, stunned, or knocked back while
+    # above 50% Fervour", three flags of 1, each named by its own word.
+    ("Berserker_twoh_010", "immune_to_stagger"): ("cannot be staggered", 1.0),
+    # VITAL STRIKE, R13: "your critical melee strikes generate 1 additional Fervour per point".
+    ("Berserker_leech_003", "fervour_per_critical_strike"): ("generate 1 additional fervour", 1.0),
+    # RELENTLESS (the same slice): "every melee hit that does not crit still generates +1 Fervour per point".
+    ("Berserker_dw_005", "fervour_per_hit_dealt"): ("still generates +1 fervour", 1.0),
+    # SANGUINE (the same slice): "your Fervour generation on the next hit is increased by 1 per point", a stack.
+    ("Berserker_leech_005", "fervour_per_hit_dealt"): ("is increased by 1 per point", 1.0),
+    # IRON MIND (the same slice): "+15% crowd control duration reduction per point", which is what
+    # `crowd_control_resistance` does: it shortens a crowd control effect, at 100 entirely.
+    ("Bulwark_basic_jg_t1_002", "crowd_control_resistance"): ("15% crowd control duration reduction", 15.0),
+    # UNBROKEN AND UNDYING RAGE (the same slice): "You cannot be stunned" and "cannot be reduced by enemy
+    # resistances", each a flag of 1.
+    ("Bulwark_keystone_trunk_001", "immune_to_stun"): ("cannot be stunned", 1.0),
+    ("Bulwark_basic_tw_final_001", "retaliation_cannot_be_mitigated"): ("cannot be reduced by enemy resistances", 1.0),
+    # AND UNDYING RAGE'S "retaliation damage is doubled" below 25%, a More of 100.
+    ("Bulwark_basic_tw_final_001", "retaliation", "health_below", "more"): ("is doubled", 100.0),
+    ("Berserker_twoh_010", "immune_to_stun"): ("stunned", 1.0),
+    ("Berserker_twoh_010", "knockback_suppressed"): ("knocked back", 1.0),
     # THE FERVOUR SPENDS, 2026-11-25. Iron Will's "negate all damage from that
     # hit", a negation chance of 100. Blood Tithe's "At 6 points: The Fervour
     # cost is reduced to 1 per 150 HP regenerated": 4 less than the 5 and 50 more
@@ -4163,6 +4340,27 @@ VALUE_IS_A_DIFFERENCE = {
 #: `apply_status`'s value is a chance in per cent (`APPLY_STATUS_ACTIONS` in the
 #: generator).
 ACTION_VALUE_FORMS = {
+    # THE WAR TREES' ENGINE SLICES E2, E3 AND THE RIDERS (2026-11-27), as their sentences write them.
+    "enemy_damage_taken": ("+{value:g}% increased damage",),
+    "enemy_damage_reduction_removed": ("damage reduction by {value:g}%",),
+    # AND SHATTER'S "reduce enemy armor by 5% per point" (`enemy_armor_removed`, placed on a critical strike).
+    "enemy_armor_removed": ("armor by {value:g}%",),
+    "next_attack_bonus_of_max_health": ("{value:g}% of your Maximum HP",),
+    "next_attack_bonus_of_armor": ("{value:g}% of your Armor",),
+    "strike_target_of_max_health": ("{value:g}% of your Maximum HP",),
+    "smite_nearby_of_max_health": ("{value:g}% of your Maximum HP",),
+    "cooldown_reduce_all_percent": ("all cooldowns by {value:g}%",),
+    "strike_target_of_target_missing_health": ("{value:g}% of the target's missing HP",),
+    "strike_nearest_near": ("{value:g}% weapon damage",),
+    "nth_attack_more_damage": ("{value:g}% more damage",),
+    "next_retaliation_more": ("{value:g}% more damage",),
+    "execute_nearby_below": ("below {value:g}% HP",),
+    "smite_nearby_of_recent_damage_taken": ("{value:g}% of all damage you have taken",),
+    "smite_line_by_hit": ("{value:g}% per point of the hit's damage",),
+    "next_attack_bonus_of_blocked_damage": ("+{value:g}% of blocked damage",),
+    "fervour_of_frenzy_drain_seconds": ("{value:g} second of Frenzy's drain",),
+    "retaliation_burst_on_kill": ("{value:g}% of your retaliation damage",),
+    "echo_strike_later": ("{value:g}% of the attack's damage",),
     # THE WAR LINE'S ACTIONS, read by this check since the bundle 3 merge (2026-11-25): the War line's copy of this
     # file skipped every action row, so each form below is the number as its node's sentence writes it.
     "slow_for_seconds": ("{value:g}% slow",),
@@ -4176,6 +4374,8 @@ ACTION_VALUE_FORMS = {
     "crossfire": ("at {value:g}% of its damage",),
     "titanfall": ("for {value:g} seconds",),
     "apply_status": ("{value:g}% chance",),
+    # Chain Reaction's "the nearest inactive trap within 8 meters" (the War trees' data rows, 2026-11-27): the radius.
+    "trigger_traps_nearby": ("within {value:g} meters",),
     # THE FERRYMAN, the Death trees' slice C4c1 (2026-11-25): "bursts for 10% of
     # its maximum health".
     "burst_slain_for_share_of_maximum_health": ("bursts for {value:g}% of its maximum health",),
@@ -4194,6 +4394,8 @@ ACTION_VALUE_FORMS = {
                # AND THE WAR LINE'S SHIELD OATH, since the bundle 3 merge: "restores 2% of your Maximum HP" and
                # "Regenerate 1% of your current HP per second".
                "{value:g}% of your Maximum HP", "{value:g}% of your current HP",
+               # AND FEAST'S "you instantly leech 1% per point of your maximum HP" (the War trees' data rows, 2026-11-27).
+               "leech {value:g}% per point of your maximum HP",
                # AND PICKED CLEAN'S "restores 1% of your maximum health for every 3 points" (the Death finish's
                # slice D, 2026-11-26).
                "restores {value:g}% of your maximum health"),
@@ -4240,6 +4442,28 @@ SIZED_BY_THE_AMOUNT_ROWS = 5
 #: An action row's number stated in words, by node and action, as
 #: `VALUE_IN_WORDS` holds a stat's.
 ACTION_VALUE_IN_WORDS = {
+    # THE WAR TREES' ENGINE SLICES E2, E3 AND THE RIDERS (2026-11-27). A key may name the row's value as well, for a node
+    # with two rows of one action whose second is said in words: Coup de Grace's "tripled" (2 and 4 more) and
+    # Unbreakable Will's "three times the rate" (2 and 4 more from 5 points), and Weaving's "costs 3 Fervour" (-3).
+    ("Berserker_crit_ks_001", "strike_target_of_target_missing_health", 4.0): ("this bonus is tripled", 4.0),
+    ("Bulwark_basic_ic_t1_003", "next_attack_bonus_of_blocked_damage", 4.0): ("three times the rate", 4.0),
+    ("Berserker_dw_003", "class_resource", -3.0): ("costs 3 fervour", -3.0),
+    ("Berserker_dw_003", "own_stacks_removed"): ("removes the stacks", 100.0),
+    ("Berserker_crit_005", "own_stacks_removed"): ("resets the streak", 100.0),
+    ("Bulwark_basic_ic_t2_002", "own_stacks_removed"): ("resets if you take an unblocked hit", 100.0),
+    ("Berserker_dw_ks_001", "knock_back_target"): ("are knocked back", 3.0),
+    ("Berserker_twoh_008", "smite_nearby"): ("30% of your attack damage per point", 30.0),
+    ("Berserker_dw_015", "class_resource"): ("refunds 10% of your maximum fervour", 10.0),
+    ("Berserker_twoh_014", "burst_slain_for_share_of_maximum_health"): ("20% of their max hp", 20.0),
+    ("Berserker_dw_ks_002", "strike_nearest_near"): ("at full damage", 100.0),
+    ("Berserker_leech_ks_001", "fervour_per_percent_of_max_health_leeched"):
+        ("1 fervour per 2% of maximum hp leeched", 0.5),
+    # HEMORRHAGE, R8 (the War trees' data rows, 2026-11-27): "at twice its normal strength", a Bleed of size 2.
+    ("Bulwark_keystone_tw_t1", "apply_status_sized"): ("at twice its normal strength", 2.0),
+    # SYNCHRONIZED (the same): its gadget fires its normal blow (100) at the triggering enemy, and the nearest active
+    # trap within 30 metres triggers. The 30 is a judgement; the sentence names no distance.
+    ("Saboteur_basic_gadget_mid_003", "gadget_fires_at_trap_enemy"): ("immediately fires at the triggering enemy", 100.0),
+    ("Saboteur_basic_gadget_mid_003", "trigger_traps_nearby"): ("the nearest active trap triggers instantly", 30.0),
     # THE WAR LINE'S ACTIONS WHOSE NUMBER IS WORDS, since the bundle 3 merge (2026-11-25): Frenzy's reset of the
     # movement skill (100, the whole cooldown), the Saboteur's trap placed again and Counterfire's answer (100, always),
     # and Scrap Mines' "at double damage" (200).
@@ -4319,7 +4543,8 @@ def test_every_value_appears_in_the_nodes_own_description(
         # AN ACTION ROW: its number by its action, or in words.
         action = row.get("Action", "").strip()
         if action:
-            spoken = ACTION_VALUE_IN_WORDS.get((row["Node"], action))
+            spoken = ACTION_VALUE_IN_WORDS.get((row["Node"], action, value),
+                                               ACTION_VALUE_IN_WORDS.get((row["Node"], action)))
             if spoken is not None:
                 phrase, means = spoken
                 assert phrase in described.lower(), (
@@ -4536,6 +4761,10 @@ def test_no_two_flat_rows_on_one_node_look_for_the_same_text(effects):
 #: this list. No node in any of the four trees says "halved" now.
 TAKES_AWAY = ("reduce", "less", "fewer", "lower", "removed by")
 
+#: A node that takes something away in other words, by node. Weaving (R12, 2026-11-27): "each stack you gain costs 3
+#: Fervour", a class_resource row of -3.
+TAKES_AWAY_IN_OTHER_WORDS = {"Berserker_dw_003": "costs 3 fervour"}
+
 
 def test_a_negative_value_is_on_a_node_that_says_it_takes_something_away(
         effects, nodes):
@@ -4561,6 +4790,8 @@ def test_a_negative_value_is_on_a_node_that_says_it_takes_something_away(
 
         described = words_of(row, nodes)
         words = described.lower()
+        if TAKES_AWAY_IN_OTHER_WORDS.get(row["Node"], "\0") in words:
+            continue
         assert any(term in words for term in TAKES_AWAY), (
             f"{row['Node']} grants {value:g} of {row['Stat']} per point, which "
             f"takes something away, and its description does not say so:\n"
@@ -4607,11 +4838,33 @@ MULTIPLIER_WAITS_FOR_A_LATER_SLICE: frozenset[tuple[str, int]] = frozenset()
 
 DOUBLES_ITS_OWN_FLAT_BONUS = frozenset({"Berserker_dw_014"})
 
+#: A node whose "doubled" rider grants its own increases a second time from N points under a condition: Tempered
+#: Steel's "At 6 points: These bonuses are doubled while at maximum Fervour" (the War trees' data rows, 2026-11-27).
+#: Doubling an increase is adding it again, so the rows are in the increased bucket. EXCUSED ONLY WHILE every row of
+#: the node from its threshold mirrors a row below it, stat, kind, value and scale alike.
+DOUBLES_ITS_OWN_INCREASED_BONUS = frozenset({"Bulwark_basic_trunk_006",
+                                             # The War trees' engine slice E2 (2026-11-27): Counter Stance's "At 6
+                                             # points: ... this bonus is doubled", the same rows again from 6 points.
+                                             "Bulwark_basic_ic_t1_001"})
+
+#: Nodes whose "is doubled" is the same increased rows again under one more condition, by node: Momentum's "While in
+#: Wrath, this bonus is doubled" and Weaving's "While in Frenzy ... the damage per stack is doubled" (the War trees'
+#: engine slice E2, 2026-11-27). The rows under the condition must mirror the rows without it.
+DOUBLES_ITS_OWN_INCREASED_BONUS_UNDER = {"Berserker_twoh_002": "in_wrath", "Berserker_dw_003": "in_frenzy"}
+
+#: Nodes whose "is doubled" doubles a cap and not a value, by (node, option): Feeding Frenzy's "While in Frenzy this cap
+#: is doubled" (the War trees' engine slice E2, 2026-11-27), its in-Frenzy row's Scale Max Steps of 20 against 10.
+DOUBLES_A_CAP_NOT_A_VALUE = frozenset({("Berserker_dw_008", 0)})
+
 #: An option whose sentence's "more" the engine applies, with no row carrying it: the Abomination's "With Lone
 #: Revenant, the Abomination has Lone Revenant's 400% more health and damage" (the Death finish's slice D,
 #: 2026-11-26), which `UCataclysmBoneGiants` multiplies by when the player holds slice B's `lone_revenant_held`. Its
 #: one row is the flag `abomination_rises`.
-MULTIPLIED_BY_THE_ENGINE = frozenset({("Necromancer_capstone_200", 1)})
+MULTIPLIED_BY_THE_ENGINE = frozenset({("Necromancer_capstone_200", 1),
+                                      # The War trees' engine slice E2 (2026-11-27): Spiteful's "your next retaliation
+                                      # deals 50% more damage" (next_retaliation_more) and Flurry's "deals 50% more
+                                      # damage" (nth_attack_more_damage), each a More the engine applies to the use.
+                                      ("Bulwark_basic_tw_stem_003", 0), ("Berserker_dw_002", 0)})
 
 #: A more-bucket row whose sentence says it multiplies in a word rather than as
 #: "N% more", by node and capstone option, with that word. NOT ADDED TO
@@ -4619,6 +4872,8 @@ MULTIPLIED_BY_THE_ENGINE = frozenset({("Necromancer_capstone_200", 1)})
 #: 4 seconds after a kill", adds its own increase again), so the word alone does
 #: not mean the more bucket.
 MORE_STATED_IN_A_WORD = {
+    # BLOODIED (the War trees' engine slice E3, 2026-11-27): "your Fervour generation is tripled" is 200% more.
+    ("Berserker_trunk_012", 0): "is tripled",
     # DEATH SENTENCE, the Death trees' slice C1 (2026-11-25): "Bosses take double
     # damage from you below 15%" is 100% more.
     ("Shadow_capstone_200", 2): "double damage",
@@ -4688,10 +4943,30 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
         multiplying_nodes.add((node, option))
 
     multiplying_nodes |= MULTIPLIED_BY_THE_ENGINE
+    multiplying_nodes |= DOUBLES_A_CAP_NOT_A_VALUE
 
     for node in DOUBLES_ITS_OWN_FLAT_BONUS:
         own = [row for row in effects if row["Node"] == node]
         assert len(own) == 2 and own[0]["Stat"] == own[1]["Stat"] and own[0]["ValuePerPoint"] == own[1]["ValuePerPoint"]             and {row["ValueKind"] for row in own} == {"flat"} and sorted(bool(row.get("Condition2")) for row in own)             == [False, True], f"{node} no longer doubles its own flat bonus with a second equal row: {own}"
+        multiplying_nodes.add((node, 0))
+
+    for node in DOUBLES_ITS_OWN_INCREASED_BONUS:
+        own = [row for row in effects if row["Node"] == node]
+        def shape(row):
+            return (row["Stat"], row["ValueKind"], row["ValuePerPoint"], row["Scale"], row["ScaleStep"])
+        base_rows = sorted(shape(row) for row in own if not int(float(row.get("MinPoints") or 0)))
+        doubled = sorted(shape(row) for row in own if int(float(row.get("MinPoints") or 0)))
+        assert own and base_rows == doubled and {row["ValueKind"] for row in own} == {"increased"}, (
+            f"{node} no longer doubles its own increases with mirrored rows: {own}")
+        multiplying_nodes.add((node, 0))
+
+    for node, condition in DOUBLES_ITS_OWN_INCREASED_BONUS_UNDER.items():
+        own = [row for row in effects if row["Node"] == node and row["ValueKind"] == "increased"]
+        def mirrored(row):
+            return (row["Stat"], row["ValuePerPoint"], row["Scale"], row["ScaleStep"], row["ScaleMaxSteps"])
+        under = sorted(mirrored(row) for row in own if condition in (row["Condition"], row.get("Condition2")))
+        plain = sorted(mirrored(row) for row in own if condition not in (row["Condition"], row.get("Condition2")))
+        assert own and under == plain, f"{node} no longer doubles its increases under {condition!r}: {own}"
         multiplying_nodes.add((node, 0))
 
     for row in effects:
@@ -5151,6 +5426,12 @@ STATED_ONCE_BESIDE_A_PER_POINT_ROW = {
 #: additional Fervour per second" and Steeled Resolve's "This bonus drains 5
 #: Fervour per second while active" are each one rate, whatever the points; the
 #: bonus beside each is the per-point figure.
+#: A node written as one row for each point count, because a value per point grows something no column multiplies by
+#: the points: Open Wound (the War trees' engine slice E2, 2026-11-27), "2 seconds per point" of a placed stack's
+#: duration, so each point count is its own row from that count (Min Points) to the next (Max Points). Its sentence
+#: names no threshold, and none is meant.
+ONE_ROW_FOR_EACH_POINT_COUNT = {"Berserker_dw_006": "Open Wound's wound lasts 2 seconds per point"}
+
 FIXED_FROM_THE_FIRST_POINT = frozenset({
     # MADE ROOM'S DETONATION ON RELEASE (the finishing of the Death Cataclysm, slice C, 2026-11-26): "A minion of yours
     # that is released to make room for another detonates as it goes" is one switch whatever the points; the two
@@ -5194,6 +5475,21 @@ FIXED_FROM_THE_FIRST_POINT = frozenset({
     # the points; the 3% beside them is the per-point one (2026-11-25).
     ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_drain_per_second"),
     ("Bulwark_basic_tw_resolve_001", "retaliation_pulse_radius_metres"),
+    # AND THE WAR TREES' DATA ROWS (2026-11-27), each one figure whatever the points: Bloodlust's "While in Frenzy
+    # kills also restore 5 Fervour", Overkill's 2-second window, Chain Reaction's 8 metres, and Synchronized's second
+    # half (its radius). Overkill's "+5% damage" a stack says no "per point", so it is 5 whatever the points. Action rows
+    # have no stat, so they are named with an empty one.
+    ("Berserker_dw_016", ""),
+    ("Saboteur_basic_trunk_002", "fervour_overflow_attack_speed_seconds"),
+    ("Saboteur_basic_trunk_002", "attack_damage"),
+    ("Saboteur_basic_trunk_002", "spell_damage"),
+    ("Saboteur_basic_trap_qty_002", ""),
+    ("Saboteur_basic_gadget_mid_003", ""),
+    # AND ENGINE SLICE E1'S (2026-11-27): Dancing Blades' "drains 2 additional Fervour per second" for each enemy,
+    # Iron Mind's "generates 10 Fervour" and Outnumbered's 4 metres, each one figure whatever the points.
+    ("Berserker_dw_007", "fervour_drain_per_second"),
+    ("Bulwark_basic_jg_t1_002", ""),
+    ("Bulwark_basic_tw_stem_004", "retaliation_radius_metres"),
 })
 
 
@@ -5211,7 +5507,7 @@ def test_a_row_from_n_points_is_on_a_node_whose_sentence_says_at_n_points(
     wrong = []
     for row in effects:
         min_points = int(float(row.get("MinPoints", 0) or 0))
-        if not min_points:
+        if not min_points or row["Node"] in ONE_ROW_FOR_EACH_POINT_COUNT:
             continue
         # A FIXED FIGURE FROM THE FIRST POINT, which the sentence states with no
         # "per point" and no threshold. See `FIXED_FROM_THE_FIRST_POINT`.
@@ -5249,6 +5545,8 @@ def test_a_row_stopping_at_n_points_is_on_a_node_whose_sentence_says_at_n_points
     for row in stopping:
         max_points = int(float(row["MaxPoints"]))
         said = [int(n) for n in AT_N_POINTS.findall(nodes.get(row["Node"], {}).get("Description", ""))]
+        if row["Node"] in ONE_ROW_FOR_EACH_POINT_COUNT:
+            continue
         if max_points not in said:
             wrong.append(f"{row['Name']} stops at {max_points} points and its node's sentence says "
                          f"{said or 'no threshold'}")

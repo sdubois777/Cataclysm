@@ -56,6 +56,8 @@ bool UCataclysmSilence::ApplySilence(AActor* Instigator, AActor* Target, float S
 	{
 		Applier->NoteCrowdControlApplied();
 	}
+	// AND THE CHARACTER IT LANDED ON RECEIVED IT, the War trees' slice E1 (2026-11-27).
+	UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/false);
 	return true;
 }
 

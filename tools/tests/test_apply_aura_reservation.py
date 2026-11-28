@@ -24,6 +24,9 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import apply_aura_reservation_2026_11_27 as ruling  # noqa: E402
 
+sys.path.insert(0, str(REPO_ROOT / "tools" / "tests"))
+import without_the_war_trees_rows  # noqa: E402
+
 TREES = sorted({f"{each.tree}_Class_Tree_Final.json" for each in ruling.NODE_ROWS})
 
 
@@ -209,12 +212,15 @@ def _values(path: pathlib.Path) -> dict[str, list[tuple]]:
 def test_taking_the_ruling_out_and_writing_it_again_gives_back_the_repository_s_files(tmp_path):
     """`take_out` is what four older scripts' tests compare against, so it must be the exact inverse: taken out and
     written again, every value of the four sheets and every byte of the tree files is the repository's."""
+    # FROM A COPY WITH THE WAR TREES' ROWS OF 2026-11-27 TAKEN OUT, which came after this ruling and append rows
+    # after its rows (`tools/tests/without_the_war_trees_rows.py`), so "the repository's" files are that copy.
+    before = without_the_war_trees_rows.docs()
     workbook = tmp_path / "All_Things_Cataclysm.xlsx"
-    shutil.copyfile(ruling.WORKBOOK, workbook)
+    shutil.copyfile(before / "All_Things_Cataclysm.xlsx", workbook)
     folder = tmp_path / "docs"
     folder.mkdir()
     for name in TREES:
-        shutil.copyfile(ruling.DOCS / name, folder / name)
+        shutil.copyfile(before / name, folder / name)
 
     ruling.take_out(workbook, folder)
     assert ruling.main(["--check", "--workbook", str(workbook), "--docs", str(folder)]) == 1
@@ -230,8 +236,8 @@ def test_taking_the_ruling_out_and_writing_it_again_gives_back_the_repository_s_
             out.append(tuple(row))
         return out
 
-    ours, theirs = _values(workbook), _values(ruling.WORKBOOK)
+    ours, theirs = _values(workbook), _values(before / "All_Things_Cataclysm.xlsx")
     for name in theirs:
         assert trim(ours[name]) == trim(theirs[name]), name
     for name in TREES:
-        assert (folder / name).read_bytes() == (ruling.DOCS / name).read_bytes(), name
+        assert (folder / name).read_bytes() == (before / name).read_bytes(), name

@@ -1250,6 +1250,12 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	{
 		return;
 	}
+	// A PHANTOM BLADES ECHO EARNS NO FERVOUR AND RAISES NO EVENT (2026-11-27): "Phantom strikes can trigger leech and
+	// critical strikes independently but do not generate Fervour". Its critical strike and its leech are the blow's own.
+	if (Acting->IsStrikingAnEcho())
+	{
+		return;
+	}
 
 	// THE SKILL'S OWN TAGS GO ACROSS, which is what a scoped row tests. One
 	// authored row is scoped this way: "strike skills generate ... on hit", and
@@ -1289,9 +1295,13 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// AND EVERYTHING THE HIT LANDED, its shield's part included, for the rows that lay an ailment on it: the owner's
 	// ruling of 2026-11-26. Held across the three events below, which are all this hit's, and put back after them.
 	const float WasHitLanded = Acting->SetHitBeingAnnouncedLanded(Notice.Landed);
+	// AND WHETHER IT WAS CRITICAL, HELD WHILE `hit_dealt`'S ROWS ACT, for Killing Rhythm's reset on a hit that is not
+	// critical (the War trees' engine slice E2, 2026-11-27). Put back straight after.
+	const int32 WasCriticalForHitDealt = Acting->SetHitBeingAnnouncedCritical(Notice.bCritical ? 1 : 0);
 	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
 					   /*EventAmount=*/Notice.DealtToHealth, /*bLanded=*/true,
 					   Notice.Target);
+	Acting->SetHitBeingAnnouncedCritical(WasCriticalForHitDealt);
 	Acting->SetHitBeingAnnouncedSent(WasHitSent);
 	Acting->SetAttackBeingAnnouncedSent(WasSent);
 
@@ -1300,7 +1310,11 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// reason the cull above gives: Conduit credits one here, and the minion dealt it. The Berserker's states, 2026-11-25.
 	if (!Cast<ACataclysmMinion>(Notice.DealtBy))
 	{
+		// WITH WHETHER THE BLOW WAS CRITICAL IN HAND, for Relentless' "every melee hit that does not crit" (the War
+		// trees' slice E1, 2026-11-27), put back after.
+		const int32 WasCritical = Acting->SetHitBeingAnnouncedCritical(Notice.bCritical ? 1 : 0);
 		FCataclysmWarFervour::GainOnHitDealt(Acting, Notice.SkillTags ? *Notice.SkillTags : FGameplayTagContainer());
+		Acting->SetHitBeingAnnouncedCritical(WasCritical);
 	}
 
 	// THE ATTACKER'S FIRST BLOW TO GET THROUGH TO THIS TARGET is a third event.

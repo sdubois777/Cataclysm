@@ -3,6 +3,8 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Character/CataclysmCharacterCreation.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the two damage-taken stat names and their base of 100. Issue #1026.
@@ -102,19 +104,18 @@ namespace
 	 * `tools/tests/test_the_starting_character_survives_a_pack.py` measures the
 	 * fight and fails if this name is changed to a line that cannot win it.
 	 */
-	// StartingClassName IS DEFINED ABOVE THIS BLOCK ON PURPOSE. Non-local
-	// statics in one translation unit are initialised in definition order, so
-	// naming it here rather than repeating the string cannot read an empty
-	// FString, and the console variable's default and ChosenClass's fallback
-	// cannot drift apart.
+	// EMPTY BY DEFAULT SINCE ISSUE #932 (2026-11-27): empty means "decided by the
+	// character", `ClassFor`; `ChosenClass` still answers `StartingClassName`
+	// for empty, so a caller with no character in hand is unchanged.
 	TAutoConsoleVariable<FString> CVarPlayerClass(
 		TEXT("Cataclysm.PlayerClass"),
-		UCataclysmPlayerClassStats::StartingClassName,
-		TEXT("Which row of game/Data/ClassStats.csv the player starts on: "
-			 "Default, Ravager, Ritualist or Masochist. Default is the shared "
-			 "line every class inherits and has no defences of its own. Read "
-			 "when the pawn is possessed, so press Play again after changing "
-			 "it."),
+		TEXT(""),
+		TEXT("Which row of game/Data/ClassStats.csv the player stands on, set by "
+			 "hand: Default, or a class name such as Bulwark or Ravager. Empty, the "
+			 "default, lets the character decide: the class with the most passive "
+			 "points, or with none spent the first class of the damage type chosen "
+			 "at creation. Read when the stat line is applied, so press Play again "
+			 "after changing it."),
 		ECVF_Default);
 
 	/**
@@ -514,6 +515,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("minion_movement_speed"),
 		TEXT("minion_damage_taken"),
 		TEXT("immune_to_slow"),
+		// And the War trees' three immunities, slice E1 (2026-11-27): whether the character is immune to all crowd
+		// control, to a stun and to a stagger, each read by UCataclysmSkillTemplate::IsImmuneTo. No attribute and no base.
+		TEXT("immune_to_crowd_control"),
+		TEXT("immune_to_stun"),
+		TEXT("immune_to_stagger"),
 		// Whether a minion explodes when it dies, read by
 		// ACataclysmMinion::HandleDeath. A flag: a row sets it to one.
 		TEXT("minion_explodes_on_death"),
@@ -1353,6 +1359,24 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("wrath_on_full_fervour"),
 		TEXT("frenzy_on_full_fervour"),
 		TEXT("berserking_damage_per_fervour"),
+		// And the War trees' two Berserking flags, engine slice E3 (2026-11-27): Berserker's Rage's half pool and Bloodied's
+		// every melee hit, each read by FCataclysmBerserkerStates::SpendBerserking.
+		TEXT("berserking_spends_half"),
+		TEXT("berserking_on_every_melee_hit"),
+		// And Hair Trigger's chance past 100% to multiplier, read where a hit is priced (UCataclysmVitalAttributeSet).
+		TEXT("crit_chance_past_cap_to_multiplier"),
+		// And Eye of the Storm's block floor, read at the block step (UCataclysmDamageCalculation), and The Last
+		// Bastion's three figures, read where a lethal blow is saved (UCataclysmVitalAttributeSet). War trees E3.
+		TEXT("block_chance_floor"),
+		TEXT("blocked_lethal_hit_survived_every_seconds"),
+		TEXT("damage_immunity_after_blocked_lethal_hit_seconds"),
+		TEXT("fervour_on_blocked_lethal_hit_survived"),
+		// And Grinding Advance's 5-point flag, read by UCataclysmAbilitySystemComponent::CombatSecondsHeld. War trees E3.
+		TEXT("combat_seconds_fall_slower"),
+		// And Glass Cannon's critical resistance penetration, asked where a hit is priced. War trees E2.
+		TEXT("critical_penetration"),
+		// And Blood for Blood's share, read by UCataclysmAbilitySystemComponent::ReflectBloodForBlood. 2026-11-27.
+		TEXT("blood_for_blood_reflect_percent"),
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),
@@ -2310,6 +2334,57 @@ FString UCataclysmPlayerClassStats::ChosenClass()
 	// them. Issue #806. Naming `Default` outright still works and is still a
 	// legitimate thing to ask for.
 	return Asked.IsEmpty() ? StartingClassName : Asked;
+}
+
+FString UCataclysmPlayerClassStats::ClassFor(const UDataTable* NodeTable, const FCataclysmPassiveAllocation& Allocation,
+											FName CreationDamageType)
+{
+	const FString Asked = CVarPlayerClass.GetValueOnGameThread();
+	if (!Asked.IsEmpty())
+	{
+		return Asked;
+	}
+
+	// EVERY CLASS TREE THE POINTS ARE IN, WITH ITS POINTS AND WHERE ITS FIRST NODE STANDS. A node no class tree holds
+	// (none today; the empire tree is a table of its own) is left out.
+	TMap<FString, TPair<int32, int32>> Spent;
+	if (NodeTable)
+	{
+		for (int32 Index = 0; Index < Allocation.Nodes.Num(); ++Index)
+		{
+			const FCataclysmSpentNode& Node = Allocation.Nodes[Index];
+			if (Node.Points <= 0)
+			{
+				continue;
+			}
+			const FString Tree = UCataclysmPassiveTree::TreeOf(NodeTable, Node.Node);
+			if (Tree.IsEmpty())
+			{
+				continue;
+			}
+			TPair<int32, int32>& Entry = Spent.FindOrAdd(Tree, TPair<int32, int32>(0, Index));
+			Entry.Key += Node.Points;
+		}
+	}
+	FString Best;
+	int32 BestPoints = 0;
+	int32 BestFirst = MAX_int32;
+	for (const TPair<FString, TPair<int32, int32>>& Each : Spent)
+	{
+		if (Each.Value.Key > BestPoints || (Each.Value.Key == BestPoints && Each.Value.Value < BestFirst))
+		{
+			Best = Each.Key;
+			BestPoints = Each.Value.Key;
+			BestFirst = Each.Value.Value;
+		}
+	}
+	if (!Best.IsEmpty())
+	{
+		return Best;
+	}
+
+	const TArray<FName>& Classes = UCataclysmCharacterCreation::ClassesFor(CreationDamageType);
+	return Classes.Num() > 0 ? Classes[0].ToString() : StartingClassName;
 }
 
 int32 UCataclysmPlayerClassStats::ChosenLevel()

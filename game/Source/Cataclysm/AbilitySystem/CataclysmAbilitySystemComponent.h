@@ -624,6 +624,9 @@ public:
 	void SetStatInputs(TMap<FName, FCataclysmStatInputs>&& Inputs)
 	{
 		StatInputs = MoveTemp(Inputs);
+		// AND WHETHER ANY ROW ASKS FOR THE INCREASED MAXIMUM HEALTH, so `CurrentConditions` sums it only then. The War
+		// trees' slice E1 (2026-11-27).
+		NoteWhatTheRowsAsk();
 		// AND A HELD AURA'S RESERVATION FOLLOWS THE NEW LINE AT ONCE, ruled 2026-11-27 ("reprice auras LIVE"). Nothing
 		// for a component holding no aura. `UCataclysmPlayerClassStats::ApplyTo` asks again once both maxima are written.
 		RepriceAuraReservations();
@@ -1442,6 +1445,11 @@ public:
 		ArmourRemoved,
 		DamageCut,
 		RetaliationTaken,
+		// THE WAR TREES' ENGINE SLICE E2 (2026-11-27): issue #964's mark, "the target takes +3% increased damage per
+		// point from all sources" (Open Wound, Marked Territory), read at the damage taken step with the Deathmark;
+		DamageTaken,
+		// and Rend's "reduces the target's damage reduction by 1% per point", taken from its damage reduction.
+		DamageReductionRemoved,
 	};
 
 	/** The same, saying which of the three the stack does. The form above places `ArmourRemoved` or `DamageCut`. */
@@ -1467,6 +1475,13 @@ public:
 	 * it fires after.
 	 */
 	float NthHitTakenBonusPercent() const;
+
+	/**
+	 * What the attack about to be made deals more, in per cent, when it is the Nth of a worn "every Nth attack deals
+	 * more" row, or 0: Flurry (R11). Asked before the attack is counted, as `NextAttackIsNth` is. The War trees' engine
+	 * slice E2 (2026-11-27).
+	 */
+	float NthAttackMorePercent() const;
 
 	/**
 	 * The share of the mana held that the spell about to be paid for adds to
@@ -1504,6 +1519,16 @@ public:
 	void GrantOwnStack(FName StackKey, float WindowSeconds, int32 Cap);
 
 	/**
+	 * Remove every own stack whose key belongs to `Node`: the key is `Node` followed by `:`, `_From` or `_Row`. Both kinds
+	 * of own stack, the ones that lapse together and the ones that lapse alone. The War trees' engine slice E2
+	 * (2026-11-27), for `own_stacks_removed`.
+	 */
+	void RemoveOwnStacksOf(const FString& Node);
+
+	/** The name of the node a passive row's copy belongs to: its own name less `_From<N>` and `_Row<N>`. War trees E2. */
+	static FString NodeOfRowName(const FString& RowName);
+
+	/**
 	 * The two action names a row uses to grant a charge the next use spends.
 	 * Issue #1833, phase 2. `tools/generate_datatables.py` holds the same two in
 	 * `NEXT_USE_ACTIONS`.
@@ -1534,6 +1559,10 @@ public:
 	 * through `RetaliationTakenPercentNow`. In `PLACED_ACTIONS` too.
 	 */
 	static const TCHAR* AttackerRetaliationTakenAction;
+	/** `enemy_damage_taken`: a stack on the enemy of the event raising the damage it takes. War trees E2 (#964). */
+	static const TCHAR* EnemyDamageTakenAction;
+	/** `enemy_damage_reduction_removed`: a stack on the enemy of the event lowering its damage reduction. Rend. */
+	static const TCHAR* EnemyDamageReductionRemovedAction;
 
 	/**
 	 * The armour stack of `EnemyArmorRemovedAction` placed on every enemy within `NearbyActionRadiusCm` of the
@@ -1548,6 +1577,8 @@ public:
 	static const TCHAR* NthHitTakenDamageAction;
 	static const TCHAR* NthSpellManaCostAction;
 	static const TCHAR* NthAttackNoDamageAction;
+	/** `nth_attack_more_damage`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* NthAttackMoreDamageAction;
 
 	/**
 	 * The six cooldown reset action names. Issue #1833, the cooldown reset
@@ -2061,6 +2092,81 @@ public:
 	 * too.
 	 */
 	static const TCHAR* SmiteNearbyByHitAction;
+	/** `smite_nearby_of_max_health`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* SmiteNearbyOfMaximumHealthAction;
+	/** `smite_nearby_of_recent_damage_taken`. The War trees' engine slice E3 (2026-11-27), Wrathful Presence. */
+	static const TCHAR* SmiteNearbyOfRecentDamageTakenAction;
+	/** `smite_line_by_hit`. The War trees' engine slice E2 (2026-11-27), Seismic Slam (Berserker). */
+	static const TCHAR* SmiteLineByHitAction;
+
+	/** How far back `DamageTakenRecently` looks, in seconds: Wrathful Presence's "in the last 5 seconds". */
+	static constexpr float RecentDamageTakenSeconds = 5.0f;
+
+	/**
+	 * Note damage this character took: what reached health, the energy shield, mana and the temporary absorb, ticks
+	 * included, evaded blows not. Called by `UCataclysmVitalAttributeSet` for every blow. The War trees' engine slice E3.
+	 */
+	void NoteDamageTakenAmount(float Amount);
+
+	/** All the damage noted by `NoteDamageTakenAmount` in the last `RecentDamageTakenSeconds`. Nought with no world. */
+	float DamageTakenRecently() const;
+	/** `strike_target_of_max_health`. The same slice. */
+	static const TCHAR* StrikeTargetOfMaximumHealthAction;
+	/** `next_attack_bonus_of_max_health`. The same slice. */
+	static const TCHAR* NextAttackBonusOfMaximumHealthAction;
+	/** `next_attack_bonus_of_armor`. The same slice. */
+	static const TCHAR* NextAttackBonusOfArmourAction;
+	/** `cooldown_reduce_all_percent`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* CooldownReduceAllPercentAction;
+	/** `strike_target_of_target_missing_health`. The same slice. */
+	static const TCHAR* StrikeTargetOfTargetMissingHealthAction;
+	/** `knock_back_target`. The same slice. */
+	static const TCHAR* KnockBackTargetAction;
+	/** `own_stacks_removed`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* OwnStacksRemovedAction;
+	/** `next_retaliation_more`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* NextRetaliationMoreAction;
+	/** `fervour_per_percent_of_max_health_leeched`. The War trees' engine slice E2 (2026-11-27), Vampiric Fury. */
+	static const TCHAR* FervourPerPercentOfMaxHealthLeechedAction;
+	/** The riders of 2026-11-27: Carnage, Spreading Thorns, Phantom Blades and Unbreakable Will. */
+	static const TCHAR* FervourOfFrenzyDrainSecondsAction;
+	static const TCHAR* RetaliationBurstOnKillAction;
+	static const TCHAR* EchoStrikeLaterAction;
+	static const TCHAR* NextAttackBonusOfBlockedDamageAction;
+
+	/**
+	 * Blood for Blood (`Bulwark_keystone_tw_final`), ruled 2026-11-27: "50% of all damage you take is reflected back to
+	 * the attacker. This reflection ignores resistances and cannot be blocked or evaded. The reflection percentage
+	 * increases by 1% for every 2% of your maximum Fervour currently held, up to 100% at full Fervour." The stat is the
+	 * 50. Its own function, `ReflectBloodForBlood`, called by `UCataclysmVitalAttributeSet` for every blow taken.
+	 */
+	static const TCHAR* BloodForBloodReflectPercentStat;
+
+	/**
+	 * Send `Taken` back to `Attacker` at Blood for Blood's share: the stat plus 1 for every 2% of the maximum class
+	 * resource held, at most 100. A blow that cannot be mitigated or evaded, marked retaliation. Nothing without the stat,
+	 * an attacker, or anything taken.
+	 */
+	void ReflectBloodForBlood(float Taken, AActor* Attacker);
+
+	/** Whether a Phantom Blades echo is being struck now: the hit notice pays no Fervour for it. */
+	bool IsStrikingAnEcho() const { return bStrikingAnEcho; }
+	/** `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* ExecuteNearbyBelowAction;
+
+	/**
+	 * What the next retaliation payment deals more, in per cent, spent by reading it: nought when none is held. Called
+	 * by `UCataclysmRetaliation::Pay` for a payment that sends something. The War trees' engine slice E2 (Spiteful).
+	 */
+	float SpendNextRetaliationMorePercent()
+	{
+		const float Was = NextRetaliationMorePercent;
+		NextRetaliationMorePercent = 0.0f;
+		return Was;
+	}
+
+	/** What the next retaliation payment will deal more, or nought. For a test and the overlay. */
+	float NextRetaliationMoreHeld() const { return NextRetaliationMorePercent; }
 
 	/**
 	 * Wrath Incarnate's pulse. The War vow options' third slice, V3a, 2026-11-25: "When a single hit takes more than 10%
@@ -2273,6 +2379,8 @@ public:
 	 * `STRIKE_STRONGEST_NEAR_ACTION` and `DASH_TO_STRONGEST_AND_STRIKE_ACTION` in `tools/generate_datatables.py`.
 	 */
 	static const TCHAR* StrikeStrongestNearAction;
+	/** `strike_nearest_near`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* StrikeNearestNearAction;
 	static const TCHAR* DashToStrongestAndStrikeAction;
 
 	/** "The strongest enemy within 10 metres": Blade Echo's and Thousand Cuts' reach. */
@@ -2375,6 +2483,19 @@ public:
 
 	/** `DeathmarkPercentNow` of `Carrier`'s component, or nought for any other component. For the damage step. */
 	static float DeathmarkPercentOn(const UAbilitySystemComponent* Carrier);
+
+	/**
+	 * The increased damage the `enemy_damage_taken` stacks placed on `Carrier` add now, in per cent, summed; nought for
+	 * none or a carrier that is not a Cataclysm ability system. Read at the damage taken step beside the Deathmark: from
+	 * every attacker, as issue #964's "from all sources" says. The War trees' engine slice E2 (2026-11-27).
+	 */
+	static float PlacedDamageTakenPercentOn(const UAbilitySystemComponent* Carrier);
+
+	/**
+	 * The damage reduction the `enemy_damage_reduction_removed` stacks placed on `Carrier` take away now, in points,
+	 * summed; nought for none. Taken from its damage reduction before the cap (Rend). The War trees' engine slice E2.
+	 */
+	static float PlacedDamageReductionRemovedOn(const UAbilitySystemComponent* Carrier);
 
 	/**
 	 * Hold Blood Price's damage for `Seconds`: the first melee blow of this character's own that lands in that time adds
@@ -2771,6 +2892,14 @@ public:
 	 * V3a, 2026-11-25: 1, "a judgement, play-test". A flat stat with no gameplay attribute, asked with no tags.
 	 */
 	static const TCHAR* LeechOverhealAbsorbDecayStat;
+
+	/**
+	 * The LARGEST of one stat's rows, each judged alone with this character's state, rather than their sum; nought with
+	 * none. The War trees' engine slice E3 (2026-11-27), for the two overleech stats: R14 says a character with Open
+	 * Wounds (30%) and Eternal Hunger (100%) heals up to 100% above its maximum, not 130%, and decays at 1% a second,
+	 * not 2%.
+	 */
+	float LargestOfItsRows(FName Stat) const;
 
 	/**
 	 * A leech payment healed this character's health and offered `Overheal` points more than fitted under the heal's
@@ -3872,6 +4001,22 @@ public:
 	bool MaySurviveLethalHit() const;
 
 	/**
+	 * The Last Bastion's three figures, the War trees' engine slice E3 (2026-11-27): "When you block an attack that would
+	 * have killed you, instead survive at 1 HP, gain 100 Fervour, and become immune to damage for 2 seconds. Can only
+	 * trigger once every 120 seconds." The first is the 120, and above zero means the save is held; the second is the 2;
+	 * the third the 100. A blocked blow, not a tick, judged before the Final Onslaught's save, with a clock of its own.
+	 */
+	static const TCHAR* BlockedLethalHitSurvivedEverySecondsStat;
+	static const TCHAR* ImmuneAfterBlockedLethalHitSecondsStat;
+	static const TCHAR* FervourOnBlockedLethalHitSurvivedStat;
+
+	/** Whether a blocked lethal hit may be survived now: the shape of `MaySurviveLethalHit`, with its own clock. */
+	bool MaySurviveBlockedLethalHit() const;
+
+	/** Record that a blocked lethal hit was survived: the next waits `IntervalSeconds`, immune for `ImmuneSeconds`. */
+	void NoteBlockedLethalHitSurvived(float IntervalSeconds, float ImmuneSeconds);
+
+	/**
 	 * Record that a lethal hit was survived: the next waits `IntervalSeconds`,
 	 * and no damage is taken for `ImmuneSeconds` from now.
 	 */
@@ -4658,7 +4803,7 @@ public:
 	 * @param bDamageOverTime  whether the blow was a tick and not a hit
 	 */
 	void NoteHitTaken(bool bLanded, const AActor* Attacker, bool bDamageOverTime,
-					  float PercentOfMaxHealthLost = -1.0f);
+					  float PercentOfMaxHealthLost = -1.0f, bool bBlocked = false);
 
 	/**
 	 * The same, for a blow that landed. Kept as a form of its own rather than
@@ -4818,6 +4963,40 @@ public:
 		return Was;
 	}
 
+	/**
+	 * Whether the hit being announced, or whose leech is being paid, was a critical strike: 1 yes, 0 no, -1 no hit in
+	 * hand. For the conditions `blow_was_critical` and `blow_was_not_critical`. The War trees' slice E1 (2026-11-27). Set by
+	 * whoever announces the hit (`ACataclysmPlayerCharacter::OnSomethingWasHit`, around the Fervour a blow gains) and
+	 * whoever pays its leech (`UCataclysmVitalAttributeSet`, around `UCataclysmLeech::NoteHit`); returns what it held
+	 * before, for the caller to put back.
+	 */
+	int32 SetHitBeingAnnouncedCritical(int32 Critical)
+	{
+		const int32 Was = HitBeingAnnouncedCritical;
+		HitBeingAnnouncedCritical = Critical;
+		return Was;
+	}
+
+	/** See `SetHitBeingAnnouncedCritical`. */
+	int32 HitBeingAnnouncedCriticalNow() const { return HitBeingAnnouncedCritical; }
+
+	/**
+	 * Whether the attack in hand began at a full Fervour pool, for the condition `attack_at_full_fervour`. The War trees'
+	 * slice E1 (2026-11-27). Set by `UCataclysmSkillTemplate::BeginAttackOn` before anything that attack spends, and
+	 * cleared by `EndAttack`.
+	 */
+	void SetAttackBeganAtFullFervour(bool bFull) { bAttackBeganAtFullFervour = bFull; }
+
+	/** See `SetAttackBeganAtFullFervour`. */
+	bool AttackBeganAtFullFervour() const { return bAttackBeganAtFullFervour; }
+
+	/**
+	 * Whether the pool is full now, by the full-bar judgement `ClassResourceAtMaximum` makes: held at or above the
+	 * maximum less what an army reserves, with a maximum above nothing. False with no class resource attribute set.
+	 * The War trees' slice E1 (2026-11-27), for `BeginAttackOn`'s snapshot.
+	 */
+	bool IsClassResourceFull() const;
+
 	/** What an ailment-laying row action asks to be above nought: the hit's whole landed figure, or the event's amount
 	 *  when no hit is being announced. */
 	float DealtForAnAilment(float EventAmount) const { return FMath::Max(EventAmount, HitBeingAnnouncedLanded); }
@@ -4860,6 +5039,12 @@ public:
 
 	/** What Titanfall stored for the next attack, or nought (T4). */
 	float TitanfallStoredDamage() const { return TitanfallStore; }
+
+	/** What a `next_attack_bonus_of_*` row stored for the next attack, or nought. The War trees' engine slice E2. */
+	float NextAttackBonusStored() const { return NextAttackBonusStore; }
+
+	/** The wearer's maximum health now, or nought with no vital attribute set. The War trees' engine slice E2. */
+	float MaximumHealthNow() const;
 
 	/**
 	 * How a device of this character's answers `Enemy`, queued and made at depth nought as Counterfire's answers are: a
@@ -5146,6 +5331,17 @@ public:
 	void NoteFervourDecayed(float Amount);
 
 	/**
+	 * Fervour Frenzy's drain took: raises `frenzy_drained` once for each 10 taken, counted across the steps that took
+	 * them, as `NoteFervourDecayed` counts its 5. The War trees' engine slice E2 (2026-11-27), for Frenetic's "for every 10
+	 * Fervour drained by the Frenzy state, automatically trigger a bonus strike" and Knife Dance. Called by
+	 * `FCataclysmBerserkerStates::DrainStep` while the state is Frenzy.
+	 */
+	void NoteFrenzyDrained(float Amount);
+
+	/** How much Frenzy's drain must take for one `frenzy_drained`: 10, Frenetic's sentence. */
+	static constexpr float FrenzyDrainedPerEvent = 10.0f;
+
+	/**
 	 * A stat as if asked against a creature of rarity rung `RarityStep` (0 common, 1 Elite ...) with no creature in
 	 * hand, so a row under `target_rarity_is` or `target_rarity_at_least` can be judged. The Death trees' slice C4b1
 	 * (2026-11-25): before any kill, the full length of the decay hold is a common kill's grace, as ruled, and the grace
@@ -5383,6 +5579,17 @@ public:
 	 * character is out of combat or there is no world. Issue #1815.
 	 */
 	float SecondsInCombat() const;
+
+	/**
+	 * Seconds of combat held, for `combat_seconds_held` (Grinding Advance, the War trees' engine slice E3, 2026-11-27):
+	 * what was carried into this combat plus how long it has lasted while in combat; out of combat, what was held when it
+	 * lapsed less a second for each second since -- half a second under `combat_seconds_fall_slower` -- and never below
+	 * nought. Nought for a character never in combat, -1 with no world.
+	 */
+	float CombatSecondsHeld() const;
+
+	/** `combat_seconds_fall_slower`, Grinding Advance's 5-point flag. Read unconditioned, with no tags. War trees E3. */
+	static const TCHAR* CombatSecondsFallSlowerStat;
 
 	/**
 	 * How long the character has been out of combat, in seconds, or -1 when it
@@ -5784,6 +5991,13 @@ public:
 	 */
 	void NoteCrowdControlApplied();
 
+	/**
+	 * A crowd control effect landed on this character, or was refused by its immunity: raises `crowd_control_taken` or
+	 * `crowd_control_refused`, with `From` -- whose act it was -- as the event's own character, so a row may strike it
+	 * back. The War trees' slice E1 (2026-11-27). See `UCataclysmSkillEffects::NoteCrowdControlReceived`.
+	 */
+	void NoteCrowdControlReceived(AActor* From, bool bRefused);
+
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceCrowdControlApplied() const;
 
@@ -5792,7 +6006,25 @@ public:
 	{
 		LeechPayments.Add(Payment);
 		NoteLeechPaymentsChanged();
+		// AND A PAYMENT OF HEALTH IS A LEECH, for the rows on `life_leeched` (the War trees' slice E1, 2026-11-27).
+		NoteLifeLeechPromised(Payment);
 	}
+
+	/**
+	 * Raises `life_leeched`, with the health the payment promises as the event's amount, for a payment to the health
+	 * pool: Sanguine's "Each time you leech HP" and Vampiric Fury. The War trees' slice E1 (2026-11-27). Nothing for a
+	 * mana or energy shield payment, or one of nothing.
+	 */
+	void NoteLifeLeechPromised(const FCataclysmLeechPayment& Payment);
+
+	/** How far `WithEnemiesInReach` looks for the enemies this character struck recently, in metres. War trees E1. */
+	static constexpr float StruckRecentlySearchMetres = 40.0f;
+
+	/** The window of `enemies_struck_recently`, in seconds: Dancing Blades' "in the last 3 seconds". War trees E1. */
+	static constexpr float StruckRecentlySeconds = 3.0f;
+
+	/** The window of `enemies_that_struck_you_recently`: Outnumbered's "in the last 10 seconds". War trees E1. */
+	static constexpr float StruckYouRecentlySeconds = 10.0f;
 
 	/** Replace the list with what is still owed after a step. */
 	void SetLeechPayments(TArray<FCataclysmLeechPayment>&& Payments)
@@ -6850,6 +7082,12 @@ protected:
 
 	/** Titanfall's store for the next attack, its window's end and its clock. See `TryTitanfall`. */
 	float TitanfallStore = 0.0f;
+
+	/**
+	 * What a `next_attack_bonus_of_*` row stored for the next attack: the larger of what it stored and what was held.
+	 * Paid whole with Titanfall's store by `SpendStoredAbsorbedDamage`. The War trees' engine slice E2 (2026-11-27).
+	 */
+	float NextAttackBonusStore = 0.0f;
 	float TitanfallUnkillableUntilSeconds = -1.0f;
 	float TitanfallReadyAtSeconds = 0.0f;
 	bool bTitanfallHasFired = false;
@@ -6883,6 +7121,57 @@ protected:
 
 	/** See `SetHitBeingAnnouncedLanded`. The owner's ruling of 2026-11-26 on ailments. */
 	float HitBeingAnnouncedLanded = 0.0f;
+
+	/** See `SetHitBeingAnnouncedCritical`. The War trees' slice E1 (2026-11-27). */
+	int32 HitBeingAnnouncedCritical = -1;
+
+	/** See `SetAttackBeganAtFullFervour`. The War trees' slice E1 (2026-11-27). */
+	bool bAttackBeganAtFullFervour = false;
+
+	/** Whether the hit taken being announced was blocked: 1, 0, or -1 with none. Held by `NoteHitTaken`. War trees E2. */
+	int32 HitTakenBlockedNow = -1;
+
+	/** See `SpendNextRetaliationMorePercent`. The War trees' engine slice E2 (2026-11-27). */
+	float NextRetaliationMorePercent = 0.0f;
+
+	/** When the next blocked lethal hit may be survived, or -1 for never survived one. The Last Bastion (E3). */
+	float BlockedLethalHitSurvivalNextAllowedSeconds = -1.0f;
+
+	/** The seconds of combat held when the current combat began. See `CombatSecondsHeld`. War trees E3. */
+	float CombatSecondsCarriedIn = 0.0f;
+
+	/** When and how much damage was taken, oldest first, pruned past `RecentDamageTakenSeconds`. War trees E3. */
+	TArray<TPair<float, float>> RecentDamageTaken;
+
+	/** What the last retaliation payment took from one enemy, for Spreading Thorns. Nought until one is paid. */
+	float LastRetaliationTaken = 0.0f;
+
+	/** A Phantom Blades echo waiting to strike. */
+	struct FPendingEcho
+	{
+		TWeakObjectPtr<AActor> Target;
+		float DueAtSeconds = 0.0f;
+		float Percent = 0.0f;
+		FGameplayTagContainer Tags;
+	};
+	TArray<FPendingEcho> PendingEchoes;
+	bool bStrikingAnEcho = false;
+
+	/** Strike every echo whose time has come; drop those whose target is gone or dead. Run by `StepTimedGrants`. */
+	void StrikeDueEchoes();
+
+	/**
+	 * Whether some row in `StatInputs` is scaled by `increased_max_health`, set by `NoteWhatTheRowsAsk` whenever the
+	 * inputs are written. `CurrentConditions` sums the increases only then, because it runs on every stat asked. The War
+	 * trees' slice E1 (2026-11-27).
+	 */
+	bool bSomeRowAsksIncreasedMaximumHealth = false;
+
+	/** The same for `max_health_from_other_sources` (Colossus, R3). The War trees' slice E3 (2026-11-27). */
+	bool bSomeRowAsksMaximumHealthFromOtherSources = false;
+
+	/** Sets `bSomeRowAsksIncreasedMaximumHealth` and `bSomeRowAsksMaximumHealthFromOtherSources` from `StatInputs`. */
+	void NoteWhatTheRowsAsk();
 
 	/** See `LastShieldRechargeRate`. */
 	float LastShieldRate = 0.0f;
@@ -7208,6 +7497,9 @@ protected:
 	 */
 	float FervourDecayedTowardAnEvent = 0.0f;
 
+	/** What Frenzy's drain has taken toward the next `frenzy_drained`. The War trees' engine slice E2. */
+	float FrenzyDrainedTowardAnEvent = 0.0f;
+
 	/** When Phylactery's save may next be made, in world seconds. Negative means now. */
 	float FervourLethalSaveNextAllowedSeconds = -1.0f;
 
@@ -7374,6 +7666,10 @@ protected:
 	 */
 	float LastHitTakenAtSeconds = -1.0f;
 
+	/** When the last landed hit that was not a tick was taken, and the gap before it, or -1. Counter Stance (E2). */
+	float LastNonTickHitTakenAtSeconds = -1.0f;
+	float SecondsBetweenLastTwoHitsTaken = -1.0f;
+
 	/** When a blow that landed last reached this character, or -1. See `SecondsSinceLandedHitTaken`. */
 	float LastLandedHitTakenAtSeconds = -1.0f;
 
@@ -7520,6 +7816,12 @@ protected:
 
 	/** The skill the `skill_use` event in hand is about, and where it was aimed. Set only inside `ActOnSkillUse`. */
 	FName SkillInHandName;
+
+	/**
+	 * The last melee skill this character used, the basic attack included, or none: Weaving (R12), the War trees' engine
+	 * slice E2 (2026-11-27). Written after each melee use raises `different_melee_skill_used` or `same_melee_skill_used`.
+	 */
+	FName LastMeleeSkillName;
 	FVector SkillInHandAim = FVector::ZeroVector;
 
 	/** The repeat a row asked for and nobody has made yet. See `ActOnSkillUse`. */
