@@ -16935,8 +16935,8 @@ namespace CataclysmStatExemptionTest
 		{
 			return;
 		}
-		Roll->Set(0.0f, ECVF_SetByCode);
-		ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByCode); };
+		Roll->Set(0.0f, ECVF_SetByConsole);
+		ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByConsole); };
 		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
 		FScopedFighter Holding(World, /*AttackDamage=*/0.0f);
 		GrantFlats(Holding.Actor, {{FName(ACataclysmMinion::GadgetIgnoreHitChanceStat), 50.0f}});
