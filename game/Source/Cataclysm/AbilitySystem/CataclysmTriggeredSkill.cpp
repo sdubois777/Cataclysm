@@ -73,7 +73,9 @@ bool UCataclysmTriggeredSkill::FindSkillRowNamed(FName Named, const FString& Dam
 	for (const FCataclysmWeaponSkill& Skill :
 		 UCataclysmWeaponSkills::SkillsOfDamageType(UCataclysmWeaponSkills::LoadGeneratedTable(), DamageType))
 	{
-		if (FName(*Skill.Name) == Named)
+		// BY THE ROW'S KEY (`War_Warhammer_Heavy`), NOT `Name`, which holds the skill's shown name ("Earthquake"): the
+		// first build compared `Name`, and `Cataclysm.WarSkills.` found no row (war-skills-w1, 2026-11-28).
+		if (Skill.RowName == Named)
 		{
 			Out = Skill;
 			return true;
