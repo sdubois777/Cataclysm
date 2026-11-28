@@ -5662,6 +5662,28 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bFervourPerPercentOfMaxHealth = false;
 
 	/**
+	 * The class resource raised by `Percent` seconds of the wearer's Frenzy drain (`fervour_drain_per_second`, asked
+	 * now): `fervour_of_frenzy_drain_seconds`. Carnage, as ruled by the coordinating session on 2026-11-27: "Killing an
+	 * enemy while in Frenzy restores Fervour equal to 1 second of Frenzy's drain per point. This can happen at most once
+	 * every 1 second" -- the second is the row's Trigger Cooldown. Nothing for a wearer with no drain.
+	 */
+	bool bFrenzyDrainFervour = false;
+
+	/**
+	 * A kill inside the wearer's retaliation radius sets off a blow of `Percent` per cent of the wearer's last
+	 * retaliation payment to one enemy on every enemy within `EventValue` metres of the slain one:
+	 * `retaliation_burst_on_kill`. Spreading Thorns, ruled 2026-11-27. The blow is marked retaliation.
+	 */
+	bool bRetaliationBurstOnKill = false;
+
+	/**
+	 * The event's hit struck again on the same enemy `EventValue` seconds later at `Percent` per cent of weapon damage:
+	 * `echo_strike_later`. Phantom Blades, ruled 2026-11-27. The echo rolls its own critical strike and leeches on its own;
+	 * it raises no event, so no row acts on it and it makes no echo, and it earns no Fervour.
+	 */
+	bool bEchoStrikeLater = false;
+
+	/**
 	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed
 	 * (`UCataclysmAbilitySystemComponent::CanBeExecuted`: alive, no Boss, damage reaches it), loses the health it has left:
 	 * `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27), Killing Blow's "when you attack at maximum
@@ -6145,6 +6167,8 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * (`UCataclysmAbilitySystemComponent::NextAttackBonusStore`), the larger of it and what was stored.
 	 */
 	int32 NextAttackBonusOf = 0;
+	// AND 3, THE BLOCKED DAMAGE THE `block` EVENT CARRIES, ADDED TO WHAT IS HELD rather than the larger kept: Unbreakable
+	// Will's "+2% of blocked damage is added to your next attack per point" (2026-11-27).
 
 	/**
 	 * Set, this action EXECUTES THE ENEMY A HIT OF ITS WEARER'S LEAVES BELOW A SHARE OF ITS HEALTH. `Percent` is the

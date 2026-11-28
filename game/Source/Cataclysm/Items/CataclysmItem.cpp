@@ -1831,6 +1831,19 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.NextAttackBonusOf = 2;
 					}
+					// AND THE RIDERS OF 2026-11-27: Unbreakable Will's blocked damage, Carnage, Spreading Thorns and Phantom
+					// Blades.
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::NextAttackBonusOfBlockedDamageAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.NextAttackBonusOf = 3;
+					}
+					Action.bFrenzyDrainFervour = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::FervourOfFrenzyDrainSecondsAction, ESearchCase::IgnoreCase);
+					Action.bRetaliationBurstOnKill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::RetaliationBurstOnKillAction, ESearchCase::IgnoreCase);
+					Action.bEchoStrikeLater = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EchoStrikeLaterAction, ESearchCase::IgnoreCase);
 					if (bArmourRemovedNearby)
 					{
 						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;

@@ -2128,6 +2128,29 @@ public:
 	static const TCHAR* NextRetaliationMoreAction;
 	/** `fervour_per_percent_of_max_health_leeched`. The War trees' engine slice E2 (2026-11-27), Vampiric Fury. */
 	static const TCHAR* FervourPerPercentOfMaxHealthLeechedAction;
+	/** The riders of 2026-11-27: Carnage, Spreading Thorns, Phantom Blades and Unbreakable Will. */
+	static const TCHAR* FervourOfFrenzyDrainSecondsAction;
+	static const TCHAR* RetaliationBurstOnKillAction;
+	static const TCHAR* EchoStrikeLaterAction;
+	static const TCHAR* NextAttackBonusOfBlockedDamageAction;
+
+	/**
+	 * Blood for Blood (`Bulwark_keystone_tw_final`), ruled 2026-11-27: "50% of all damage you take is reflected back to
+	 * the attacker. This reflection ignores resistances and cannot be blocked or evaded. The reflection percentage
+	 * increases by 1% for every 2% of your maximum Fervour currently held, up to 100% at full Fervour." The stat is the
+	 * 50. Its own function, `ReflectBloodForBlood`, called by `UCataclysmVitalAttributeSet` for every blow taken.
+	 */
+	static const TCHAR* BloodForBloodReflectPercentStat;
+
+	/**
+	 * Send `Taken` back to `Attacker` at Blood for Blood's share: the stat plus 1 for every 2% of the maximum class
+	 * resource held, at most 100. A blow that cannot be mitigated or evaded, marked retaliation. Nothing without the stat,
+	 * an attacker, or anything taken.
+	 */
+	void ReflectBloodForBlood(float Taken, AActor* Attacker);
+
+	/** Whether a Phantom Blades echo is being struck now: the hit notice pays no Fervour for it. */
+	bool IsStrikingAnEcho() const { return bStrikingAnEcho; }
 	/** `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27). */
 	static const TCHAR* ExecuteNearbyBelowAction;
 
@@ -7119,6 +7142,23 @@ protected:
 
 	/** When and how much damage was taken, oldest first, pruned past `RecentDamageTakenSeconds`. War trees E3. */
 	TArray<TPair<float, float>> RecentDamageTaken;
+
+	/** What the last retaliation payment took from one enemy, for Spreading Thorns. Nought until one is paid. */
+	float LastRetaliationTaken = 0.0f;
+
+	/** A Phantom Blades echo waiting to strike. */
+	struct FPendingEcho
+	{
+		TWeakObjectPtr<AActor> Target;
+		float DueAtSeconds = 0.0f;
+		float Percent = 0.0f;
+		FGameplayTagContainer Tags;
+	};
+	TArray<FPendingEcho> PendingEchoes;
+	bool bStrikingAnEcho = false;
+
+	/** Strike every echo whose time has come; drop those whose target is gone or dead. Run by `StepTimedGrants`. */
+	void StrikeDueEchoes();
 
 	/**
 	 * Whether some row in `StatInputs` is scaled by `increased_max_health`, set by `NoteWhatTheRowsAsk` whenever the

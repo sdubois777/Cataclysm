@@ -1375,6 +1375,8 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("combat_seconds_fall_slower"),
 		// And Glass Cannon's critical resistance penetration, asked where a hit is priced. War trees E2.
 		TEXT("critical_penetration"),
+		// And Blood for Blood's share, read by UCataclysmAbilitySystemComponent::ReflectBloodForBlood. 2026-11-27.
+		TEXT("blood_for_blood_reflect_percent"),
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),

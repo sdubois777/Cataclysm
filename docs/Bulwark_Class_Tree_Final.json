@@ -529,7 +529,7 @@
       "data": {
         "kind": "basic",
         "name": "Unbreakable Will",
-        "description": "+2% of blocked damage is added to your next attack per point. At 5 points: This bonus is tripled if you block 5 times without attacking.",
+        "description": "+2% of blocked damage is added to your next attack per point. At 5 points: blocked damage is added at three times the rate.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1387,7 +1387,7 @@
       "data": {
         "kind": "basic",
         "name": "Spreading Thorns",
-        "description": "+1 meter to retaliation aura radius per point. At 4 points: Enemies killed within the aura explode, dealing retaliation damage to nearby enemies.",
+        "description": "+1 meter to retaliation aura radius per point. At 4 points: Enemies killed within the aura explode, dealing 100% of your retaliation damage to every enemy within 4 meters.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1541,7 +1541,7 @@
       "data": {
         "kind": "keystone",
         "name": "Blood for Blood",
-        "description": "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances and cannot be blocked or evaded. The reflection percentage increases by 1% for every 5 Fervour currently held, up to a maximum of 100% at full Fervour.",
+        "description": "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances and cannot be blocked or evaded. The reflection percentage increases by 1% for every 2% of your maximum Fervour currently held, up to 100% at full Fervour.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

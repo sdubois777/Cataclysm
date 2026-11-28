@@ -436,6 +436,30 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
       R(None, "", 100, action="own_stacks_removed", action_event="same_melee_skill_used"),
       R(None, "", -3, action="class_resource", action_event="different_melee_skill_used", fraction_of="points",
         cond="in_frenzy"))),
+    # THE FIVE RIDERS THE COORDINATING SESSION RULED ON 2026-11-27, each with its ruled sentence.
+    # UNBREAKABLE WILL: "+2% of blocked damage is added to your next attack per point. At 5 points: blocked damage is
+    # added at three times the rate." A second row from 5 points adds twice more; the five-block streak was dropped.
+    ("Bulwark_basic_ic_t1_003", "Unbreakable Will",
+     (R(None, "", 2, action="next_attack_bonus_of_blocked_damage", action_event="block"),
+      R(None, "", 4, action="next_attack_bonus_of_blocked_damage", action_event="block", min_points=5,
+        per_point_from=1))),
+    # CARNAGE: "Dual wield only. Killing an enemy while in Frenzy restores Fervour equal to 1 second of Frenzy's drain
+    # per point. This can happen at most once every 1 second."
+    ("Berserker_dw_017", "Carnage",
+     (R(None, "", 1, action="fervour_of_frenzy_drain_seconds", action_event="kill", cond="in_frenzy",
+        cond2="dual_wielding", trigger_cooldown=1),)),
+    # SPREADING THORNS: "+1 meter to retaliation aura radius per point. At 4 points: Enemies killed within the aura
+    # explode, dealing 100% of your retaliation damage to every enemy within 4 meters."
+    ("Bulwark_basic_tw_t3_002", "Spreading Thorns",
+     (R("retaliation_radius_metres", "flat", 1),
+      R(None, "", 100, action="retaliation_burst_on_kill", action_event="kill", event_value=4, min_points=4))),
+    # PHANTOM BLADES: one echo per melee hit, 60% of weapon damage on the same enemy 0.75 seconds later; it crits and
+    # leeches on its own, earns no Fervour and makes no echo.
+    ("Berserker_dw_ks_003", "Phantom Blades",
+     (R(None, "", 60, tags=MELEE, action="echo_strike_later", action_event="hit_dealt", event_value=0.75,
+        cond="dual_wielding"),)),
+    # BLOOD FOR BLOOD: its own engine function, the 50 its stat.
+    ("Bulwark_keystone_tw_final", "Blood for Blood", (R("blood_for_blood_reflect_percent", "flat", 50),)),
 )
 
 #: Every node this script writes.

@@ -8901,13 +8901,28 @@ NEXT_RETALIATION_MORE_ACTION = "next_retaliation_more"
 #: AND `fervour_per_percent_of_max_health_leeched`: the class resource raised by the value for each 1% of maximum health
 #: the event carried, never above the pool's maximum. Vampiric Fury, on `life_leeched`. The War trees' engine slice E2.
 FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION = "fervour_per_percent_of_max_health_leeched"
+#: AND THREE RIDERS OF 2026-11-27 (the coordinating session's rulings): `fervour_of_frenzy_drain_seconds`, the class
+#: resource raised by the value's seconds of Frenzy's drain (Carnage, with a Trigger Cooldown of 1 for "at most once
+#: every 1 second"); `retaliation_burst_on_kill`, on `kill` only, a kill inside the retaliation radius bursting for the
+#: value's per cent of the last retaliation payment on every enemy within the row's Event Value in metres of the slain
+#: one (Spreading Thorns); `echo_strike_later`, on `hit_dealt` only, the hit struck again on the same enemy the row's
+#: Event Value in seconds later at the value's per cent of weapon damage (Phantom Blades).
+FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION = "fervour_of_frenzy_drain_seconds"
+RETALIATION_BURST_ON_KILL_ACTION = "retaliation_burst_on_kill"
+ECHO_STRIKE_LATER_ACTION = "echo_strike_later"
+RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION)
+RIDER_ACTION_EVENTS = {RETALIATION_BURST_ON_KILL_ACTION: ("kill",), ECHO_STRIKE_LATER_ACTION: ("hit_dealt",),
+                       "next_attack_bonus_of_blocked_damage": ("block",)}
+MOST_ECHO_DELAY_SECONDS = 5.0
 #: AND `execute_nearby_below`: every enemy within the row's Event Value in metres (required, up to
 #: `MAX_SMITE_NEARBY_BY_HIT_METRES`) below the value's per cent of its maximum health, that may be executed, loses the
 #: health it has left. Killing Blow. On any event the game fires.
 EXECUTE_NEARBY_BELOW_ACTION = "execute_nearby_below"
 KNOCK_BACK_TARGET_ACTION = "knock_back_target"
 MAX_KNOCK_BACK_METRES = 10.0
-NEXT_ATTACK_BONUS_ACTIONS = ("next_attack_bonus_of_max_health", "next_attack_bonus_of_armor")
+NEXT_ATTACK_BONUS_ACTIONS = ("next_attack_bonus_of_max_health", "next_attack_bonus_of_armor",
+                             # AND UNBREAKABLE WILL'S, on `block` only, the blocked damage added to what is held.
+                             "next_attack_bonus_of_blocked_damage")
 MAX_SIZED_BY_A_STAT_PERCENT = 100.0
 
 #: The action that EXECUTES THE ENEMY A HIT LEAVES BELOW A SHARE OF ITS HEALTH,
@@ -8958,6 +8973,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action == STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION or action == KNOCK_BACK_TARGET_ACTION
             or action == NEXT_RETALIATION_MORE_ACTION
             or action == FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION
+            or action in RIDER_ACTIONS
             # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
             # a second" is its Trigger Cooldown (V4b, 2026-11-25).
             or action == COUNTERFIRE_ACTION
@@ -8977,7 +8993,8 @@ def takes_a_trigger_cooldown(action: str) -> bool:
 #: empty, writes no wait, and one swing that leaves three enemies below the
 #: share rolls for each of the three. A row that states a wait keeps it: the
 #: engine already starts one at an execute, and a later sentence may state one.
-ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN = (EXECUTE_TARGET_ACTION,)
+#: AND PHANTOM BLADES' ECHO (2026-11-27): "one echo per melee hit", so a quarter second between two would drop one.
+ACTIONS_WITH_NO_DEFAULT_TRIGGER_COOLDOWN = (EXECUTE_TARGET_ACTION, "echo_strike_later")
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -9579,7 +9596,11 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
     if action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
                   KNOCK_BACK_TARGET_ACTION, OWN_STACKS_REMOVED_ACTION, NEXT_RETALIATION_MORE_ACTION,
                   EXECUTE_NEARBY_BELOW_ACTION, FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION) \
-            or action in NEXT_ATTACK_BONUS_ACTIONS:
+            or action in NEXT_ATTACK_BONUS_ACTIONS or action in RIDER_ACTIONS:
+        if action in RIDER_ACTION_EVENTS and event not in RIDER_ACTION_EVENTS[action]:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} acts on {event or '(none)'!r}; {action!r} acts on "
+                f"{', '.join(RIDER_ACTION_EVENTS[action])} only.")
         _check_sized_by_a_stat_action(index, who, action, event, fraction_of, kind, raw, headers)
         return
     if action == EXECUTE_TARGET_ACTION:
@@ -10749,6 +10770,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != OWN_STACKS_REMOVED_ACTION \
                 and action != NEXT_RETALIATION_MORE_ACTION \
                 and action != FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION \
+                and action not in RIDER_ACTIONS \
                 and action != EXECUTE_NEARBY_BELOW_ACTION \
                 and action not in NEXT_ATTACK_BONUS_ACTIONS \
                 and action != EXECUTE_TARGET_ACTION \
@@ -11151,7 +11173,8 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"up to {MAX_KNOCK_BACK_METRES:g}.")
     elif action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
                     NEXT_RETALIATION_MORE_ACTION, EXECUTE_NEARBY_BELOW_ACTION,
-                    FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS:
+                    FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS \
+            or action == RETALIATION_BURST_ON_KILL_ACTION or action == ECHO_STRIKE_LATER_ACTION:
         if not (0 < low <= MAX_SIZED_BY_A_STAT_PERCENT and 0 < high <= MAX_SIZED_BY_A_STAT_PERCENT):
             raise DataError(
                 f"Enchantment Effects row {index}: {name} is {low:g} to {high:g} per cent of a stat of the "
@@ -11952,8 +11975,15 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"Enchantment Effects row {index}: {name} reaches a death "
                     f"{event_value:g} metres away. It is 0, the 3 metres every "
                     f"such row reached before, up to {MAX_NEARBY_DEATH_METRES:g}.")
+    elif action == ECHO_STRIKE_LATER_ACTION:
+        # OR THE ECHO'S DELAY, in seconds, required. Phantom Blades (2026-11-27).
+        event_value = number(event_value_text or "0", "Event Value", index)
+        if not 0 < event_value <= MOST_ECHO_DELAY_SECONDS:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} strikes again {event_value:g} seconds later. The delay is "
+                f"above 0 and up to {MOST_ECHO_DELAY_SECONDS:g}.")
     elif action in (SMITE_NEARBY_BY_HIT_ACTION, "smite_nearby_of_max_health", EXECUTE_NEARBY_BELOW_ACTION,
-                    "smite_nearby_of_recent_damage_taken", "smite_line_by_hit"):
+                    "smite_nearby_of_recent_damage_taken", "smite_line_by_hit", RETALIATION_BURST_ON_KILL_ACTION):
         # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
         # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`. AND OF ONE SIZED BY MAXIMUM HEALTH, the War trees' engine slice
         # E2 (2026-11-27), which reads its radius the same way.

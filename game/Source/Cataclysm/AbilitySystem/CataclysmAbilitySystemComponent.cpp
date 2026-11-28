@@ -33,6 +33,7 @@
 // For the debuffs a conditional or scaling bonus asks about. Issue #962.
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmBerserkerStates.h"
 // For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
@@ -7003,6 +7004,72 @@ const TCHAR* UCataclysmAbilitySystemComponent::NextRetaliationMoreAction =
 	TEXT("next_retaliation_more");
 const TCHAR* UCataclysmAbilitySystemComponent::FervourPerPercentOfMaxHealthLeechedAction =
 	TEXT("fervour_per_percent_of_max_health_leeched");
+const TCHAR* UCataclysmAbilitySystemComponent::FervourOfFrenzyDrainSecondsAction = TEXT("fervour_of_frenzy_drain_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::RetaliationBurstOnKillAction = TEXT("retaliation_burst_on_kill");
+const TCHAR* UCataclysmAbilitySystemComponent::EchoStrikeLaterAction = TEXT("echo_strike_later");
+const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfBlockedDamageAction =
+	TEXT("next_attack_bonus_of_blocked_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::BloodForBloodReflectPercentStat = TEXT("blood_for_blood_reflect_percent");
+
+void UCataclysmAbilitySystemComponent::ReflectBloodForBlood(float Taken, AActor* Attacker)
+{
+	AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+	if (!Self || !Attacker || Attacker == Self || Taken <= 0.0f)
+	{
+		return;
+	}
+	float Percent = StatForSkill(FName(BloodForBloodReflectPercentStat), FGameplayTagContainer(), 0.0f);
+	if (Percent <= 0.0f)
+	{
+		return;
+	}
+	const float Held = GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	const float Most = GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute());
+	if (Most > 0.0f)
+	{
+		Percent += FMath::FloorToFloat(FMath::Clamp(Held / Most * 100.0f, 0.0f, 100.0f) / 2.0f);
+	}
+	Percent = FMath::Min(Percent, 100.0f);
+	FCataclysmHitDelivery Reflected;
+	Reflected.bIsRetaliation = true;
+	Reflected.bCannotBeMitigated = true;
+	Reflected.bCannotBeEvaded = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Self, Attacker, Taken * Percent / 100.0f, Reflected);
+}
+
+void UCataclysmAbilitySystemComponent::StrikeDueEchoes()
+{
+	const UWorld* World = GetWorld();
+	AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+	if (!World || PendingEchoes.IsEmpty())
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	TArray<FPendingEcho> Due;
+	for (int32 Index = PendingEchoes.Num() - 1; Index >= 0; --Index)
+	{
+		if (!PendingEchoes[Index].Target.IsValid() || PendingEchoes[Index].DueAtSeconds <= Now)
+		{
+			Due.Add(PendingEchoes[Index]);
+			PendingEchoes.RemoveAt(Index);
+		}
+	}
+	for (int32 Index = Due.Num() - 1; Index >= 0; --Index)
+	{
+		AActor* Target = Due[Index].Target.Get();
+		if (!Self || !Target || UCataclysmSkillEffects::IsDead(Target))
+		{
+			continue;
+		}
+		// AT DEPTH ONE, SO THE HIT IT RAISES FIRES NO ROW, and marked, so the hit notice pays no Fervour for it.
+		TGuardValue<int32> NoRows(PoolActionDepth, PoolActionDepth + 1);
+		TGuardValue<bool> Echoing(bStrikingAnEcho, true);
+		FCataclysmHitDelivery Echo;
+		Echo.bIsARowsAnswerToAnEvent = true;
+		UCataclysmSkillEffects::ApplyHit(Self, Target, Due[Index].Percent, Due[Index].Tags, Echo);
+	}
+}
 const TCHAR* UCataclysmAbilitySystemComponent::ExecuteNearbyBelowAction =
 	TEXT("execute_nearby_below");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
@@ -7779,6 +7846,9 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 	// 2026-10-12. `KeptStacksHeld` already answers nought for one; this takes it out of the map, so that walking the
 	// same dungeon again later does not find it.
 	ForgetKeptStacksOfAnotherDungeon();
+
+	// AND EVERY PHANTOM BLADES ECHO WHOSE TIME HAS COME, in combat or out of it (2026-11-27).
+	StrikeDueEchoes();
 
 	const float InCombat = SecondsInCombat();
 
@@ -9394,6 +9464,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	// characters carry no action to fire.
 	OnActionEvent.Broadcast(Event);
 
+	// WHAT A RETALIATION PAYMENT TOOK FROM ONE ENEMY, kept for Spreading Thorns (2026-11-27), at any depth.
+	if (Event == FName(TEXT("retaliation_dealt")) && bLanded && EventAmount > 0.0f)
+	{
+		LastRetaliationTaken = EventAmount;
+	}
+
 	// DEPTH ONE, BY CONSTRUCTION. See `PoolActionDepth` for why this is stated
 	// rather than left to hold by accident.
 	if (PoolActionDepth > 0 || PoolActions.IsEmpty())
@@ -9933,6 +10009,70 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// FERVOUR OF SO MANY SECONDS OF FRENZY'S DRAIN: Carnage (2026-11-27). Its one second is the row's cooldown.
+		if (Action.bFrenzyDrainFervour)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				const float PerSecond = StatForSkill(FName(FCataclysmBerserkerStates::DrainPerSecondStat),
+													 FGameplayTagContainer(), 0.0f);
+				if (PerSecond > 0.0f && Action.Percent > 0.0f)
+				{
+					StackedThisEvent.Add(Action.TriggerKey);
+					NoteTriggerFired(Action);
+					UCataclysmFervour::GainStated(this, PerSecond * Action.Percent, /*bForAKill=*/true);
+				}
+			}
+			continue;
+		}
+		// A KILL INSIDE THE RETALIATION RADIUS BURSTS FOR THE LAST RETALIATION PAYMENT: Spreading Thorns (2026-11-27).
+		if (Action.bRetaliationBurstOnKill)
+		{
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			const AActor* Slain = EventTarget;
+			const float Radius = UCataclysmRetaliation::RadiusMetresFor(this);
+			if (bLanded && Self && Slain && LastRetaliationTaken > 0.0f && Action.EventValue > 0.0f
+				&& Action.Percent > 0.0f && Radius > 0.0f
+				&& FVector::Dist(Self->GetActorLocation(), Slain->GetActorLocation()) <= Radius * 100.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				FCataclysmHitDelivery Burst;
+				Burst.bIsRetaliation = true;
+				for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(
+						 GetWorld(), Self, Slain->GetActorLocation(), Action.EventValue * 100.0f))
+				{
+					if (Near != Slain)
+					{
+						UCataclysmSkillEffects::ApplyDirectDamage(
+							Self, Near, LastRetaliationTaken * Action.Percent / 100.0f, Burst);
+					}
+				}
+			}
+			continue;
+		}
+		// THE HIT STRUCK AGAIN LATER: Phantom Blades (2026-11-27). Never for an echo's own hit.
+		if (Action.bEchoStrikeLater)
+		{
+			const UWorld* World = GetWorld();
+			if (bLanded && EventTarget && World && !bStrikingAnEcho && Action.Percent > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				FPendingEcho Echo;
+				Echo.Target = const_cast<AActor*>(EventTarget);
+				Echo.DueAtSeconds = World->GetTimeSeconds() + FMath::Max(0.0f, Action.EventValue);
+				Echo.Percent = Action.Percent;
+				if (EventTags)
+				{
+					Echo.Tags = *EventTags;
+				}
+				PendingEchoes.Add(Echo);
+			}
+			continue;
+		}
 		// THE NEXT RETALIATION DEALS MORE, the larger of it and what is held: Spiteful (the War trees' engine slice E2).
 		if (Action.bNextRetaliationMore)
 		{
@@ -9991,6 +10131,12 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			{
 				StackedThisEvent.Add(Action.TriggerKey);
 				NoteTriggerFired(Action);
+				// THE BLOCKED DAMAGE IS ADDED TO WHAT IS HELD: Unbreakable Will (2026-11-27).
+				if (Action.NextAttackBonusOf == 3)
+				{
+					NextAttackBonusStore += FMath::Max(0.0f, EventAmount) * Action.Percent / 100.0f;
+					continue;
+				}
 				const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>();
 				const float Of = Action.NextAttackBonusOf == 1
 					? MaximumHealthNow()

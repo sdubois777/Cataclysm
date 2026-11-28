@@ -2973,6 +2973,16 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					}
 					const bool bOwnBlow = BigHitAttacker
 						&& (BigHitAttacker == Cataclysm->GetAvatarActor() || BigHitAttacker == Cataclysm->GetOwnerActor());
+					// AND BLOOD FOR BLOOD SENDS A SHARE OF WHAT GOT THROUGH BACK (2026-11-27): any blow not evaded, ticks
+					// included ("all damage you take"), never the character's own and never a retaliation blow, so two
+					// wearers do not answer each other for ever.
+					if (!Outcome.bEvaded && !bOwnBlow && BigHitAttacker && GotThrough > 0.0f
+						&& Data.EffectSpec.GetSetByCallerMagnitude(FName(UCataclysmSkillEffects::RetaliationDataName),
+																   /*WarnIfNotFound=*/false, 0.0f)
+							   <= 0.0f)
+					{
+						Cataclysm->ReflectBloodForBlood(GotThrough, const_cast<AActor*>(BigHitAttacker));
+					}
 					if (!Outcome.bEvaded && !Hit.bIsDamageOverTime && !bOwnBlow
 						&& UCataclysmAbilitySystemComponent::IsBigHit(GotThrough, GetMaxHealth()))
 					{

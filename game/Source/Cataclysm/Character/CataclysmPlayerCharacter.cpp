@@ -1250,6 +1250,12 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	{
 		return;
 	}
+	// A PHANTOM BLADES ECHO EARNS NO FERVOUR AND RAISES NO EVENT (2026-11-27): "Phantom strikes can trigger leech and
+	// critical strikes independently but do not generate Fervour". Its critical strike and its leech are the blow's own.
+	if (Acting->IsStrikingAnEcho())
+	{
+		return;
+	}
 
 	// THE SKILL'S OWN TAGS GO ACROSS, which is what a scoped row tests. One
 	// authored row is scoped this way: "strike skills generate ... on hit", and

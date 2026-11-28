@@ -8671,6 +8671,49 @@ namespace CataclysmStatExemptionTest
 					   Pierced.DealtToHealth / Kept.DealtToHealth, 2.0f, 0.01f);
 	}
 
+	/**
+	 * `blood_for_blood_reflect_percent`, read by `UCataclysmAbilitySystemComponent::ReflectBloodForBlood` for a blow
+	 * taken. Blood for Blood, ruled 2026-11-27. A defender holding 50 with an empty Fervour pool sends half of what got
+	 * through back to its attacker; with a full pool, all of it; a plain defender sends nothing.
+	 */
+	void ProbeBloodForBloodReflectPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPinnedCritRoll NeverCritical(100.0f);
+		const auto Reflected = [World](bool bHolds, float FervourHeld, float& OutDealt)
+		{
+			FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+			FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+			GiveAFervourPool(Defender);
+			Defender.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), FervourHeld);
+			if (bHolds)
+			{
+				GrantFlat(Defender.Actor, UCataclysmAbilitySystemComponent::BloodForBloodReflectPercentStat, 50.0f);
+			}
+			const float Before = Attacker.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+			OutDealt = OneBlow(Attacker, Defender).DealtToHealth;
+			return Before - Attacker.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		};
+		float Dealt = 0.0f;
+		const float Plain = Reflected(false, 0.0f, Dealt);
+		Test.TestEqual(TEXT("control: a plain defender sends nothing back"), Plain, 0.0f, 0.01f);
+		const float Half = Reflected(true, 0.0f, Dealt);
+		if (!Test.TestTrue(TEXT("the blow got through"), Dealt > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("blood_for_blood_reflect_percent is read: an empty pool sends back half"), Half / Dealt, 0.5f,
+					   0.01f);
+		const float Whole = Reflected(true, 100.0f, Dealt);
+		Test.TestEqual(TEXT("and a full pool all of it"), Whole / Dealt, 1.0f, 0.01f);
+	}
+
 	// ------------------------------------------------------------------------
 	// THE SEVEN THE SHIPPED PASSIVES CONDITION THAT WERE READ AND NOT RUN.
 	// Issue #2236. Each was listed in `READ_FROM_THE_CODE_AND_NOT_PROBED` in
@@ -16954,6 +16997,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_on_blocked_lethal_hit_survived"), &ProbeBlockedLethalHitSurvived},
 			{TEXT("combat_seconds_fall_slower"), &ProbeCombatSecondsFallSlower},
 			{TEXT("critical_penetration"), &ProbeCriticalPenetration},
+			{TEXT("blood_for_blood_reflect_percent"), &ProbeBloodForBloodReflectPercent},
 			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			// THE FERVOUR SPENDS, 2026-11-25.
 			{TEXT("fervour_cost_per_negated_block"), &ProbeCostPerNegatedBlock},

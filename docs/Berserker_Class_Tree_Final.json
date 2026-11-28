@@ -1079,7 +1079,7 @@
       "data": {
         "kind": "basic",
         "name": "Carnage",
-        "description": "Dual wield only. Killing an enemy while in Frenzy extends the current Frenzy duration by 1 second per point, up to a maximum extension of 6 seconds. This can trigger multiple times per Frenzy.",
+        "description": "Dual wield only. Killing an enemy while in Frenzy restores Fervour equal to 1 second of Frenzy's drain per point. This can happen at most once every 1 second.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1167,7 +1167,7 @@
       "data": {
         "kind": "keystone",
         "name": "Phantom Blades",
-        "description": "Dual wield only. Each melee strike creates a phantasmal echo that replays the attack 0.75 seconds later at 60% damage. Phantom strikes can trigger leech and critical strikes independently but do not generate Fervour.",
+        "description": "Dual wield only. Each melee hit creates a phantasmal echo that strikes the same enemy 0.75 seconds later for 60% of the attack's damage. Echoes can trigger leech and critical strikes independently, do not generate Fervour and create no echoes.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

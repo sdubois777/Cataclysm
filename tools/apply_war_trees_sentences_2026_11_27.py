@@ -129,6 +129,35 @@ SENTENCES: tuple[Sentence, ...] = (
     Sentence("Unrelenting (coordinator, 2026-11-27)", "Berserker", "dw_015",
              "Dual wield only. Killing an enemy refunds 20% of your maximum Fervour per point up to a maximum of 60%.",
              "Dual wield only. Killing an enemy refunds 10% of your maximum Fervour per point."),
+    Sentence("Unbreakable Will (coordinator, 2026-11-27)", "Bulwark", "basic_ic_t1_003",
+             "+2% of blocked damage is added to your next attack per point. At 5 points: This bonus is tripled if you "
+             "block 5 times without attacking.",
+             "+2% of blocked damage is added to your next attack per point. At 5 points: blocked damage is added at "
+             "three times the rate."),
+    Sentence("Carnage (coordinator, 2026-11-27)", "Berserker", "dw_017",
+             "Dual wield only. Killing an enemy while in Frenzy extends the current Frenzy duration by 1 second per "
+             "point, up to a maximum extension of 6 seconds. This can trigger multiple times per Frenzy.",
+             "Dual wield only. Killing an enemy while in Frenzy restores Fervour equal to 1 second of Frenzy's drain "
+             "per point. This can happen at most once every 1 second."),
+    Sentence("Spreading Thorns (coordinator, 2026-11-27)", "Bulwark", "basic_tw_t3_002",
+             "+1 meter to retaliation aura radius per point. At 4 points: Enemies killed within the aura explode, "
+             "dealing retaliation damage to nearby enemies.",
+             "+1 meter to retaliation aura radius per point. At 4 points: Enemies killed within the aura explode, "
+             "dealing 100% of your retaliation damage to every enemy within 4 meters."),
+    Sentence("Phantom Blades (coordinator, 2026-11-27)", "Berserker", "dw_ks_003",
+             "Dual wield only. Each melee strike creates a phantasmal echo that replays the attack 0.75 seconds later "
+             "at 60% damage. Phantom strikes can trigger leech and critical strikes independently but do not generate "
+             "Fervour.",
+             "Dual wield only. Each melee hit creates a phantasmal echo that strikes the same enemy 0.75 seconds later "
+             "for 60% of the attack's damage. Echoes can trigger leech and critical strikes independently, do not "
+             "generate Fervour and create no echoes."),
+    Sentence("Blood for Blood (coordinator, 2026-11-27)", "Bulwark", "keystone_tw_final",
+             "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances and "
+             "cannot be blocked or evaded. The reflection percentage increases by 1% for every 5 Fervour currently "
+             "held, up to a maximum of 100% at full Fervour.",
+             "50% of all damage you take is reflected back to the attacker. This reflection ignores resistances and "
+             "cannot be blocked or evaded. The reflection percentage increases by 1% for every 2% of your maximum "
+             "Fervour currently held, up to 100% at full Fervour."),
     Sentence("Spiteful (coordinator, 2026-11-27)", "Bulwark", "basic_tw_stem_003",
              "+3% Fervour generated from taking hits per point. At 5 points: When you reach maximum Fervour from taking hits, your next retaliation deals 50% bonus damage.",
              "+3% Fervour generated from taking hits per point. At 5 points: when your Fervour becomes full, your next "
