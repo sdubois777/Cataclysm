@@ -28,8 +28,9 @@ Decisions made outside the Google Drive documents, newest first.
 
 ### SAID FIRST
 
-- **NOTHING HERE HAS BEEN COMPILED OR RUN IN UNREAL.** Window 2 compiles it, runs its tests and proves its guards. Until
-  that window, every engine statement below is what the code was written to do, not a measured result.
+- **WINDOW 2 (war-w2) HAS RUN**, on 2026-11-28, in two parts. "WINDOW 2" at the end of this entry has every figure. Its
+  first whole suite failed one test: the 15 stats this window added with no attribute had no probe. With the probes
+  written, the second whole suite performed the 6,156 tests predicted, all passing, and the three C++ guard proofs proved.
 - **ALL 27 SABOTEUR NODES WITHOUT A ROW NOW HAVE ROWS.** One part is left as an exception. Combat Engineer's "At 5
   points: Gadgets can attack enemies through terrain within their range" has no row, because gadgets already ignore
   terrain: nothing in the code checks line of sight. The coordinating session accepted that note.
@@ -137,10 +138,46 @@ damage and +3% range for each second you have stood still, up to 10 seconds. Mov
 
 **The condition count:** 64 of the 128 named conditions compare nothing (`CataclysmStatPipeline.h`).
 
-### WHAT HAPPENS NEXT
+### WINDOW 2 (war-w2), 2026-11-28
 
-Window 2 runs on the machine when the coordinating session clears it. It compiles, rebuilds the two tables, runs the
-affected groups and the whole suite, and proves the guards. This entry gains its figures then.
+**First part, on b70c8e939** (development a2d9257b3 merged in):
+- Build: `Build: Succeeded - 61 actions, 58 files compiled`, no warnings or errors.
+- Table assets rebuilt in the editor: DT_PassiveEffects (1,231 rows) and DT_PassiveNodes, nothing else (dbf0c3592).
+- `Cataclysm.WarTreesE4.` alone: 5 performed, 5 succeeded, 0 failed; 0 saves.
+- Whole suite: 6,156 performed, 6,155 succeeded, **1 failed:
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`**. The 15 stats this window added to
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute` had no probe. 63 skipped halves; 898 saves, 0 left behind.
+
+**The probes** (448db8ffd, 44b781eaf): one for each of the 15 stats, each against a character without it.
+- Seven drive the behaviour itself: Empower paying 1 instead of 4; the first empowerment free; one Jury Rigged save;
+  60% to 70% health in a second; a hit ignored with the roll pinned; a second triggering 1.2 times; the surprise arming.
+- Eight are read deep inside trap placing, trap triggering or a landed hit. They are read through named readers
+  the game code now calls (`ACataclysmMinion::TrapsMostActiveFor`, `ScattershotChanceFor`, `ConcealedStunSecondsFor`,
+  `UnreservedTrapDrainPerSecondFor`, `ReinforcedHousingCostFor`, `CoordinatedStrikeReachesEveryGadgetFor`,
+  `PowerSurgeFor`), and the probes measure those readers.
+- The Python suite caught one fault in the Redundant Systems probe: it pinned its roll below console priority
+  (issue #1470). Corrected in 44b781eaf.
+
+**Second part, on 44b781eaf:**
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` alone: 1 performed, 1 succeeded.
+- Whole suite: `Tests: 6156 tests performed, 6156 succeeded, 0 failed. 63 skipped part of what they check`;
+  `Test saves: 898 written and deleted, 0 left behind`. As predicted.
+- Python, beside it: 9,763 passed, 10 skipped, 0 failed; the JUnit file agrees (9,773 tests, 0 failures, 0 errors).
+- Guard proofs (`prove_cpp_guard`, prefix `Cataclysm.WarTreesE4.`). Each failed exactly the one test registered with
+  the break in, and passed 5 of 5 restored:
+
+| Proof | Break | Named failure |
+|---|---|---|
+| A | `TakeLastSurpriseFor` without `\|\| LastSurpriseStruck.Contains(Target)` | TheLastSurpriseDealsTheTotalOnceToEachEnemyAndWaitsThirtySeconds |
+| B | `TrapDamageNamingTrap` raising to `BlowsTriggering` instead of `BlowsTriggering - 1` | ReinforcedHousingCompoundsEachTriggeringAndScrapAndRebuildCutsTheMoveCooldown |
+| C | `PerGadgetActive` reading `GadgetsActive + 1` | EfficientDesignLeavesTheFirstGadgetsReserveWholeAndLowersTheSecondsByOnePercent |
+
+**Not covered:**
+- Proof C guards the stat read, not the order inside `ACataclysmMinion::PlaceSkillGadget`: no test checks that the
+  reserve is read before the new gadget is made.
+- Trap placing and triggering themselves (Scattershot's copy, Precision Placement's limit, Reinforced Housing's
+  payment, Calculated Chaos's drain and its mass trigger, Concealed's stun) have no test of their own; their probes
+  measure the readers those paths call.
 
 ---
 
