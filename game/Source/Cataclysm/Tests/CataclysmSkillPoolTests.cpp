@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -25,6 +26,7 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/ScopeExit.h"
+#include "UObject/Package.h"
 
 /**
  * A character's skills come from every combination of its worn weapon types and the damage types they carry, filled
@@ -112,6 +114,42 @@ namespace CataclysmSkillPoolTest
 			return FSkillPoolCarrier();
 		}
 		return Made;
+	}
+
+	/**
+	 * A COPY OF THE LOADED WEAPON SKILL TABLE in which every named row whose key begins `RowPrefix` states no shape and
+	 * no shape numbers, for the player's weapon slots (`UCataclysmWeaponSlotsComponent::SetWeaponSkillTable`)
+	 * to read: a skill with no shape made in the test, so the test does not depend on a live row staying unshaped.
+	 * Null, with the reason reported, when the table does not load or no named row begins so. Issue #2928, the War
+	 * weapon skills' window 1, 2026-11-28.
+	 */
+	UDataTable* SkillPoolTableWithNoShapeFor(FAutomationTestBase& Test, const TCHAR* RowPrefix)
+	{
+		const UDataTable* Loaded = UCataclysmWeaponSkills::LoadGeneratedTable();
+		UDataTable* Copy = Loaded ? DuplicateObject<UDataTable>(Loaded, GetTransientPackage()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a copy of the weapon skill table"), Copy))
+		{
+			return nullptr;
+		}
+		int32 Emptied = 0;
+		for (const TPair<FName, uint8*>& Each : Copy->GetRowMap())
+		{
+			FCataclysmWeaponSkillRow* Row = reinterpret_cast<FCataclysmWeaponSkillRow*>(Each.Value);
+			if (Row && !Row->SkillName.IsEmpty() && Each.Key.ToString().StartsWith(RowPrefix, ESearchCase::CaseSensitive))
+			{
+				Row->Shape.Reset();
+				Row->ShapeParams.Reset();
+				++Emptied;
+			}
+		}
+		// THE CONTROL: the prefix names at least one named skill, so the copy is not the table as loaded.
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: the copy empties the shape of %d named row(s) beginning %s"),
+										   Emptied, RowPrefix),
+						   Emptied > 0))
+		{
+			return nullptr;
+		}
+		return Copy;
 	}
 
 	/** A weapon of this base carrying these types and nothing else. */
@@ -430,9 +468,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillPoolFillOrderTest,
  * Q11: the creation type first when it is carried, then the other carried types; within a type the worn weapons in
  * `WornWeapons` order, the first OCCUPIED slot first. A Greataxe carrying War then Demonic, on a character created
  * Demonic, carries Demonic first and fills the Demonic six; created War, it carries War first (the control), and since
- * issue #837 slice 1 (Q2) still fills the Demonic six, because none of the War Greataxe's is built and a built skill
- * takes a key first. A War Sword in Weapon1 and a War Axe in Weapon2 fill the Sword's; swapped, the Axe's; and a War
- * Axe alone in Weapon2 fills the Axe's.
+ * issue #837 slice 1 (Q2) still fills the Demonic skill for each slot whose War Greataxe skill is not built, because a
+ * built skill takes a key first. THE WAR GREATAXE'S UNBUILT SKILLS ARE MADE IN THE TEST since issue #2928 (the War
+ * weapon skills' window 1, 2026-11-28): its `War_Greataxe_` rows' shapes are emptied in a copy of the table the
+ * player's weapon slots read, so a War slice that shapes those rows cannot take the case away. A War Sword in
+ * Weapon1 and a War Axe in Weapon2 fill the Sword's; swapped, the Axe's; and a War Axe alone in Weapon2 fills the
+ * Axe's.
  *
  * THE LONE WEAPON IS PUT IN WEAPON2 BY `EquipInto`, with Weapon1 empty and no two-handed weapon taken off. Before the
  * branch `fix/lone-one-hander-goes-to-the-right-hand` lands, a lone one-hander chosen at creation is in Weapon2 in play
@@ -463,6 +504,18 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	// THE SLOTS READ A COPY OF THE TABLE IN WHICH THE WAR GREATAXE'S OWN ROWS STATE NO SHAPE, since issue #2928 (the War
+	// weapon skills' window 1, 2026-11-28). Until then the set-up below asked that some of the War Greataxe's six be
+	// unbuilt in the real table, which each War slice shaping its rows takes away (three of the five state a shape on
+	// 2026-11-28: Savage Leap, Spinning Axe and Annihilator). The Greataxe expectations are worked out from the copy;
+	// every other row in it is the real table's, so the Sword and Axe expectations below read the same either way. The
+	// helper's control: the copy emptied at least one row.
+	UDataTable* Shapeless = SkillPoolTableWithNoShapeFor(*this, TEXT("War_Greataxe_"));
+	if (!Shapeless)
+	{
+		return false;
+	}
+	Carrier.Slots->SetWeaponSkillTable(Shapeless);
 	// EVERY SIX-SKILL COMPARISON BELOW IS AS SETS (`SkillNamesInAnyOrder`): each skill carries its own key, so the
 	// order the slots hand them back in is not a rule. Lists until window ss2-w3 (2026-11-25); see the control.
 	const auto HeldSix = [&Carrier]()
@@ -470,7 +523,7 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 		return SkillNamesInAnyOrder(WithoutTheBasic(Carrier.Slots->GetAvailableSkills()));
 	};
 	const FString DemonicAxe =
-		SkillNamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic")));
+		SkillNamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Shapeless, TEXT("Greataxe"), TEXT("Demonic")));
 
 	// THE CONTROL: CREATED WAR, and the weapon lists War first, so either order gives War first.
 	Carrier.State->SetCreationChoice(FName(TEXT("Greataxe")), War);
@@ -490,9 +543,12 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 	// affixes-and-rebalance-2883-2884, read from their WeaponSkills.csv). The expectation is worked out slot by slot
 	// from the rule, so a War Greataxe skill built later moves it without breaking it. The creation type's place first
 	// is still what the line above checks.
-	const TArray<FCataclysmWeaponSkill> WarAxeSkills = UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War"));
+	// FROM THE COPY THE SLOTS READ (issue #2928): in it the War Greataxe's own five state no shape, and War's aura,
+	// whose weapon type is "All" and whose row is not one of them, keeps its shape.
+	const TArray<FCataclysmWeaponSkill> WarAxeSkills =
+		UCataclysmWeaponSkills::SkillsFor(Shapeless, TEXT("Greataxe"), TEXT("War"));
 	const TArray<FCataclysmWeaponSkill> DemonicAxeSkills =
-		UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("Demonic"));
+		UCataclysmWeaponSkills::SkillsFor(Shapeless, TEXT("Greataxe"), TEXT("Demonic"));
 	TArray<FCataclysmWeaponSkill> ByTheRule;
 	int32 WarAxeUnbuilt = 0;
 	// BUILT IS READ FROM THE TABLE'S OWN ROW, A SHAPE NAMED IN IT, and not from `UCataclysmWeaponSkills::IsBuilt`, the
@@ -520,8 +576,7 @@ bool FCataclysmSkillPoolFillOrderTest::RunTest(const FString&)
 	// comparing them as lists.
 	TestEqual(TEXT("control: so each key holds the built skill for its slot, War's where built (Q2)"), HeldSix(),
 			  SkillNamesInAnyOrder(ByTheRule));
-	const FString WarAxe =
-		SkillNamesInAnyOrder(UCataclysmWeaponSkills::SkillsFor(Table, TEXT("Greataxe"), TEXT("War")));
+	const FString WarAxe = SkillNamesInAnyOrder(WarAxeSkills);
 	TestTrue(TEXT("control: and not the War Greataxe's six"), HeldSix() != WarAxe);
 
 	// CREATED DEMONIC, the same weapon put on again: it lists War first and the creation type still goes first.
