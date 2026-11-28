@@ -2,6 +2,38 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The player controller holds its input configuration, so a right click over the inventory still equips after the packaged game's first garbage collection
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp`: `HeldInputConfig`, a `UPROPERTY(Transient)`
+  object pointer; `HoldTheInputConfig`, which `SetupInputComponent` calls; `KeyForAbilitySlot` and
+  `LeftButtonAlsoMoves` read the held configuration.
+- `game/Source/Cataclysm/Tests/CataclysmInputTests.cpp`: `Cataclysm.Input.TheControllerHoldsTheInputConfigItLoaded`.
+- `tools/tests/test_the_input_config_is_held.py`.
+
+**What the owner saw**, in the packaged game, verbatim: "The right clicking an item is what stops working. I have to
+drag and drop them after that", and, asked whether the skill bar changed at the same time: "yes, the key letters go
+blank and I just see the levels".
+
+**Why.** `InputConfig` is a soft pointer, which keeps nothing loaded. `SetupInputComponent` loaded the configuration
+into a local only, and `KeyForAbilitySlot` and `LeftButtonAlsoMoves` read it back with `InputConfig.Get()`. The editor
+keeps the asset loaded, so no editor play or test showed anything; in the packaged game nothing held it, and the first
+garbage collection, about a minute in, freed it. From then `KeyForAbilitySlot` answered no key, so `Input_AbilitySlotPressed` no
+longer saw the Heavy slot's press as a mouse button over a screen, and a right click over the inventory went to the
+Heavy skill instead of the item; and the skill bar, which draws each slot's key from the same function, drew no letters.
+
+**What changed.** The controller holds the loaded configuration in a property garbage collection follows, and both
+readers read that. The key-to-action mapping context is left as it was: the input subsystem holds a context once it is
+added (`UEnhancedPlayerInput::AppliedInputContextData` is a `UPROPERTY`).
+
+**Judgement, not tested here:** no automation test runs a garbage collection to show the asset freed, because the
+editor holds the asset whatever the controller does; the test checks that the controller holds it, and the packaged
+game is the check that the right click still equips after two minutes.
+
+**Not built or run when this was written.**
+
+---
+
 ## 2026-11-27 — The empire upgrade tree screen as the packaged game draws it: an opaque near-black background, each kind of mark in its own colour, no ring or line thinner than 2 units, and the whole tree fitted with a 24 unit margin
 
 **Affects:**
