@@ -30,7 +30,21 @@ added (`UEnhancedPlayerInput::AppliedInputContextData` is a `UPROPERTY`).
 editor holds the asset whatever the controller does; the test checks that the controller holds it, and the packaged
 game is the check that the right click still equips after two minutes.
 
-**Not built or run when this was written.**
+**Built and run in window icf-w1, 2026-11-27, at dc8ad9504.** Nothing has been checked in the packaged game yet.
+
+| Step | Printed |
+| :-- | :-- |
+| Python, `python -u -m pytest --junit-xml=...` | `9738 passed, 10 skipped`; the JUnit file: tests 9748, failures 0, errors 0, skipped 10 |
+| Three compiles (the branch, each changed `.cpp` alone, the unity files again) | all `Build: Succeeded`, 0 compiler warning or error lines |
+| `Cataclysm.Input.` alone | `10 tests performed, 10 succeeded, 0 failed` |
+| The whole Unreal suite | performed 6133, succeeded 6133, failed 0; `895 written and deleted, 0 left behind`; 62 skipped halves |
+| Python beside it | tests 9748, failures 0, errors 0, skipped 10; `ruff check .` clean |
+| C++ guard proof: `HoldTheInputConfig` answers the load and holds nothing | `PROVED: with the break in: 10 tests performed, 9 succeeded, 1 failed: TheControllerHoldsTheInputConfigItLoaded \| restored: 10 tests performed, 10 succeeded, 0 failed` |
+| Python guard proof: `KeyForAbilitySlot` reads `InputConfig.Get()` again | `PROVED: 1 failed, 2 passed \| restored: 3 passed`; the failure `test_no_reader_goes_back_to_the_soft_pointer` |
+
+**Which proof guards which half.** The C++ proof guards the hold: without it the controller keeps nothing, which the
+Unreal test reads through the property. The Python proof guards the readers: a reader going back to the soft pointer,
+which the Unreal test cannot see because its world has no local player.
 
 ---
 
