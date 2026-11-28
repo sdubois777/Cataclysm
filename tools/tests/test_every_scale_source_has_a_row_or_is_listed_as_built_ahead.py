@@ -227,7 +227,11 @@ KNOWN_USED = "debuffs_carried"
 #: no row names.
 #: AND 58 WHEN ENGINE SLICE E3 JOINED (2026-11-27): `max_health_from_other_sources`, Colossus's (R3), and 59 with
 #: `combat_seconds_held`, Grinding Advance's. 60 sources.
-EXPECTED_NAMED_BY_A_ROW = 59
+#: AND 68 WHEN THE WAR TREES' WINDOW 2 JOINED (2026-11-28): its nine new scales, each named by a Saboteur row --
+#: `class_resource_spent_recently`, `class_resource_above_half`, `evasion`, `evasion_before_removal`,
+#: `trap_kinds_active`, `player_seconds_stationary`, `gadget_empowered_fervour`, `gadget_overclock_fervour` and
+#: `traps_maximum_fervour_could_hold`. 69 sources; `damage_reduction` is still the one no row names.
+EXPECTED_NAMED_BY_A_ROW = 68
 
 
 def scales_named_by_a_row() -> set[str]:

@@ -55,7 +55,8 @@ Decisions made outside the Google Drive documents, newest first.
    counts only the gadgets already standing, and a first gadget gets no reduction. A gadget placed later does not
    lower the reserve of one already standing, because nothing re-reads a reserve that is already held.
    **ACCEPTED by the coordinating session on 2026-11-28** (re-reading held reserves is more machinery than the node
-   is worth), with the sentence reworded to say so: "A gadget you place reserves 1% less Fervour per point for each
+   is worth), with the sentence reworded to say so, and "less" then corrected to "reduced" by the same session, since the project's "less"
+   means a multiplier: "A gadget you place reserves 1% reduced Fervour per point for each
    other gadget you have active." `Cataclysm.WarTreesE4` measures it: the first gadget reserves in full, the second
    1% per point less.
 2. **Scrap and Rebuild** (`Saboteur_basic_gadget_deep_003`), the gadget MOVE cooldown, since placing has no cooldown:
@@ -80,6 +81,20 @@ damage and +3% range for each second you have stood still, up to 10 seconds. Mov
 - Steady Power: each active gadget drains 1 Fervour a second.
 - Jury Rigged: the bonus lasts while the gadget is below full health.
 - Scattershot: the extra trap reserves as normal.
+
+### THE ELEVEN SENTENCES WRITTEN INTO THE TREE FILE, word for word
+
+- R19, `Saboteur_keystone_gadget_sus`: "Once you have stood still for 3 seconds, your gadgets gain +5% damage and +3% range for each second you have stood still, up to 10 seconds. Moving ends the bonus."
+- R20, `Saboteur_basic_trap_mid_003`: "The first enemy to trigger each of your traps is stunned for 1 second."
+- Efficient Design (coordinator, 2026-11-28), `Saboteur_basic_gadget_stem_003`: "A gadget you place reserves 1% reduced Fervour per point for each other gadget you have active."
+- Scrap and Rebuild (coordinator, 2026-11-28), `Saboteur_basic_gadget_deep_003`: "When a gadget is destroyed gain 5 Fervour per point and your next gadget move is ready 2 seconds sooner per point."
+- Hair Wire Expertise (coordinator, 2026-11-28), `Saboteur_basic_trap_mid_004`: "+8% trap arming speed per point for each unique trap type you have active."
+- Persistent Systems (coordinator, 2026-11-28), `Saboteur_basic_gadget_sus_002`: "Gadgets above 50% HP regenerate 1.5% of their maximum HP per second per point. At 4 points: Gadgets that survive for 20 seconds gain a permanent +10% damage stack."
+- Reinforced Housing (coordinator, 2026-11-27), `Saboteur_basic_trap_ql_002`: "Traps are not consumed when triggered. Instead each subsequent trigger costs 15 Fervour, reduced by 1 Fervour per point; with too little Fervour, the trap is used up. At 5 points: Each subsequent trigger deals 20% more damage than the last."
+- Steady Power (coordinator, 2026-11-27), `Saboteur_basic_gadget_sus_001`: "Each active gadget drains 1 Fervour per second. Your gadgets gain +4% damage per point for each point of Fervour above 50% of your maximum that you currently have."
+- Scattershot (coordinator, 2026-11-27), `Saboteur_basic_trap_qty_004`: "When you deploy a trap, there is a 10% chance per point to deploy an additional trap at a random nearby location, which reserves Fervour as normal."
+- Volatile Construction (coordinator, 2026-11-28: 4 metres), `Saboteur_basic_gadget_dep_003`: "When a gadget is destroyed, it explodes dealing damage equal to +15% of its maximum HP per point to all enemies within 4 metres."
+- Power Surge (coordinator, 2026-11-28: the gadget's own reach), `Saboteur_basic_gadget_sus_003`: "Your gadgets build a charge over time, gaining one stack every 5 seconds up to a maximum of 5 stacks. At maximum stacks the gadget discharges, dealing 40% of its attack damage to all enemies within its attack range and resetting to 0 stacks."
 
 ### THE ROWS AND THE ENGINE, BY NODE
 

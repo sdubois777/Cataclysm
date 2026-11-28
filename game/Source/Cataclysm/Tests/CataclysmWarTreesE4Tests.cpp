@@ -247,7 +247,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarTreesE4EfficientDesignTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Efficient Design (ruled 2026-11-28, read at placing): "A gadget you place reserves 1% less Fervour per point for each
+ * Efficient Design (ruled 2026-11-28, read at placing): "A gadget you place reserves 1% reduced Fervour per point for each
  * other gadget you have active". Its row at one point, `minion_reserve_percent_less` 1 naming `Type.Gadget` scaled by
  * `gadgets_active`, asked by `UCataclysmCommand::ReserveFor` as `ACataclysmMinion::SkillGadgetReserveFor` asks it before
  * the new gadget is made. With none standing a stated 100 is reserved whole; with one standing, 99.

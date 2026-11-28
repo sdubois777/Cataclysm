@@ -4006,8 +4006,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		}
 	}
 
-	const float StatedReserve = SkillTrapReserveFor(Player, Slot);
-	float Reserve = StatedReserve;
+	const float Reserve = SkillTrapReserveFor(Player, Slot);
 	bool bUnreserved = false;
 	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
@@ -4020,7 +4019,6 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 				*Player->GetName(), Reserve);
 			return nullptr;
 		}
-		Reserve = 0.0f;
 		bUnreserved = true;
 	}
 
@@ -4066,7 +4064,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 			? Reading->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute())
 			: 0.0f;
 		Reading->TrapsMaximumFervourCouldHoldAtPlacing =
-			StatedReserve > 0.0f ? FMath::FloorToFloat(Maximum / StatedReserve) : -1.0f;
+			Reserve > 0.0f ? FMath::FloorToFloat(Maximum / Reserve) : -1.0f;
 	}
 
 	// AND THE PLAYER IS TOLD, with the trap's tags, for a row on placing a trap (M2).
@@ -4099,7 +4097,7 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 			const FVector Near = Placed->GetActorLocation()
 				+ FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f) * Distance;
 			const float Left = Placed->GetLifeSpan();
-			if (ACataclysmMinion* Copy = PlaceSkillTrapCopy(Player, Slot, Near, StatedReserve,
+			if (ACataclysmMinion* Copy = PlaceSkillTrapCopy(Player, Slot, Near, Reserve,
 															Left > 0.0f ? Left : SkillTrapSeconds))
 			{
 				if (Left <= 0.0f)
