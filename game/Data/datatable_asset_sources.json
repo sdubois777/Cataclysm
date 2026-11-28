@@ -178,8 +178,8 @@
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 1231,
-      "csv_sha256": "fa65bbaeee942c7f9bd632be25129c9012e77e53abbebf679ae59b5c8ca07d68"
+      "rows": 1232,
+      "csv_sha256": "14e5d5086dcbebf46f830da95155bcefed05d61328d2c3f65752dcf2302d3da1"
     },
     {
       "asset": "DT_PassiveNodes",
@@ -209,7 +209,7 @@
       "asset": "DT_WeaponSkills",
       "csv": "WeaponSkills.csv",
       "rows": 408,
-      "csv_sha256": "294cbc08729ee2e16c41ea498fc811c034b0df06ba809f2e9a11463c45dd6ca2"
+      "csv_sha256": "9f54596c27b54040dff76cea25cafb41935571807c25775b900a41b2d726f9bf"
     }
   ]
 }
