@@ -2137,6 +2137,19 @@ public:
 	/** `gadget_empowered` and `gadget_overclocked`. Overcharge and Overclock, window 2 (2026-11-28). */
 	static const TCHAR* GadgetEmpoweredAction;
 	static const TCHAR* GadgetOverclockedAction;
+	/** Volatile Construction, Coordinated Strike and Scrap and Rebuild's cooldown, window 2 (2026-11-28). */
+	static const TCHAR* GadgetExplodesAction;
+	static const TCHAR* GadgetsAttackHitEnemyAction;
+	static const TCHAR* GadgetMoveCooldownCutAction;
+
+	/**
+	 * Cut the gadget move cooldown that runs by `Seconds`, or, with none running, the next one the same amount. Scrap and
+	 * Rebuild's "your next gadget move is ready 2 seconds sooner per point" (ruled 2026-11-28).
+	 */
+	void CutNextGadgetMoveCooldown(float Seconds);
+
+	/** What `CutNextGadgetMoveCooldown` holds for the next move's cooldown, taken by that move. */
+	float PendingGadgetMoveCooldownCut = 0.0f;
 	static const TCHAR* NextAttackBonusOfBlockedDamageAction;
 
 	/**
@@ -6708,6 +6721,12 @@ public:
 
 	/** Fire each recorded shot in the order recorded, at depth nought. Only the outermost call acts. */
 	void DrainQueuedGadgetShotsAtTrapEnemies();
+
+	/**
+	 * Record a shot of `Gadget` at `Enemy` at `DamageMultiplier` of its blow, fired by the drain above: Coordinated
+	 * Strike's and Power Surge's, window 2 (2026-11-28). Nothing for a gadget or an enemy missing or dead.
+	 */
+	void QueueGadgetShot(ACataclysmMinion* Gadget, AActor* Enemy, float DamageMultiplier);
 
 	/**
 	 * #2472, A PLAYER'S DEATH INSIDE ONE OF ITS OWN ABILITY ACTIVATIONS. Ruled 2026-10-22 by the coordinating session: the

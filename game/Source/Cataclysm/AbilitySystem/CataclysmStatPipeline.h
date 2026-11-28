@@ -682,8 +682,8 @@ enum class ECataclysmStatCondition : uint8
 	 * Protocol's "When a gadget is reduced below 25% HP, it gains ... for 5 seconds". The War trees' window 2
 	 * (2026-11-28). Read from `SecondsSinceGadgetFellBelowQuarter`; never fallen, or no gadget named, -1, refuses.
 	 */
-	SecondsAfterGadgetFellBelowQuarter
-		UMETA(DisplayName = "Seconds After Gadget Fell Below Quarter"),
+	GadgetFellBelowQuarterWithinSeconds
+		UMETA(DisplayName = "Gadget Fell Below Quarter Within Seconds"),
 
 	/**
 	 * The blow in hand was dealt after the character moved AT LEAST THAT FAR since
@@ -5792,6 +5792,26 @@ struct CATACLYSM_API FCataclysmPoolAction
 
 	/** The same gadget overclocked: `Percent` Fervour drained over `EventValue` seconds: `gadget_overclocked`. Overclock. */
 	bool bGadgetOverclocked = false;
+
+	/**
+	 * The gadget the event names, destroyed, bursts for `Percent` of its maximum health to the enemies within 4 m:
+	 * `gadget_explodes_for_share_of_maximum_health`, on `gadget_destroyed`. Volatile Construction, window 2 (ruled
+	 * 2026-11-28: 4 m), through the Ferryman's burst.
+	 */
+	bool bGadgetExplodes = false;
+
+	/**
+	 * The wearer's nearest skill gadget, or every one while `coordinated_strike_all_gadgets` is held, fires once at the
+	 * enemy the wearer's own hit struck, at 1 + `Percent`/100 of its shot: `gadgets_attack_hit_enemy`, on `hit_dealt`.
+	 * Coordinated Strike, window 2. Never for a device's or a minion's blow.
+	 */
+	bool bGadgetsAttackHitEnemy = false;
+
+	/**
+	 * The wearer's gadget move cooldown, running, cut by `Percent` seconds, or the next one cut when none runs:
+	 * `gadget_move_cooldown_cut`, on `gadget_destroyed`. Scrap and Rebuild (ruled 2026-11-28), window 2.
+	 */
+	bool bGadgetMoveCooldownCut = false;
 
 	/**
 	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed

@@ -1749,11 +1749,21 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Resolved.DealtToHealth + Resolved.AbsorbedByShield
 							+ Resolved.AbsorbedByMana + Resolved.AbsorbedByTemporary);
 				}
+				// AND REDUNDANT SYSTEMS: A GADGET THAT IGNORES THE HIT (the War trees' window 2, 2026-11-28), "ignores
+				// damage from a hit entirely": a landed hit and not a tick, emptied as an immunity is, before the saves.
+				bool bIgnoredByAGadget = false;
+				if (!Hit.bIsDamageOverTime && Hit.Damage > 0.0f && !Resolved.bEvaded && !bAbsorbed && !bReflected && !Rod)
+				{
+					if (ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(CataclysmDefendingBody(*this)))
+					{
+						bIgnoredByAGadget = Gadget->RollToIgnoreAHit();
+					}
+				}
 				// AND A CHARACTER DEATH'S SPECTRAL SHIFT HAS OUT OF EXISTENCE, any wearer since issue #2899 (a player one
 				// Wearer of the Dead lent it): "becoming immune to damage", emptied here, BEFORE THE SAVES BELOW, so no
 				// save is spent on a blow that deals nothing. A creature's is emptied again further down with the Reaper's.
 				if (Guarded->IsDamageImmune() || Guarded->IsImmuneToDamageType(Hit.DamageType)
-					|| bAbsorbed || bReflected || Rod
+					|| bAbsorbed || bReflected || Rod || bIgnoredByAGadget
 					|| UCataclysmEnemyModifiers::IsPhasedOut(CataclysmDefendingBody(*this)))
 				{
 					Resolved.DealtToHealth = 0.0f;

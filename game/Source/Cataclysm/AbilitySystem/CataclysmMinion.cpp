@@ -561,6 +561,39 @@ const TCHAR* ACataclysmMinion::GadgetEmpowerCostLessStat = TEXT("gadget_empower_
 const TCHAR* ACataclysmMinion::GadgetEmpowerFreeEverySecondsStat = TEXT("gadget_empower_free_every_seconds");
 const TCHAR* ACataclysmMinion::GadgetSurvivesLethalOnceStat = TEXT("gadget_survives_lethal_once");
 const TCHAR* ACataclysmMinion::GadgetRegenPercentAboveHalfStat = TEXT("gadget_regen_percent_above_half");
+const TCHAR* ACataclysmMinion::GadgetIgnoreHitChanceStat = TEXT("gadget_ignore_hit_chance");
+const TCHAR* ACataclysmMinion::CoordinatedStrikeAllGadgetsStat = TEXT("coordinated_strike_all_gadgets");
+const TCHAR* ACataclysmMinion::GadgetPowerSurgeStat = TEXT("gadget_power_surge");
+
+static TAutoConsoleVariable<float> CVarGadgetIgnoreRoll(
+	TEXT("Cataclysm.GadgetIgnoreRoll"),
+	-1.0f,
+	TEXT("Pins Redundant Systems' roll, 0-100. -1 rolls normally. 0 ignores whenever there is any chance to."),
+	ECVF_Default);
+
+bool ACataclysmMinion::RollToIgnoreAHit()
+{
+	if (!IsGadget() || !IsValid(Summoner))
+	{
+		return false;
+	}
+	const float Chance = SummonersGadgetStat(GadgetIgnoreHitChanceStat);
+	if (Chance <= 0.0f)
+	{
+		return false;
+	}
+	const float Pinned = CVarGadgetIgnoreRoll.GetValueOnAnyThread();
+	if ((Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) >= Chance)
+	{
+		return false;
+	}
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
+	{
+		Theirs->ActOnEvent(FName(TEXT("gadget_ignored_hit")), &TypeTags, /*EventAmount=*/0.0f, /*bLanded=*/true, this);
+	}
+	return true;
+}
 
 void ACataclysmMinion::FillGadgetReadings(FCataclysmStatConditions& State) const
 {
@@ -686,6 +719,31 @@ void ACataclysmMinion::StepGadgetReadings(float StepSeconds)
 		FellBelowQuarterAtSeconds = World->GetTimeSeconds();
 	}
 	bWasBelowQuarter = bBelowQuarter;
+
+	// POWER SURGE: a charge every 5 s, and at 5 a discharge, a shot at 40% at each enemy within the gadget's own reach
+	// (ruled 2026-11-28), and the charges begin again. A skill gadget only: what it fires is its skill.
+	if (IsSkillGadget() && SummonersGadgetStat(GadgetPowerSurgeStat) > 0.0f)
+	{
+		PowerSurgeSeconds += StepSeconds;
+		while (PowerSurgeSeconds >= PowerSurgeStackSeconds)
+		{
+			PowerSurgeSeconds -= PowerSurgeStackSeconds;
+			PowerSurgeStacks = FMath::Min(PowerSurgeStacks + 1, PowerSurgeMostStacks);
+		}
+		FCataclysmWeaponSkill Skill;
+		UCataclysmAbilitySystemComponent* Theirs = IsValid(Summoner)
+			? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)) : nullptr;
+		if (PowerSurgeStacks >= PowerSurgeMostStacks && Theirs && SkillGadgetsSkill(Skill))
+		{
+			PowerSurgeStacks = 0;
+			for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(World, Summoner, GetActorLocation(),
+																		   SkillGadgetReachCm(Skill)))
+			{
+				Theirs->QueueGadgetShot(this, Enemy, PowerSurgeDischargeShare);
+			}
+			Theirs->DrainQueuedGadgetShotsAtTrapEnemies();
+		}
+	}
 
 	// PERSISTENT SYSTEMS: above half and below full, a share of the maximum each second (ruled 2026-11-28).
 	const float Regen = SummonersGadgetStat(GadgetRegenPercentAboveHalfStat);

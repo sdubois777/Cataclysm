@@ -474,9 +474,11 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Saboteur_basic_gadget_sus_002", "Persistent Systems",
      (R("gadget_regen_percent_above_half", "flat", 1.5),
       R("minion_damage", "increased", 10, tags=GADGET, scale="minion_seconds_active", step=20, cap=1, min_points=4))),
-    # SCRAP AND REBUILD, THE FERVOUR HALF: "When a gadget is destroyed gain +5 Fervour per point".
+    # SCRAP AND REBUILD (ruled 2026-11-28): "When a gadget is destroyed gain 5 Fervour per point and your next gadget
+    # move is ready 2 seconds sooner per point."
     ("Saboteur_basic_gadget_deep_003", "Scrap and Rebuild",
-     (R(None, "", 5, action="class_resource", action_event="gadget_destroyed", fraction_of="points"),)),
+     (R(None, "", 5, action="class_resource", action_event="gadget_destroyed", fraction_of="points"),
+      R(None, "", 2, action="gadget_move_cooldown_cut", action_event="gadget_destroyed"))),
     # FORWARD OPERATING BASE: "When you deploy a gadget, all other active gadgets are pulled to the most recent gadget."
     ("Saboteur_keystone_gadget_dep", "Forward Operating Base",
      (R(None, "", 100, action="gadgets_pulled_to_placed", action_event="gadget_placed"),)),
@@ -514,12 +516,13 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # per Fervour consumed."
     ("Saboteur_basic_gadget_stem_004", "Overcharge",
      (R(None, "", 2, action="gadget_empowered", action_event="gadget_placed", event_value=5),
-      *_damage(5, tags=GADGET, scale="gadget_empowered_fervour", step=1))),
+      # "per Fervour consumed", not per point: paid once (the Fervour is what the points raise).
+      *_damage(5, tags=GADGET, scale="gadget_empowered_fervour", step=1, min_points=1))),
     # OVERCLOCK: "When a gadget is deployed, it passively drains 2 Fervour per point over 10 seconds, gaining +5% attack
     # speed for each Fervour drained."
     ("Saboteur_basic_gadget_dep_002", "Overclock",
      (R(None, "", 2, action="gadget_overclocked", action_event="gadget_placed", event_value=10),
-      R("minion_attack_speed", "increased", 5, tags=GADGET, scale="gadget_overclock_fervour", step=1))),
+      R("minion_attack_speed", "increased", 5, tags=GADGET, scale="gadget_overclock_fervour", step=1, min_points=1))),
     # RAPID DEPLOYMENT: "Reduces the Fervour cost of all automatic gadget empowerment effects by 1 per point. At 6 points:
     # Once every 15 seconds, your next gadget deployment costs no Fervour to empower."
     ("Saboteur_basic_gadget_dep_005", "Rapid Deployment",
@@ -527,8 +530,8 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # LAST STAND PROTOCOL: "When a gadget is reduced below 25% HP, it gains +8% attack speed and +8% damage per point for
     # 5 seconds."
     ("Saboteur_basic_gadget_dep_004", "Last Stand Protocol",
-     (R("minion_attack_speed", "increased", 8, tags=GADGET, cond="seconds_after_gadget_fell_below_quarter", cond_value=5),
-      *_damage(8, tags=GADGET, cond="seconds_after_gadget_fell_below_quarter", cond_value=5))),
+     (R("minion_attack_speed", "increased", 8, tags=GADGET, cond="gadget_fell_below_quarter_within_seconds", cond_value=5),
+      *_damage(8, tags=GADGET, cond="gadget_fell_below_quarter_within_seconds", cond_value=5))),
     # JURY RIGGED (ruled 2026-11-27): "Your gadgets cannot be destroyed. Instead, when they would be destroyed they are
     # reduced to 1 HP and gain +100% damage and +100% attack speed while below full HP. Once per gadget per deployment."
     ("Saboteur_basic_gadget_mid_007", "Jury Rigged",
@@ -539,6 +542,23 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # point." Inside the 75% cap every reserve reduction shares.
     ("Saboteur_basic_gadget_stem_003", "Efficient Design",
      (R("minion_reserve_percent_less", "flat", 1, tags=GADGET, scale="gadgets_active", step=1),)),
+    # VOLATILE CONSTRUCTION (radius ruled 2026-11-28: 4 m): "When a gadget is destroyed, it explodes dealing damage equal
+    # to +15% of its maximum HP per point to all nearby enemies."
+    ("Saboteur_basic_gadget_dep_003", "Volatile Construction",
+     (R(None, "", 15, action="gadget_explodes_for_share_of_maximum_health", action_event="gadget_destroyed"),)),
+    # REDUNDANT SYSTEMS: "+5% chance per point that a gadget ignores damage from a hit entirely. At 6 points: When a
+    # gadget successfully ignores damage gain 5 Fervour."
+    ("Saboteur_basic_gadget_sus_005", "Redundant Systems",
+     (R("gadget_ignore_hit_chance", "flat", 5),
+      R(None, "", 5, action="class_resource", action_event="gadget_ignored_hit", fraction_of="points", min_points=6))),
+    # COORDINATED STRIKE: "Once per second when you hit an enemy your nearest active gadget also attacks that enemy
+    # dealing +8% bonus damage per point. At 4 points: This effect triggers for all active gadgets simultaneously."
+    ("Saboteur_basic_gadget_deep_002", "Coordinated Strike",
+     (R(None, "", 8, action="gadgets_attack_hit_enemy", action_event="hit_dealt", trigger_cooldown=1),
+      R("coordinated_strike_all_gadgets", "flat", 1, min_points=4))),
+    # POWER SURGE (radius ruled 2026-11-28: the gadget's own attack reach).
+    ("Saboteur_basic_gadget_sus_003", "Power Surge",
+     (R("gadget_power_surge", "flat", 1),)),
 )
 
 NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES + E4_NODES

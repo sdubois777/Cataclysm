@@ -5719,7 +5719,7 @@ CONDITIONS = {
     # AND THE GADGET ASKED: Jury Rigged's "until repaired to full HP" after its save, and Last Stand Protocol's "When a
     # gadget is reduced below 25% HP ... for 5 seconds" (window 2, 2026-11-28).
     "gadget_reprieved_below_full_health": None,
-    "seconds_after_gadget_fell_below_quarter": (0.0, 60.0, "a number of seconds"),
+    "gadget_fell_below_quarter_within_seconds": (0.0, 60.0, "a number of seconds"),
 
     # "When your class resource is full, gain 10%-20% damage reduction for 3
     # seconds" is `seconds_after_resource_full` with 3. Issue #1815.
@@ -8895,6 +8895,9 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # Necrosis to it, and NO STRIKE ON IT IS RULED, as for `minion_hit` above.
     "minion_raised_on_remains",
     "remains_detonation_hit",
+    # The War trees' window 2, 2026-11-28. `gadget_ignored_hit` carries the
+    # wearer's own gadget.
+    "gadget_ignored_hit",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -8940,12 +8943,23 @@ GADGETS_PULLED_TO_PLACED_ACTION = "gadgets_pulled_to_placed"
 #: `gadget_overclocked` (Overclock: the value in Fervour, drained over the Event Value in seconds), on `gadget_placed`.
 GADGET_EMPOWERED_ACTION = "gadget_empowered"
 GADGET_OVERCLOCKED_ACTION = "gadget_overclocked"
+#: AND `gadget_explodes_for_share_of_maximum_health` (Volatile Construction: the value the share of the destroyed gadget's
+#: maximum health, to enemies within 4 m) and `gadget_move_cooldown_cut` (Scrap and Rebuild: the value in seconds), on
+#: `gadget_destroyed`; and `gadgets_attack_hit_enemy` (Coordinated Strike: the value the bonus in per cent), on
+#: `hit_dealt`. Window 2 (2026-11-28).
+GADGET_EXPLODES_ACTION = "gadget_explodes_for_share_of_maximum_health"
+GADGET_MOVE_COOLDOWN_CUT_ACTION = "gadget_move_cooldown_cut"
+GADGETS_ATTACK_HIT_ENEMY_ACTION = "gadgets_attack_hit_enemy"
 RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION,
-                 GADGETS_PULLED_TO_PLACED_ACTION, GADGET_EMPOWERED_ACTION, GADGET_OVERCLOCKED_ACTION)
+                 GADGETS_PULLED_TO_PLACED_ACTION, GADGET_EMPOWERED_ACTION, GADGET_OVERCLOCKED_ACTION,
+                 GADGET_EXPLODES_ACTION, GADGET_MOVE_COOLDOWN_CUT_ACTION, GADGETS_ATTACK_HIT_ENEMY_ACTION)
 RIDER_ACTION_EVENTS = {RETALIATION_BURST_ON_KILL_ACTION: ("kill",), ECHO_STRIKE_LATER_ACTION: ("hit_dealt",),
                        "next_attack_bonus_of_blocked_damage": ("block",),
                        GADGETS_PULLED_TO_PLACED_ACTION: ("gadget_placed",),
-                       GADGET_EMPOWERED_ACTION: ("gadget_placed",), GADGET_OVERCLOCKED_ACTION: ("gadget_placed",)}
+                       GADGET_EMPOWERED_ACTION: ("gadget_placed",), GADGET_OVERCLOCKED_ACTION: ("gadget_placed",),
+                       GADGET_EXPLODES_ACTION: ("gadget_destroyed",),
+                       GADGET_MOVE_COOLDOWN_CUT_ACTION: ("gadget_destroyed",),
+                       GADGETS_ATTACK_HIT_ENEMY_ACTION: ("hit_dealt",)}
 MOST_ECHO_DELAY_SECONDS = 5.0
 #: AND `execute_nearby_below`: every enemy within the row's Event Value in metres (required, up to
 #: `MAX_SMITE_NEARBY_BY_HIT_METRES`) below the value's per cent of its maximum health, that may be executed, loses the
@@ -9472,6 +9486,12 @@ ACTION_ONLY_EVENTS = (
     # same slice: Grave Spores' Necrosis is an `apply_status` row on it.
     # Clockless.
     "remains_detonation_hit",
+    # A HIT ONE OF THE WEARER'S GADGETS IGNORED, raised once per hit on its
+    # summoner by `ACataclysmMinion::RollToIgnoreAHit` with the gadget's tags,
+    # naming the gadget. The War trees' window 2 (2026-11-28): Redundant
+    # Systems' "When a gadget successfully ignores damage gain 5 Fervour" is a
+    # `class_resource` row on it. Clockless.
+    "gadget_ignored_hit",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was

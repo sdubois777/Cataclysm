@@ -268,6 +268,23 @@ public:
 	static const TCHAR* GadgetEmpowerFreeEverySecondsStat;
 	static const TCHAR* GadgetSurvivesLethalOnceStat;
 	static const TCHAR* GadgetRegenPercentAboveHalfStat;
+	static const TCHAR* GadgetIgnoreHitChanceStat;
+	static const TCHAR* CoordinatedStrikeAllGadgetsStat;
+	static const TCHAR* GadgetPowerSurgeStat;
+
+	/**
+	 * Redundant Systems: whether this gadget ignores the hit in hand, rolled against its summoner's
+	 * `gadget_ignore_hit_chance` (the roll pinned by `Cataclysm.GadgetIgnoreRoll`). An ignored hit raises
+	 * `gadget_ignored_hit` on the summoner, naming this gadget. Window 2 (2026-11-28).
+	 */
+	bool RollToIgnoreAHit();
+
+	/** Power Surge (window 2): a charge every `PowerSurgeStackSeconds`, and at `PowerSurgeMostStacks` a discharge. */
+	static constexpr float PowerSurgeStackSeconds = 5.0f;
+	static constexpr int32 PowerSurgeMostStacks = 5;
+	static constexpr float PowerSurgeDischargeShare = 0.4f;
+	float PowerSurgeSeconds = 0.0f;
+	int32 PowerSurgeStacks = 0;
 
 	/** Overclock's step, the fall below a quarter, and Persistent Systems' regeneration, run by `GadgetStep`. */
 	void StepGadgetReadings(float StepSeconds);

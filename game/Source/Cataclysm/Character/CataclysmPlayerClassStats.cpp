@@ -1382,6 +1382,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("gadget_empower_free_every_seconds"),
 		TEXT("gadget_survives_lethal_once"),
 		TEXT("gadget_regen_percent_above_half"),
+		TEXT("gadget_ignore_hit_chance"),
+		TEXT("coordinated_strike_all_gadgets"),
+		TEXT("gadget_power_surge"),
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),

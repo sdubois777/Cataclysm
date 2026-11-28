@@ -7082,6 +7082,45 @@ const TCHAR* UCataclysmAbilitySystemComponent::EchoStrikeLaterAction = TEXT("ech
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetsPulledToPlacedAction = TEXT("gadgets_pulled_to_placed");
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetEmpoweredAction = TEXT("gadget_empowered");
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetOverclockedAction = TEXT("gadget_overclocked");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetExplodesAction = TEXT("gadget_explodes_for_share_of_maximum_health");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetsAttackHitEnemyAction = TEXT("gadgets_attack_hit_enemy");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetMoveCooldownCutAction = TEXT("gadget_move_cooldown_cut");
+
+void UCataclysmAbilitySystemComponent::CutNextGadgetMoveCooldown(float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	bool bCut = false;
+	for (TPair<ECataclysmAbilitySlot, float>& Ready : SkillGadgetMoveReadyAtSeconds)
+	{
+		if (Ready.Value > Now)
+		{
+			Ready.Value = FMath::Max(Now, Ready.Value - Seconds);
+			bCut = true;
+		}
+	}
+	// NONE RUNS: THE NEXT MOVE'S IS CUT, as "your next gadget move" reads (a judgement of window 2).
+	if (!bCut)
+	{
+		PendingGadgetMoveCooldownCut += Seconds;
+	}
+}
+
+void UCataclysmAbilitySystemComponent::QueueGadgetShot(ACataclysmMinion* Gadget, AActor* Enemy, float DamageMultiplier)
+{
+	if (!IsValid(Gadget) || !IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || DamageMultiplier <= 0.0f)
+	{
+		return;
+	}
+	FQueuedGadgetShotAtTrapEnemy& Queued = QueuedGadgetShotsAtTrapEnemies.AddDefaulted_GetRef();
+	Queued.Gadget = Gadget;
+	Queued.Enemy = Enemy;
+	Queued.DamageMultiplier = DamageMultiplier;
+}
 
 bool UCataclysmAbilitySystemComponent::IsEmpowermentFree(const AActor* Gadget)
 {
@@ -10152,6 +10191,84 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// THE GADGET DESTROYED BURSTS: Volatile Construction (the War trees' window 2, 2026-11-28), its maximum health at
+		// the row's share to the enemies within 4 m, through the Ferryman's burst.
+		if (Action.bGadgetExplodes)
+		{
+			const ACataclysmMinion* Gone = Cast<ACataclysmMinion>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			const UAbilitySystemComponent* Its = Gone ? UCataclysmTargeting::AbilitySystemOf(Gone) : nullptr;
+			const float Maximum = Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+			if (bLanded && Gone && Gone->IsGadget() && Self && Maximum > 0.0f && Action.Percent > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				UCataclysmFervour::BurstTheSlain(Self, Gone, Gone->GetActorLocation(), Maximum, Action.Percent);
+			}
+			continue;
+		}
+		// THE WEARER'S GADGETS ATTACK WHAT THE WEARER HIT: Coordinated Strike (window 2). The wearer's own blow only.
+		if (Action.bGadgetsAttackHitEnemy)
+		{
+			AActor* Self = GetAvatarActor();
+			AActor* Enemy = const_cast<AActor*>(EventTarget);
+			static const FGameplayTag ByAGadget =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false);
+			static const FGameplayTag ByATrap =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+			static const FGameplayTag ByADeployable =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+			static const FGameplayTag ByAMinion =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Minion")), /*ErrorIfNotFound=*/false);
+			const bool bNotTheWearersOwn = EventTags
+				&& ((ByAGadget.IsValid() && EventTags->HasTag(ByAGadget)) || (ByATrap.IsValid() && EventTags->HasTag(ByATrap))
+					|| (ByADeployable.IsValid() && EventTags->HasTag(ByADeployable))
+					|| (ByAMinion.IsValid() && EventTags->HasTag(ByAMinion)));
+			if (bLanded && Self && IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !bNotTheWearersOwn
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Multiplier = 1.0f + FMath::Max(0.0f, Action.Percent) / 100.0f;
+				bool bAny = false;
+				if (StatForSkill(FName(ACataclysmMinion::CoordinatedStrikeAllGadgetsStat), FGameplayTagContainer(), 0.0f)
+					> 0.0f)
+				{
+					for (ACataclysmMinion* Each : ACataclysmMinion::DevicesOf(Self))
+					{
+						if (Each && Each->IsSkillGadget())
+						{
+							QueueGadgetShot(Each, Enemy, Multiplier);
+							bAny = true;
+						}
+					}
+				}
+				else if (ACataclysmMinion* Nearest =
+							 ACataclysmMinion::SkillGadgetNearestTo(Self, Self->GetActorLocation(), 0.0f))
+				{
+					QueueGadgetShot(Nearest, Enemy, Multiplier);
+					bAny = true;
+				}
+				if (bAny)
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
+		// THE GADGET MOVE COOLDOWN CUT FOR A GADGET DESTROYED: Scrap and Rebuild (ruled 2026-11-28), window 2.
+		if (Action.bGadgetMoveCooldownCut)
+		{
+			const ACataclysmMinion* Gone = Cast<ACataclysmMinion>(EventTarget);
+			if (bLanded && Gone && Gone->IsGadget() && Action.Percent > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				CutNextGadgetMoveCooldown(Action.Percent);
+			}
+			continue;
+		}
 		// THE GADGET JUST PLACED, EMPOWERED OR OVERCLOCKED: Overcharge and Overclock (the War trees' window 2, 2026-11-28).
 		if (Action.bGadgetEmpowered || Action.bGadgetOverclocked)
 		{
@@ -12637,7 +12754,9 @@ bool UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot(const FGameplayTa
 			Cooldown = Newest->SkillGadgetSecondsBetweenCasts(Skill);
 		}
 	}
-	SkillGadgetMoveReadyAtSeconds.Add(Slot, Now + FMath::Max(0.0f, Cooldown));
+	// LESS WHAT SCRAP AND REBUILD HELD FOR THE NEXT MOVE (window 2, 2026-11-28), taken by this one.
+	SkillGadgetMoveReadyAtSeconds.Add(Slot, Now + FMath::Max(0.0f, Cooldown - PendingGadgetMoveCooldownCut));
+	PendingGadgetMoveCooldownCut = 0.0f;
 	return true;
 }
 

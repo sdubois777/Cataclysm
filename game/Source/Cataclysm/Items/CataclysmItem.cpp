@@ -1852,6 +1852,13 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::GadgetEmpoweredAction, ESearchCase::IgnoreCase);
 					Action.bGadgetOverclocked = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::GadgetOverclockedAction, ESearchCase::IgnoreCase);
+					// AND VOLATILE CONSTRUCTION, COORDINATED STRIKE AND SCRAP AND REBUILD'S COOLDOWN, the same window.
+					Action.bGadgetExplodes = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetExplodesAction, ESearchCase::IgnoreCase);
+					Action.bGadgetsAttackHitEnemy = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetsAttackHitEnemyAction, ESearchCase::IgnoreCase);
+					Action.bGadgetMoveCooldownCut = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetMoveCooldownCutAction, ESearchCase::IgnoreCase);
 					if (bArmourRemovedNearby)
 					{
 						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;

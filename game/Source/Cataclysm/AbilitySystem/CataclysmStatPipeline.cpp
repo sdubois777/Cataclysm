@@ -198,7 +198,7 @@ namespace
 		{ TEXT("dual_wielding_outside_frenzy"),                ECataclysmStatCondition::DualWieldingOutsideFrenzy },
 		{ TEXT("hit_taken_was_unblocked"),      ECataclysmStatCondition::HitTakenWasUnblocked },
 		{ TEXT("gadget_reprieved_below_full_health"), ECataclysmStatCondition::GadgetReprievedBelowFullHealth },
-		{ TEXT("seconds_after_gadget_fell_below_quarter"), ECataclysmStatCondition::SecondsAfterGadgetFellBelowQuarter },
+		{ TEXT("gadget_fell_below_quarter_within_seconds"), ECataclysmStatCondition::GadgetFellBelowQuarterWithinSeconds },
 		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
 		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
 		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
@@ -652,7 +652,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::PlayerStationaryForSeconds:
 	// AND A GADGET'S OWN HEALTH AND ITS FALL BELOW A QUARTER, which change with no notice this pipeline hears (window 2).
 	case C::GadgetReprievedBelowFullHealth:
-	case C::SecondsAfterGadgetFellBelowQuarter:
+	case C::GadgetFellBelowQuarterWithinSeconds:
 	case C::NotAttackedForSeconds:
 	case C::MovedWithinSeconds:
 	case C::WhileBleeding:
@@ -1286,7 +1286,7 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// SAVED BY JURY RIGGED AND BELOW FULL HEALTH; NO GADGET NAMED REFUSES. The War trees' window 2.
 		return State.bGadgetReprieved && State.GadgetHealthPercent >= 0.0f && State.GadgetHealthPercent < 100.0f;
 
-	case ECataclysmStatCondition::SecondsAfterGadgetFellBelowQuarter:
+	case ECataclysmStatCondition::GadgetFellBelowQuarterWithinSeconds:
 		// THE SAME TWO RULES AS EVERY WINDOW: never fallen, or no gadget named, refuses. The War trees' window 2.
 		return State.SecondsSinceGadgetFellBelowQuarter >= 0.0f && State.SecondsSinceGadgetFellBelowQuarter <= Value;
 
