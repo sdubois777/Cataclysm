@@ -44,7 +44,8 @@ ApplyError = death.ApplyError
 #: The code pieces this branch has built, by the plan's numbering (`.claude/windows/war_skills_plan.md`, accepted by the
 #: coordinating session on 2026-11-28). Slice WS1: W1 `AilmentChance`, W2 `AilmentMagnitude`, W3 `ArmourRemoved`, W4
 #: `DamageTakenIncreased`, W5 `Stagger`.
-BUILT = frozenset({"W1", "W2", "W3", "W4", "W5"})
+#: Slice WS2: W12, a blink away from the aim (`Backward=1`), accepted 2026-11-28.
+BUILT = frozenset({"W1", "W2", "W3", "W4", "W5", "W12"})
 #: W12, a dash BACKWARD from where the player aims, joined during slice WS1: Recoil Dash's "propel yourself backward 6
 #: meters". The existing Blink goes toward the aim, which would make a 6 m gap-closer, shorter than every Movement skill
 #: before it, and three enemy designs are measured against the shortest gap-closer (`test_enemy_abilities.py`).

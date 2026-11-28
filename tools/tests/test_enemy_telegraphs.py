@@ -378,6 +378,10 @@ def test_the_cap_stays_under_the_shortest_movement_skill_range(
     for row in skill_rows:
         if row.get("Shape") != "Movement":
             continue
+        # A BLINK AWAY FROM THE AIM (`Backward=1`, Recoil Dash, the War weapon skills' W12, issue #2972) closes no gap,
+        # so it is no gap-closer, which is what this range stands for (accepted 2026-11-28).
+        if re.search(r"(?:^|;)\s*Backward=1\b", row.get("ShapeParams", "")):
+            continue
         found = re.search(r"Range=([\d.]+)", row.get("ShapeParams", ""))
         if found:
             ranges.append(float(found.group(1)))

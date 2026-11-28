@@ -940,6 +940,10 @@ def test_the_succubus_stands_at_the_shortest_movement_skill_range(
                 continue
             params = dict(pair.strip().split("=", 1)
                           for pair in row["ShapeParams"].split(";"))
+            # A BLINK AWAY FROM THE AIM (`Backward=1`, Recoil Dash, the War weapon skills' W12, issue #2972) closes no
+            # gap, so it is no gap-closer, which is what this range stands for (accepted 2026-11-28).
+            if params.get("Backward") == "1":
+                continue
             ranges.append(float(params["Range"]))
 
     assert ranges, "no Movement-shape skills in game/Data/WeaponSkills.csv"
@@ -2112,6 +2116,10 @@ def test_the_wardens_charge_range_is_the_shortest_movement_skill_range(
             params = dict(pair.strip().split("=", 1)
                           for pair in row["ShapeParams"].split(";")
                           if "=" in pair)
+            # A BLINK AWAY FROM THE AIM (`Backward=1`, Recoil Dash, the War weapon skills' W12, issue #2972) closes no
+            # gap, so it is no gap-closer, which is what this range stands for (accepted 2026-11-28).
+            if params.get("Backward") == "1":
+                continue
             if "Range" in params:
                 ranges.append(float(params["Range"]))
 

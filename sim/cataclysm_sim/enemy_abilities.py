@@ -129,7 +129,10 @@ SHAPE_PARAMS: dict[str, tuple[str, ...]] = {
     # `MaxDuration` joined with slice DS3 (N10, Danse Macabre). No enemy ability
     # uses it.
     "Movement": ("Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits", "Detonates", "KillFervour", "MaxDuration"),
+                 "RearHits", "Detonates", "KillFervour", "MaxDuration",
+                 # A blink away from the aim, the War weapon skills' W12 (issue
+                 # #2972, 2026-11-28): Recoil Dash. No enemy ability states it.
+                 "Backward"),
     # `Taunts` joined on 2026-11-24 with the Death skills (issue #2885, the
     # Crossbow draft's C3) on Summon and Deployable: what a row raises or places
     # taunts the enemies within the row's Radius of it. No enemy ability uses it.

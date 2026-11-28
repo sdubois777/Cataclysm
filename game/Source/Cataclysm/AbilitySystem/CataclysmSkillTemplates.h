@@ -1430,6 +1430,12 @@ public:
 	FVector ConditionalDestination(const FVector& Start) const;
 
 	/**
+	 * Where a backward move from `Start` lands: `RangeCm` along the floor AWAY from `Aimed`, at `Start`'s height; with
+	 * the aim on `Start` itself, away from `Facing`. W12 (issue #2972), Recoil Dash. Static so a test asks it directly.
+	 */
+	static FVector BackwardDestination(const FVector& Start, const FVector& Aimed, float RangeCm, const FVector& Facing);
+
+	/**
 	 * One arrival of a move that repeats. `Mode=Flicker`.
 	 *
 	 * ONE ROW STATES IT: the Dagger's Everywhere at Once, "for 4 seconds you are

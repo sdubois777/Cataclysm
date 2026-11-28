@@ -3635,8 +3635,26 @@ void UCataclysmMovementSkill::PullNearbyToWhereItArrived()
 	}
 }
 
+FVector UCataclysmMovementSkill::BackwardDestination(const FVector& Start, const FVector& Aimed, float RangeCm,
+													 const FVector& Facing)
+{
+	FVector Away = FVector(Start.X - Aimed.X, Start.Y - Aimed.Y, 0.0f);
+	if (Away.IsNearlyZero())
+	{
+		Away = -FVector(Facing.X, Facing.Y, 0.0f);
+	}
+	return Start + Away.GetSafeNormal() * FMath::Max(0.0f, RangeCm);
+}
+
 FVector UCataclysmMovementSkill::ConditionalDestination(const FVector& Start) const
 {
+	// W12 (the War weapon skills, issue #2972): A BACKWARD BLINK goes its whole range away from the aim.
+	if (Params.bBackward)
+	{
+		const AActor* Facer = Avatar();
+		return BackwardDestination(Start, AimPoint(), ScaledRangeCm(),
+								   Facer ? Facer->GetActorForwardVector() : FVector::ForwardVector);
+	}
 	const bool bToBurning = RequiresCondition(TEXT("Burning"));
 	const bool bToAnything = RequiresCondition(TEXT("Target"));
 	if (!bToBurning && !bToAnything)
@@ -3928,7 +3946,7 @@ void UCataclysmMovementSkill::ActivateAbility(
 	AActor* SteppedBehind = nullptr;
 	if ((Params.MovementMode == ECataclysmMovementMode::Leap || Params.MovementMode == ECataclysmMovementMode::Blink
 		 || Params.MovementMode == ECataclysmMovementMode::Charge)
-		&& !RequiresCondition(TEXT("Burning")) && !RequiresCondition(TEXT("Target")))
+		&& !RequiresCondition(TEXT("Burning")) && !RequiresCondition(TEXT("Target")) && !Params.bBackward)
 	{
 		SteppedBehind = UCataclysmShadowImages::ShadowStepTarget(Self, AimPoint(), SkillTags);
 		if (SteppedBehind)

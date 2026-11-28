@@ -239,4 +239,40 @@ bool FCataclysmWarSkillsColossusTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarSkillsBackwardTest,
+	"Cataclysm.WarSkills.ABackwardBlinkLandsItsRangeAwayFromTheAim",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * W12, Recoil Dash (accepted 2026-11-28): `Backward=1` is read from the cell, and a backward move from the origin aimed
+ * 5 m east lands 6 m WEST, further from the aim than it started; aimed at its own feet, it goes away from where it
+ * faces. Recoil Dash's own row states it. THE CONTROL: a row with no `Backward` reads false.
+ */
+bool FCataclysmWarSkillsBackwardTest::RunTest(const FString&)
+{
+	TestTrue(TEXT("Backward=1 is read"), UCataclysmSkillShape::ParseParams(TEXT("Mode=Blink; Range=6; Backward=1")).bBackward);
+	TestFalse(TEXT("control: no Backward is a forward blink"),
+			  UCataclysmSkillShape::ParseParams(TEXT("Mode=Blink; Range=6")).bBackward);
+	const FVector Start(0.0f, 0.0f, 50.0f);
+	const FVector Aimed(500.0f, 0.0f, 0.0f);
+	const FVector Landed = UCataclysmMovementSkill::BackwardDestination(Start, Aimed, 600.0f, FVector::ForwardVector);
+	TestEqual(TEXT("aimed 5 m east, it lands 6 m west"), Landed, FVector(-600.0f, 0.0f, 50.0f), 0.01f);
+	TestTrue(TEXT("further from the aim than it started"),
+			 FVector::Dist2D(Landed, Aimed) > FVector::Dist2D(Start, Aimed));
+	TestEqual(TEXT("aimed at its own feet, it goes away from its facing"),
+			  UCataclysmMovementSkill::BackwardDestination(Start, Start, 600.0f, FVector::ForwardVector),
+			  FVector(-600.0f, 0.0f, 50.0f), 0.01f);
+
+	FCataclysmWeaponSkill RecoilDash;
+	if (TestTrue(TEXT("Recoil Dash's row is found"),
+				 UCataclysmTriggeredSkill::FindSkillRowNamed(FName(TEXT("War_2H_Crossbow_Movement")), TEXT("War"),
+															 RecoilDash)))
+	{
+		TestTrue(TEXT("and states Backward"), RecoilDash.Params.bBackward);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

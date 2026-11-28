@@ -755,6 +755,11 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.bPassesThroughEnemies = Number != 0.0f;
 		}
+		else if (Key.Equals(TEXT("Backward"), ESearchCase::IgnoreCase))
+		{
+			// W12, the War weapon skills (issue #2972): a blink away from the aim.
+			Params.bBackward = Number != 0.0f;
+		}
 		else if (Key.Equals(TEXT("DisarmsUntilRecalled"), ESearchCase::IgnoreCase))
 		{
 			Params.bDisarmsUntilRecalled = Number != 0.0f;

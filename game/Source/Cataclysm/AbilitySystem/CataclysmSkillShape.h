@@ -1396,6 +1396,14 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bDisarmsUntilRecalled = false;
 
+	/**
+	 * `Backward=1` on a Blink: the move goes its full range AWAY from where the player aims, not toward it. The War
+	 * weapon skills' W12 (issue #2972, accepted 2026-11-28): Recoil Dash's "propel yourself backward 6 meters". A blink
+	 * toward the aim would be a 6 m gap-closer, shorter than every movement skill the enemy designs are measured against.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	bool bBackward = false;
+
 	/** True when every blow the skill lands counts as struck from behind. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
 	bool bRearHits = false;

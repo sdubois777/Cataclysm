@@ -760,7 +760,10 @@ SHAPE_PARAMS = {
     # DAY, N10: the ceiling on a flicker its deaths lengthen by `DurationPer`
     # ("up to 8 seconds in all"); `check_death_skill_keys` says where.
     "Movement": {"Mode", "Range", "Radius", "MaxTargets", "Duration", "Interval",
-                 "RearHits", "Detonates", "KillFervour", "MaxDuration"},
+                 "RearHits", "Detonates", "KillFervour", "MaxDuration",
+                 # W12, the War weapon skills (issue #2972, accepted 2026-11-28):
+                 # Recoil Dash's blink away from the aim.
+                 "Backward"},
     # Subjugate takes ONE enemy, which is what MaxTargets says everywhere else.
     #
     # `Taunts` JOINED ON 2026-11-24 WITH THE DEATH SKILLS, issue #2885: the
@@ -1096,6 +1099,8 @@ def check_a_bursting_wound_a_paid_hit_and_an_escape(params: dict[str, str], shap
         raise DataError(f"{where}: states ArmourRemovedCap and no ArmourRemoved")
     if "Stagger" in params and float(params["Stagger"]) <= 0.0:
         raise DataError(f"{where}: states Stagger={params['Stagger']}, which lays nothing")
+    if is_on(params, "Backward") and params.get("Mode") != "Blink":
+        raise DataError(f"{where}: states Backward=1 on a {params.get('Mode')!r} move; only a Blink goes backward (W12)")
     if "HitFervourPerCast" in params:
         if "HitFervour" not in params:
             raise DataError(
