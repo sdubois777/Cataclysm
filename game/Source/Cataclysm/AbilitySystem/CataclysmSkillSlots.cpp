@@ -72,6 +72,7 @@ FCataclysmSkillSlotNumbers UCataclysmSkillSlots::NumbersFor(
 			Numbers.ManaCostAtLevel100 = Row.ManaCost;
 			Numbers.ManaOnHitAtLevel100 = Row.ManaOnHit;
 			Numbers.FervourCost = Row.FervourCost;
+			Numbers.ManaReserved = Row.ManaReserved;
 			Numbers.bFound = true;
 		});
 

@@ -1107,9 +1107,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoCapsFloorTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The floor is Crowned's own "never less than 1", `UCataclysmCommand::SmallestMinionReserve`. 80% less of a trap's 5
- * is exactly 1, the control; 90% less would be 0.5 and is 1; Crowned's 5 points with 100% less would be nothing and is
- * 1; and 150% less, a negative share, is 1 as well rather than a reserve below nothing.
+ * The floor is Crowned's own "never less than 1", `UCataclysmCommand::SmallestMinionReserve`, AND SINCE 2026-11-27 THE
+ * SUMMED PERCENT STOPS AT 75 (`UCataclysmCommand::MostReservePercentLess`), ruled by the coordinating session with the
+ * auras' mana reserve: "The 75% cap on summed reductions applies to BOTH mana and Fervour". 75% less of a trap's 5 is
+ * 1.25, the control at the cap; 90% less is held there and is 1.25 too; Crowned's 5 off a trap's 5 would be nothing and
+ * is 1; and 150% less of an imp's 10, held at 75%, is 2.5 rather than a reserve below nothing. Until then 80% less of a
+ * trap's 5 was 1 and 90% less was the floor.
  */
 bool FCataclysmNoCapsFloorTest::RunTest(const FString&)
 {
@@ -1126,19 +1129,19 @@ bool FCataclysmNoCapsFloorTest::RunTest(const FString&)
 	Player.Holds({});
 	Player.Pool(100.0f);
 
-	Player.Holds({PercentLess(80.0f)});
-	TestEqual(TEXT("control: 80% less of a trap's 5 is 1 without the floor"),
-		ReserveOfType(Player, ACataclysmMinion::SkillTrapFervourReserve, TEXT("SkillTrap")), 1.0f, 0.001f);
+	Player.Holds({PercentLess(75.0f)});
+	TestEqual(TEXT("control: 75% less of a trap's 5, the cap, is 1.25"),
+		ReserveOfType(Player, ACataclysmMinion::SkillTrapFervourReserve, TEXT("SkillTrap")), 1.25f, 0.001f);
 	Player.Holds({PercentLess(90.0f)});
-	TestEqual(TEXT("90% less of a trap's 5 would be 0.5 and is 1"),
+	TestEqual(TEXT("90% less of a trap's 5 is held at 75% and is 1.25"),
+		ReserveOfType(Player, ACataclysmMinion::SkillTrapFervourReserve, TEXT("SkillTrap")), 1.25f, 0.001f);
+	Player.Holds({KindCrowned});
+	TestEqual(TEXT("Crowned's 5 off a trap's 5 would leave nothing and leaves 1"),
 		ReserveOfType(Player, ACataclysmMinion::SkillTrapFervourReserve, TEXT("SkillTrap")),
 		UCataclysmCommand::SmallestMinionReserve, 0.001f);
-	Player.Holds({KindCrowned, PercentLess(100.0f)});
-	TestEqual(TEXT("Crowned and 100% less would leave an imp nothing and leave 1"),
-		ReserveOfType(Player, 10.0f, TEXT("Imp")), UCataclysmCommand::SmallestMinionReserve, 0.001f);
 	Player.Holds({PercentLess(150.0f)});
-	TestEqual(TEXT("150% less is 1, not a reserve below nothing"),
-		ReserveOfType(Player, 10.0f, TEXT("Imp")), UCataclysmCommand::SmallestMinionReserve, 0.001f);
+	TestEqual(TEXT("150% less of an imp's 10 is held at 75%: 2.5, not a reserve below nothing"),
+		ReserveOfType(Player, 10.0f, TEXT("Imp")), 2.5f, 0.001f);
 	return true;
 }
 

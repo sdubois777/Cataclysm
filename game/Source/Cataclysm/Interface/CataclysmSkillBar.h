@@ -121,6 +121,15 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	FString ReserveNoun;
 
 	/**
+	 * Maximum mana (health, under Water to Blood) a toggled aura holds while it is on, at its level and after the
+	 * character's reductions (`UCataclysmGameplayAbility::ManaReservationFor`), or 0 for any other skill. Ruled
+	 * 2026-11-27 under the owner's choice "Reserve, don't drain". The box is greyed out, as an unaffordable one is,
+	 * while the aura is off and does not fit.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	float AuraReserves = 0.0f;
+
+	/**
 	 * Whether a press of this box places a gadget, so the gadget rule applies (V5g, 2026-11-25): a skill gadget's slot,
 	 * or a War deployable whose set holds a gadget. The pop-up then says the rule (`UCataclysmSkillBar::GadgetPressRule`).
 	 */

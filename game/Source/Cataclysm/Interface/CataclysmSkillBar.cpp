@@ -527,6 +527,12 @@ FString UCataclysmSkillBar::CostLineFor(const FCataclysmSkillBarSlot& Slot)
 	{
 		Line += TEXT(" No cooldown.");
 	}
+	// AND WHAT A TOGGLED AURA HOLDS WHILE ON, rounded up as the costs are. Ruled 2026-11-27.
+	if (Slot.AuraReserves > 0.0f)
+	{
+		Line += FString::Printf(TEXT(" Reserves %d %s while on."), Whole(Slot.AuraReserves),
+								Slot.bCostPaidFromHealth ? TEXT("health") : TEXT("mana"));
+	}
 	// AND WHAT EACH THING IT MAKES RESERVES, rounded up as the costs are. Issue #2802.
 	if (Slot.ReserveEach > 0.0f)
 	{
@@ -827,6 +833,19 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 		Box.bShortOfFervour =
 			!UCataclysmGameplayAbility::FervourCovers(Abilities, Box.FervourCost);
 		Box.bAffordable = Box.bAffordable && !Box.bShortOfFervour;
+
+		// AND A TOGGLED AURA'S RESERVATION, the question its own `CheckCost` asks. Ruled 2026-11-27: switching it on
+		// costs nothing and needs room, so an aura that is off and does not fit is greyed out as an unaffordable press
+		// is. One already on holds its own and is not asked: its next press switches it off.
+		if (const UCataclysmAuraSkill* Aura = Cast<UCataclysmAuraSkill>(Ability))
+		{
+			if (Aura->Reserves(Abilities))
+			{
+				Box.AuraReserves = Aura->ManaReservationFor(Abilities);
+				const bool bOn = Aura->IsInstantiated() && Aura->IsHeld();
+				Box.bAffordable = Box.bAffordable && (bOn || Aura->HasRoomToReserve(Abilities));
+			}
+		}
 
 		// THE LOCK IS ASKED PER BOX, WITH THIS SKILL'S OWN TAGS. Issue #1810.
 		// Unlike mana above, this is not one answer for the character:

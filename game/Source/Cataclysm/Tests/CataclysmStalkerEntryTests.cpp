@@ -427,7 +427,11 @@ bool FCataclysmStalkerEntriesSkillsTest::RunTest(const FString& Parameters)
  * Order` uses for Kaedric: below 30% mana, full health and no Fervour, the heavy skill at 2 m (every heavy reaches 2.5 m
  * or more), the special at 8 m (every heavy reaches 5 m at most and every special 12 m), the movement skill at 20 m;
  * with Fervour, the ultimate at 2 m (every ultimate reaches 4 m or more); below half its health, the support skill;
- * with its mana, the aura. THE CONTROL: at 14 m, where nothing it holds reaches, it chooses nothing and chases.
+ * with room for its aura, the aura. THE CONTROL: at 14 m, where nothing it holds reaches, it chooses nothing and chases.
+ *
+ * ITS AURA IS KEPT OUT BY ROOM SINCE 2026-11-27, ruled with the auras' mana reservation ("Its aura reserves like the
+ * player's"): all but 10 of its maximum mana is held for it first, and let go before the aura's turn. Until then a
+ * fifth of its mana kept the aura out, by a 30% rule removed with the drain.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStalkerEntriesChooseTest,
 	"Cataclysm.StalkerEntries.AStalkerOfEachTypeChoosesEachOfItsSixSlots",
@@ -458,6 +462,16 @@ bool FCataclysmStalkerEntriesChooseTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
+		UCataclysmAbilitySystemComponent* Holder =
+			Cast<UCataclysmAbilitySystemComponent>(Stalker->GetAbilitySystemComponent());
+		if (!TestNotNull(FString::Printf(TEXT("set-up: the %s Stalker's ability system"), *Type), Holder))
+		{
+			continue;
+		}
+		Holder->HoldAuraReservation(Stalker, FGameplayAbilitySpecHandle(),
+									Read(Stalker, UCataclysmVitalAttributeSet::GetMaxManaAttribute()) - 10.0f,
+									/*bFromHealth=*/false);
+
 		StalkerAt(Stalker, 0.2f, 1.0f, 0.0f);
 		TestEqual(FString::Printf(TEXT("%s: at 2 m, the heavy skill"), *Type), Brain->ChooseAbility(2.0f * M),
 				  ChoiceIndexOf(Slot::Heavy));
@@ -474,9 +488,10 @@ bool FCataclysmStalkerEntriesChooseTest::RunTest(const FString& Parameters)
 		StalkerAt(Stalker, 0.2f, 0.45f, 100.0f);
 		TestEqual(FString::Printf(TEXT("%s: below half its health, the support skill"), *Type),
 				  Brain->ChooseAbility(2.0f * M), ChoiceIndexOf(Slot::Support));
-		StalkerAt(Stalker, 1.0f, 0.45f, 100.0f);
-		TestEqual(FString::Printf(TEXT("%s: with its mana, the aura"), *Type), Brain->ChooseAbility(2.0f * M),
-				  ChoiceIndexOf(Slot::Aura));
+		Holder->ReleaseAuraReservation(Stalker);
+		StalkerAt(Stalker, 0.2f, 0.45f, 100.0f);
+		TestEqual(FString::Printf(TEXT("%s: with room for its aura, at a fifth of its mana, the aura"), *Type),
+				  Brain->ChooseAbility(2.0f * M), ChoiceIndexOf(Slot::Aura));
 	}
 	return true;
 }
@@ -484,7 +499,8 @@ bool FCataclysmStalkerEntriesChooseTest::RunTest(const FString& Parameters)
 /**
  * AND CASTS EACH OF THE SIX AT THE PLAYER, 2 m in front of it, through `UseEnemyAbility`, the call its brain makes: each
  * cast pays its mana, which every template takes in `CommitAndBegin` before it does anything else, so a paid cast is a
- * skill that started. Its mana is refilled, its health held below half and its Fervour at 100 before each, so every
+ * skill that started. THE AURA IS FREE SINCE 2026-11-27 AND HOLDS MANA BACK INSTEAD: switching it on from a full pool
+ * cuts the mana to what its reservation leaves, which is what its mana falling shows. Its mana is refilled, its health held below half and its Fervour at 100 before each, so every
  * slot's condition holds. The aura and the support are then running. THE CONTROL: a Stalker that wears no build casts
  * nothing and pays nothing.
  */
@@ -543,7 +559,8 @@ bool FCataclysmStalkerEntriesCastTest::RunTest(const FString& Parameters)
 			const float Before = Read(Stalker, Vital::GetManaAttribute());
 			Stalker->UseEnemyAbility(ChoiceIndexOf(Each), Player, Player->GetActorLocation());
 			const float After = Read(Stalker, Vital::GetManaAttribute());
-			TestTrue(FString::Printf(TEXT("%s's %s (%s) was cast and paid for: mana %.1f to %.1f"), *Type,
+			TestTrue(FString::Printf(TEXT("%s's %s (%s) was cast and took mana (the aura's held back): mana %.1f to %.1f"),
+									 *Type,
 									 *UEnum::GetValueAsString(Each),
 									 Stalker->SkillIn(Each) ? *Stalker->SkillIn(Each)->Name : TEXT("none"), Before,
 									 After),

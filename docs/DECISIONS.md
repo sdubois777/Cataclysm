@@ -2,6 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+<<<<<<< HEAD
 ## 2026-11-27 — The empire upgrade tree screen draws the whole tree at once, as the owner built it: every node at its file position, the builder's rings, lines and labels, and each node a mark
 
 **Affects:**
@@ -75,6 +76,268 @@ stops generation (`EMPIRE_TREE_DECORATION_KINDS`). The file's `viewport` (the bu
   draws them.
 
 **Not built or run when this was written.** The run table follows when the window runs.
+=======
+## 2026-11-27 — An aura reserves maximum mana while it is on and drains none: 50 at skill level 1, lowered by the skill's level and by three new reserve stats, the summed percent held at 75% for mana and Fervour alike
+
+**Affects:**
+- `game/Data/SkillSlots.csv` (from the workbook's Skill Slots sheet): a "Mana Reserved" column, 50 on the Aura row and 0
+  elsewhere; the Aura's Mana Cost is 0. `FCataclysmSkillSlotRow::ManaReserved`, `FCataclysmSkillSlotNumbers::ManaReserved`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`: `ManaReservationFor`.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp`: `UCataclysmAuraSkill` takes nothing in
+  `Pulse`; `CheckCost` asks for room; `ActivateAbility` holds the reservation and `EndAbility` gives it back; `Reserves`,
+  `HasRoomToReserve`, `ReservedNow`; `bEndedForLackOfMana` now means "let go because it no longer fitted".
+- `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`: `HoldAuraReservation`,
+  `ReleaseAuraReservation`, `HoldsAuraReservation`, `ManaReserved`, `HealthReservedByAuras` (added into
+  `HealthReserved`), `UnreservedMaximumMana`, `HoldManaToUnreserved`, `ReleaseAurasThatNoLongerFit`; `ManaPercent` in
+  `CurrentConditions` reads the unreserved maximum.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`: `ManaReserveFor`, `ReservedAfterReductions`,
+  `MostReservePercentLess` (75), `SmallestManaReserve` (1), and the three stat names; `ReserveFor` takes the 75% cap.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp`: `TopUp` fills mana only to the unreserved maximum;
+  the step lets go of auras that no longer fit and holds mana to the ceiling each second.
+- `game/Source/Cataclysm/AbilitySystem/CataclysmBoneGiants.h` and `.cpp`: the Colossus's 20 and the Abomination's 100
+  go through `ReserveFor`.
+- `game/Source/Cataclysm/Character/CataclysmCorruptedStalkerCharacter.h` and `.cpp`,
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`: the rule that switched the Stalker's aura off below
+  30% of its mana, and `CorruptedStalkerAuraOffBelowManaShare`, are removed; its aura is chosen when it fits.
+- `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (a respawn holds mana to the ceiling),
+  `CataclysmPlayerClassStats.cpp` (the three stats have no attribute).
+- `game/Source/Cataclysm/Interface/CataclysmHUD.cpp`, `CataclysmCombatOverlay.h` and `.cpp`: a dark band and its figure
+  at the end of the mana bar. `CataclysmSkillBar.h` and `.cpp`: an aura that does not fit is greyed out, and its pop-up
+  says "Reserves N mana while on."
+- Enchantments, passive nodes, the re-apply script, the simulation and the design document: see below.
+- Tests: listed under "Tests".
+
+### SAID FIRST
+
+- **WINDOW aur-w1 PASSED IN UNREAL ON `87e2124f9`, AND NOTHING HAS BEEN SEEN IN PLAY.** The whole suite passed 6,123 of
+  6,123 and the C++ guard proof PROVED with exactly its eight predicted failures (see Evidence). The owner is asked to
+  switch auras on at low and high level and look at the reserved band on the mana bar.
+- **TWO CORRECTIONS TO THE DESIGN DRAFT (`.claude/windows/aura_reservation_draft.md`), found while building and ruled
+  by the coordinating session on 2026-11-27:**
+  1. **No "Ultimate key x2" rule existed.** The draft said "An aura on the Ultimate key pays its upkeep doubled (ruled
+     2026-10-15)", and ruling 1 below repeated it. The doubling ruled on 2026-10-15 is Mana Weaver's ten-piece bonus
+     (`UCataclysmGameplayAbility::UltimateCostDoublingFactor`), which reaches only a skill MADE for the Ultimate slot;
+     since the ruling of 2026-10-25 (Q7) a skill keeps its designed slot's numbers on any key, so a toggled aura on the
+     Ultimate key was never doubled. Ruled: "as today", literally. A toggled aura reserves its Aura slot's 50, times the
+     skill-level factor, times the Mana Weaver factor, which is 1 for every toggled aura. Timed auras reserve nothing.
+  2. **Water to Blood is one for one, not three.** The draft said an aura would reserve health "at the existing 3 health
+     to 1 mana". That ratio is a different row's ("Skills can spend HP instead of mana at a 3:1 ratio", spent only when
+     mana is short). Water to Blood converts the pool and not the price (`UCataclysmGameplayAbility::CostPool`). Ruled:
+     an aura reserves the same number of health points, and the 3:1 row does not apply to a reservation.
+- **The draft's other statements about the code were checked against it before registering, as the coordinating
+  session asked.** One more was partly wrong and changes nothing built: the draft said a Fervour reserve "is fixed when
+  each follower is made", but a skill's level-up reprices reserves already held (`UCataclysmSkillLevels::
+  RepriceReservesOf`). Put to the coordinating session, which ruled the same day: "reprice auras LIVE, as Fervour
+  reserves are" -- see "Repriced live" below. The others held: each damage type adds its aura once
+  (`CataclysmWeaponSkills.cpp`, "AND THE TYPE'S AURA ONCE"); any skill may go on any key but the basic attack's
+  (`ACataclysmPlayerState::RefusalForSkillChoice`); a refill of the keys ends running abilities; death ends auras only
+  under `auras_end_at_death`; mind adds 2% maximum mana a point (`Attributes.csv`); Ritual Focus and the Soul
+  Collector's capstone remove `mana_cost`; Cheap Bones is 4% a point and Lighter Bones 2% a point for permanent minions.
+
+### The owner's words, verbatim
+
+"I think we may need to adjust the mana cost of auras across the board. I have a lvl 100 character with 500+ mana and
+I can't even keep my auras going. That feels a bit extreme. It should be difficult to maintain them at low levels, but
+get easier. Players will likely be running more than one at a time, and right now that's impossible."
+
+Asked to choose, the owner chose "Reserve, don't drain". On running more than one aura: "It does, it's just not
+possible to sustain it." On levers: "There should probably be enchantments/passive nodes depending on class that lower
+reservation amounts of fervour/mana. Just another lever the player can pull to make their build."
+
+### The rulings: the coordinating session's, under the owner's delegation of unstated numbers
+
+1. "A flat 50, lowered by the aura skill's own level, the existing 0.9642 a level (about 25 at skill level 20). The
+   Ultimate key doubles it, as today." The second sentence is corrected: see SAID FIRST, correction 1.
+2. "The 75% cap on summed reductions applies to BOTH mana and Fervour: one rule in ReserveFor, with the floor of 1."
+3. "Route the Bone Colossus and the Abomination through ReserveFor, so reductions reach them. Test it, with a control."
+4. "The drawback enchantment becomes 50%-100% increased reservation. Weight and Tags unchanged."
+5. The Corrupted Stalker: "REMOVE its switch-off-below-30%-mana rule... Its aura reserves like the player's."
+6. "Ravager: no new node now. The Ravager gets its reductions from gear enchantments."
+7. "Conditions that read a mana percentage read the unreserved maximum."
+8. Approved as proposed: the three stats in the Fervour shape; the enchantment rows; the Ritualist's Wider Vessel and
+   Reserve, the Masochist's Beacon of Despair and the Bulwark's Aura of Pain. The Soul Collector's two nodes (Spirit to
+   Mana, Ossuary) go to the Soul Collector rework session after its window passes, and are not on this branch.
+
+### Research (re-read for the draft, `.claude/windows/aura_reservation_draft.md` section 1)
+
+All read through a summarising fetch tool on 2026-11-27, so the quotes are probably accurate but were not checked
+character by character; poewiki.net and poe2wiki.net refused automated reading.
+
+- **Path of Exile 2, Spirit** (poe2db.tw/us/Spirit): persistent skills reserve a FLAT amount that the gem's level
+  changes -- Herald of Ash "Reservation: 30 Spirit", Skeletal Warrior "Reservation: (60—20) Spirit" -- and "Reserving a
+  resource does not change the maximum value of that resource." That is the shape taken here, with mana as the pool
+  because the owner's words say mana.
+- **Path of Exile 1** (poedb.tw/us/Aura): "Reserved mana can't be used or recovered until whatever is reserving it is
+  disabled." That is the rule taken for what reserved mana is.
+- **Efficiency** (pathofexile.com/forum/view-thread/3185299): "Reservation Efficiency works by dividing the cost", so it
+  never reaches nought. This game's reductions subtract, so they can; hence the cap.
+- **A condition reading a mana percentage against the unreserved maximum** follows Path of Exile 1's Archmage, as the
+  comment on `PerPointOfMaximumMana` in `CataclysmStatPipeline.h` already recorded; that was not re-read at a source.
+- **What the research does not settle, and is this game's judgement:** every number (50, 0.9642 a level, 75%, 1), the
+  pool being mana rather than a new pool, and the cap; no source read states a cap or a floor.
+
+### How it works
+
+- **Switching an aura on costs nothing and needs room:** what the holder's auras leave unreserved of the MAXIMUM must be
+  at least this aura's reservation, as a Fervour reserve is measured. Mana in hand above the new ceiling is lost at once.
+- **While on, it holds that much of maximum mana**, which cannot be spent or refilled; the maximum itself is unchanged.
+  A pulse takes nothing. Switched off, the reservation is free again (mana is not refilled).
+- **The reservation is the designed slot's "Mana Reserved"** (only the Aura's, 50), times the skill's level factor, after
+  the holder's reductions: a flat `mana_reserve_reduction`, then one less the summed `mana_reserve_percent_less` (held at
+  75; a negative sum raises it and is not held), then the `mana_reserve` "more" rows, never below 1. **It does not grow
+  with the character's level**, which is what makes it hard early and easy late.
+- **Timed auras** (Living Pyre, Grave Muster, Grave Shroud, Fevered Blood, Coin of Misrule, Aegis of Dawn) reserve
+  nothing and pay once, as before. Every aura in the data made for a slot other than the Aura slot is timed.
+- **A maximum that falls below what is reserved** lets the most recently switched-on aura go, each regeneration step,
+  until the rest fit.
+- **Rows that scale with maximum mana keep reading the maximum.** Rows reading `mana_cost` no longer reach an aura, which
+  costs nothing.
+- **Under Water to Blood** an aura holds the same number of health points (added into `HealthReserved`), and room
+  keeps one point of health unreserved.
+- **Cast from Ward and "pays from health when short"** do not reach a reservation: it is not a payment that runs short.
+- **The key an aura sits on does not change it** (see SAID FIRST, correction 1).
+
+### Repriced live (ruled 2026-11-27 by the coordinating session)
+
+"Reprice auras LIVE, as Fervour reserves are (RepriceReservesOf). A skill level gained while the aura is on lowers its
+reservation at once. So does a change to the reduction stats, from equipping gear or spending a point: up or down. If a
+reprice raises the reservation above the unreserved maximum, current mana is held to the new ceiling, as the health
+version does. The aura stays on unless the reservation would exceed the whole maximum. In that case it switches off,
+with a log line."
+
+Built as `UCataclysmAbilitySystemComponent::RepriceAuraReservations`, which asks each held aura its reservation again,
+lets go of auras that no longer fit the whole maximum (newest first, an `AURA LET GO` line at `Log`), and holds mana and
+health to what is left. It is called when the stat line is written (`SetStatInputs`), at the end of a refresh once both
+maxima are written (`UCataclysmPlayerClassStats::ApplyTo`), when a skill levels
+(`ACataclysmPlayerState::RepriceReservesForLevelsGained`), and on every regeneration step. The pool is asked again too,
+so Water to Blood taken or given up moves a hold to the pool every cost comes from.
+
+### How many auras fit (no gear, no attribute points, skill level 1, room kept for one Ultimate and one Special)
+
+| Class line | Level 1 | Level 20 | Level 50 | Level 100 |
+|---|---|---|---|---|
+| Default line (Masochist, Shadow, Soul Collector, Bulwark, Berserker, Saboteur) | 0 | 2 | 4 | 9 |
+| Ravager | 0 | 1 | 2 | 4 |
+| Necromancer | 1 | 3 | 8 | 15 |
+| Ritualist | 1 | 5 | 11 | 21 |
+
+From `sim/cataclysm_sim/character.py`, `Character.auras_that_fit`, checked against the draft's table.
+
+### Enchantments and nodes
+
+Written by `tools/apply_aura_reservation_2026_11_27.py`, which finds every row by its key so a second run on a workbook
+another branch has changed still works, writes nothing on a second run, and refuses a cell holding a third value
+(`tools/tests/test_apply_aura_reservation.py`, 7 tests). Then `tools/generate_datatables.py`, which now emits
+`ManaReserved` and refuses a reservation below nought, one on a slot other than the Aura, and a slot that both reserves
+and costs mana (`tools/tests/test_skill_slot_reservation_refusals.py`, 4 tests).
+
+| Enchantment row | Was | Stat |
+|---|---|---|
+| `Positive_Your_auras_reserve_30_50_less_mana` | `Positive_Your_aura_costs_30_50_less_mana_per_second` (alias kept) | `mana_reserve` more -30 to -50, Slot.Aura |
+| `Negative_Your_auras_reserve_50_100_increased_mana` | `Negative_Your_auras_cost_100_200_increased_mana_per_sec`, 100%-200% (alias kept) | `mana_reserve_percent_less` -50 to -100, Slot.Aura |
+| `Positive_Your_auras_reserve_15_30_reduced_mana` | new, Weight 2 | `mana_reserve_percent_less` 15 to 30, Slot.Aura |
+| `Positive_Each_aura_you_hold_reserves_5_15_less_mana` | new, Weight 2 | `mana_reserve_reduction` 5 to 15, Slot.Aura |
+| `Positive_Your_gadgets_reserve_15_30_reduced_Fervour` | new, Weight 2 | `minion_reserve_percent_less` 15 to 30, Type.Gadget |
+
+The two renamed rows keep their Weight and Tags; the aliases are in `FCataclysmEnchantmentRenames::Aliases()` and
+`tools/tests/enchantment_row_names.txt`.
+
+| Passive row | Node | Adds, per point |
+|---|---|---|
+| `Ritualist_basic_d_c0#2` | Wider Vessel (6 points) | "Your auras reserve 3% reduced mana" |
+| `Ritualist_basic_c_c1#2` | Reserve (6 points) | "Your minions reserve 2% reduced Fervour" |
+| `Masochist_basic_fl_b2#4` | Beacon of Despair (8 points) | "Your auras reserve 2% reduced mana" |
+| `Bulwark_basic_tw_t3_001#3` | Aura of Pain (8 points) | "Your auras reserve 2% reduced mana" |
+
+No Ravager node, as ruled: the Ravager's reductions come from gear enchantments. The Soul Collector's two nodes (Spirit
+to Mana, Ossuary) are not on this branch; they go to the Soul Collector rework after its window passes.
+
+**The coverage pins move with the rows, as their comments ask:** the enchantment effect sheet's authored rows 709 to
+712 over 572 to 575 enchantments, the stated ranges 391 to 394 (in `test_enchantment_effects_match_the_row_text.py` and
+`Cataclysm.Enchantments.EveryRangeTheTablesStateIsFoundAndReplaced`), and the passive effect rows 998 to 1002.
+Rows that read `mana_cost` -- "Skills cost 50%-75% more mana", Ritual Focus, the Soul Collector's capstone -- no longer
+reach an aura, which costs nothing.
+
+### Tests
+
+- New, `game/Source/Cataclysm/Tests/CataclysmAuraReservationTests.cpp`, group `Cataclysm.AuraReservation.` (13):
+  room against the maximum; two auras fit 100 and a third does not; the skill's level; flat across character levels;
+  the 75% cap and the floor; a row scoped to auras; a falling maximum lets the newest go; regeneration's ceiling; a
+  mana percentage; a timed aura; a level gained reprices at once; a reduction taken off reprices and holds the mana; a
+  reservation too large for the whole maximum switches the aura off.
+- New: `Cataclysm.Remains.TheBoneColossusAndTheAbominationReserveLessUnderTheReserveRows`.
+- New probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` for `mana_reserve_reduction`, `mana_reserve_percent_less`, `mana_reserve`.
+- Rewritten, the drain they pinned being gone (old name -> new):
+  - `Cataclysm.Skills.AnAuraSwitchesOffWhenTheManaRunsOut` -> `AnAuraReservesManaWhileOnAndAPulseTakesNone`
+  - `AnAuraKeepsRunningOnHealthWhenTheManaPoolBecameHealth` -> `AnAuraReservesHealthWhenTheManaPoolBecameHealth`
+  - `AnAurasUpkeepPaysWhatTheStatSaysRatherThanTheSlotsFigure` -> `AnAurasReservationReadsTheReserveRowsAndNotTheManaCostRows`
+  - `BelowTenPercentManaAnAurasUpkeepStillDrainsMana` -> `BelowTenPercentManaSwitchingAnAuraOnTakesNoHealth`
+  - `CastFromWardAnAurasUpkeepIsPaidFromTheShieldWhenManaIsShort` -> `CastFromWardAnAurasReservationTakesNothingFromTheShield`
+  - `Cataclysm.AuraEffect.ARowLeavesAnAurasRadiusAndItsUpkeepAsTheyWere` -> `...AndItsReservationAsTheyWere`
+  - `...TheBasicAttackAndAnAurasUpkeepPayNoHealth` -> `...TheBasicAttackAndAnAuraPayNoHealth`
+  - `Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana` ->
+    `ACorruptedStalkerHoldsOneAuraAtATimeAndItReservesManaAsThePlayersDoes`
+- Changed in place: `Cataclysm.Skills.EverySlotHasItsNumbers` (the Aura reserves 50 and costs nothing);
+  `Cataclysm.NoCaps.NoReductionTakesAReserveBelowOnePoint` (the 75% cap); the Corrupted Stalker choice tests in
+  `CataclysmDungeonModifierEffectsTests.cpp` and `CataclysmStalkerEntryTests.cpp` (its aura is kept out by room, not by
+  30% of its mana); `Cataclysm.StalkerKit.ATimedAuraInTheSupportSlotPaysOneUseAndLaysItsAilment` (its control is a
+  toggle's hold, not its drain); two `Cataclysm.Enchantments.` aura tests given a pool of 1,000, their wearer's 50 being
+  exactly the reservation; `Cataclysm.Enchantments.EveryRangeTheTablesStateIsFoundAndReplaced` (394).
+- Python: `sim/tests/test_skill_slots.py` (the reservation model and the auras that fit);
+  `tools/tests/test_skill_slot_sheet_matches_the_model.py` (`test_every_mana_reservation_matches`);
+  `tools/tests/test_skill_slot_reservation_refusals.py` and `tools/tests/test_apply_aura_reservation.py` (new); the two
+  inventories in `test_every_gain_to_the_pool_goes_through_raise_pool.py` and
+  `test_stat_lookups_hand_over_what_they_should.py`; four older scripts' replay tests, which now compare against copies
+  with this reservation taken out (`tools/tests/without_the_aura_reservation.py`).
+
+### Evidence
+
+- **Python suite** (`python -u -m pytest --junit-xml=...`, on the tree before this commit's last test file was added):
+  "1 failed, 9693 passed, 9 skipped in 943.11s"; the JUnit file agrees, tests=9703, failures=1, errors=0, skipped=9.
+  The one failure is `test_datatable_assets_are_current`: six CSVs changed (EnchantmentEffects, EnchantmentsNegative,
+  EnchantmentsPositive, PassiveEffects, PassiveNodes, SkillSlots), and their assets are rebuilt in the window.
+  `tools/tests/test_skill_slot_reservation_refusals.py`, added after that run began: "4 passed".
+- `python -m ruff check .`: "All checks passed!". `python tools/generate_datatables.py --check`: "All 34 DataTable CSVs
+  are up to date." `python tools/check_includes.py --changed` and the new test file: 25 files, 0 types unseen; its
+  control, the new test file with `CataclysmCommand.h` removed, FAILS naming `UCataclysmCommand`.
+- **Three Python guard proofs, PROVED**, with `tools/prove_guard.py` `break_and_run` in an archive copy of `850b362cc`
+  (`git archive`), each prediction registered in the script before the run, and each failing exactly the test named:
+
+  | Break | Command | Named failure | Summary |
+  |---|---|---|---|
+  | `SLOTS_THAT_RESERVE_MANA` given `"Heavy"` too | `pytest tools/tests/test_skill_slot_reservation_refusals.py` | `test_a_reservation_on_a_slot_other_than_the_aura_is_refused` | "PROVED: 1 failed, 3 passed \| restored: 4 passed" |
+  | `RESERVE_REDUCTION_CAP_PERCENT` 75.0 -> 100.0 | `pytest sim/tests/test_skill_slots.py` | `test_the_summed_percent_reduction_stops_at_seventy_five` | "PROVED: 1 failed, 61 passed \| restored: 62 passed" |
+  | the simulation's Aura `mana_reserved` 50.0 -> 40.0 | `pytest tools/tests/test_skill_slot_sheet_matches_the_model.py` | `test_every_mana_reservation_matches` | "PROVED: 1 failed, 7 passed \| restored: 8 passed" |
+
+- **WINDOW aur-w1 PASSED IN UNREAL on `87e2124f9`**: this branch with development `20b6f44ff` (the Soul Collector rework)
+  merged, plus the six DataTable assets the window built and committed. The scripts are in `.claude/windows/aur_w1/`.
+
+  | Step | Printed result |
+  |---|---|
+  | Three compiles: the branch; each changed `.cpp` alone; unity again | "Succeeded - 98 actions, 88 files compiled"; "69 actions, 66 files"; "27 actions, 24 files". 0 compiler warning or error lines |
+  | DataTable assets | DT_SkillSlots, DT_EnchantmentsPositive, DT_EnchantmentsNegative, DT_EnchantmentEffects, DT_PassiveEffects and DT_PassiveNodes rebuilt and committed alone as `87e2124f9` |
+  | The new group alone, `Cataclysm.AuraReservation.` | "Tests: 13 tests performed, 13 succeeded, 0 failed" |
+  | Whole Unreal suite | "6123 tests performed, 6123 succeeded, 0 failed": window bc-w1's 6,105, development's net +4 since its tree (14 tests out, 18 in), and this branch's +14. Registered 6,123: MATCH |
+  | Test saves; tests that skipped part of what they check | "893 written and deleted, 0 left behind"; 62. Both as registered |
+  | Python, beside the Unreal suite | "9695 passed, 10 skipped in 967.97s"; JUnit tests 9,705, failures 0, errors 0 |
+  | ruff | "All checks passed!" |
+
+- **The window's script first marked the group-alone step FAILED although it printed 13 of 13**, and so held back the
+  proof. `tools/unreal_build.py` prints a "Group" line only when the prefix names two or more groups, and the script read
+  only that line. The script now reads the `Tests:` line when one group runs alone; no test changed. The proof was then
+  run on its own on the same head, as the coordinating session ruled.
+- **The C++ guard proof, PROVED**: one `prove_cpp_guard` call with three breaks, prefix
+  `Cataclysm.AuraReservation.+Cataclysm.NoCaps.+Cataclysm.Skills.AnAuraReservesHealth`, registered before the run with
+  its eight predicted failures. The breaks: the 75% cap taken out (`FMath::Min(PercentLess, MostReservePercentLess)` ->
+  `PercentLess`); a held reservation never asked again once set; and an aura never refused for want of room. Printed:
+  "PROVED: with the break in: 20 tests performed, 12 succeeded, 8 failed: ALevelGainedLowersAHeldAurasReservationAtOnce,
+  AReductionTakenOffRaisesAHeldAurasReservationAtOnceAndHoldsTheMana,
+  AReservationThatNoLongerFitsTheWholeMaximumSwitchesTheAuraOff, RoomIsMeasuredAgainstTheMaximumAndNotTheManaInHand,
+  TheSummedReductionStopsAtSeventyFivePercentAndTheFloorIsOne, TwoAurasFitAPoolOfAHundredAndAThirdDoesNot,
+  NoReductionTakesAReserveBelowOnePoint, AnAuraReservesHealthWhenTheManaPoolBecameHealth | restored: 20 tests performed,
+  20 succeeded, 0 failed". The eight are exactly the eight predicted; the source hash was the same before and after.
+- **Nothing has been seen in play.**
+>>>>>>> origin/development
 
 ---
 
@@ -393,6 +656,109 @@ steps, and Death Made Flesh's switch read as off at 1. With them in: "17 tests p
 DeathMadeFleshTakesAwayTheFervoursDamageAndGivesDefence, GatheredSoulsCountsADeathWithinSixMetresAndNotSeven,
 GravePatienceHealsForEachFiveFervourDecayed, UnquietSoulsStrikesForEachFiveFervourDecayed", the four predicted.
 Restored: "17 tests performed, 17 succeeded, 0 failed".
+
+---
+
+## 2026-11-27 — In a Horde dungeon Echoes of the Past come for the player from afar, as the Horde's own creatures do, and their ten-second give-up clock starts only at their own kind's notice distance
+
+**Said first:**
+
+- **The owner's play test, 2026-11-27:** "I just had the echoes of the past modifier on a horde dungeon. And the echoes
+  don't come attack you, they wait till you get into their aggro range. So that means you have to run around the
+  entire outside of the map until they all attack in order to clear the map. It's an easy thing to miss, they just
+  need to follow the mob aggro rules for hordes if it's a horde dungeon".
+- **The cause, from the code:** a Horde dungeon's creatures notice the player from thirty times their own distance
+  (`FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier`, given to each by `FloorBrief.SightRadiusMultiplier` when
+  it is placed). The echoes were raised with a multiplier of one in every dungeon, and
+  `StepEchoesOfThePast` compared the player's distance with the echo's own `NoticeRadiusCm`. Both were R3 of issue
+  #2740. So in a Horde arena every echo waited for the player to come near.
+
+### What changed
+
+- **`ACataclysmDungeonGameMode::RaiseTheEchoes`**: an echo is raised with the floor's sight multiplier,
+  `FloorBrief.SightRadiusMultiplier`, which is one everywhere but a Horde dungeon.
+- **`ACataclysmDungeonGameMode::StepEchoesOfThePast`**: an echo notices the player from `NoticesFromCm()`, its own
+  distance times that multiplier. **Its give-up clock (R4, `EchoesGiveUpAfterSeconds`, ten seconds) runs, in a Horde
+  dungeon, only while the player is within the echo's own kind's notice distance**, so it walks in from anywhere and
+  keeps R4's ten seconds from where it would ordinarily have noticed. **Everywhere else nothing changes**: the two
+  distances are one, and the clock starts at noticing.
+- **Ruled by the coordinating session on 2026-11-27**: "In a Horde dungeon, the 10 s give-up clock (R4) starts only
+  once the echo is within its own kind's notice distance. It walks in from anywhere and keeps R4's 10 s from there.
+  Everywhere else, nothing changes." The spawn and notice changes were approved in the same message, **overriding R3
+  in Horde dungeons only**.
+- **A test**, `Cataclysm.DungeonModifierEffects.InAHordeDungeonAnEchoComesForThePlayerFromAfarAndElsewhereItWaits`:
+  the same floors in a Horde dungeon and an ordinary one, the player five times the echo's own notice distance away.
+  In the Horde the echo is raised with the floor's multiplier, moves in, and still stands after longer than its
+  give-up time out there; within its own notice distance it stands a beat short of ten seconds and is gone at ten.
+  The control, elsewhere: it is raised with one, waits, and its clock starts at noticing, as before.
+- An echo that cannot walk notices from afar in a Horde dungeon and cannot come; its clock starts when the player
+  comes within its own notice distance, so it waits as it did before. No creature is such an echo since the walking
+  Corrupted Sentinel (#2961) merged into this branch; this sentence named the Sentinel until then.
+
+### The other modifiers: swept, none changed
+
+Every creature a modifier places was checked for the sight multiplier it is given and for whether anything compares
+its distance with `NoticeRadiusCm` directly. **Only Echoes of the Past did both.**
+
+- **Thirty, always:** the Reaper, the Wraiths, the Vampire Lord, the Angelic Wardens, the Abyssal Rifts' hunter, the
+  Corrupted Stalker, and the waves of Pandora's Box, the War Banner, Battlefield Relics, Forced Tithes and the Grim
+  Totems.
+- **The floor's, so thirty in a Horde dungeon:** Morale Break, Luxury Hoarders, Infested Veins, the Unstable Portal,
+  Cryptquake and the raised dead.
+- **One, and not affected:** the Demonic Guide, which never attacks.
+
+### Registered for window eh-w1
+
+- **The base is window bc-w1's whole-suite engine log** (`bc_whole_engine.log`, `ab09edba1`, whose tree is
+  development `efd26843a`'s but for this log): 6105 performed, all succeeding, 62 skipped halves, 893 test saves
+  written and deleted, 0 left behind. Counted from the tree: the base declares 6054 tests and this branch 6055, the one
+  new test above; the run's gap of 51 above the declared count stays.
+- **The whole suite: 6106 performed, all succeeding**, 62 skipped halves, 0 test saves left behind; the number written
+  is not predicted. The Python suite beside it.
+- **No group alone**: the new test joins `Cataclysm.DungeonModifierEffects.`, which is not new.
+- **Three C++ guard proofs**, in one `prove_cpp_guard` call each, against the new test:
+  - **EHS**: `RaiseTheEchoes`' `SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, Dead.Rung)` becomes
+    `SpawnPlacedCreature(Placement, 1.0f, Dead.Rung)`, the spawn as it was. Must fail "A HORDE FLOOR'S ECHO IS RAISED
+    WITH THE FLOOR'S MULTIPLIER", "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE
+    AWAY" and "and at ten it is gone", and nothing else.
+  - **EHN**: `if (ApartCm > Echo->NoticesFromCm())` becomes `if (ApartCm > Echo->NoticeRadiusCm)`, the notice as it
+    was. Must fail "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY" and "and at
+    ten it is gone", and nothing else.
+  - **Why EHS and EHN also fail "and at ten it is gone"**: with either break the Horde echo notices only once the
+    player is within its own distance, and that beat starts its clock at nought, while the test gives the Horde no
+    noticing beat there; so at ten seconds it is a beat short of giving up.
+  - **EHC**: `else if (DungeonSubType != ECataclysmDungeonSubType::Horde || ApartCm <= OwnNoticeCm)` becomes `else`,
+    the clock as it was. Must fail "AND IS STILL STANDING WHEN IT REACHES ITS KIND'S NOTICE DISTANCE", "its clock
+    starts there" and "and at ten it is gone" (a gone echo is not walked in further), and nothing else.
+
+### Window eh-w1, stopped before the proofs: the new test's own fault
+
+At head `f5c02d004` the whole suite performed **"6106 tests performed, 6105 succeeded, 1 failed"**, the new test, on
+one check: "its clock starts there: a beat short of ten seconds within it, it still stands". Every other check of it
+passed, the control included. 62 skipped halves and "895 written and deleted, 0 left behind", as registered. Python
+beside it "9672 passed, 10 skipped"; ruff "All checks passed!". No proof was run.
+
+**The fault was in the test, not the game.** In the Horde the echo has already noticed from afar, so the first beat
+within its own distance already counts on its clock; elsewhere that beat is the one it notices on, which starts the
+clock at nought. The test gave both the same extra beat, so the Horde's echo had reached ten seconds one beat early.
+The test now gives the Horde no extra beat. The game is unchanged. EHS's and EHN's registrations above were corrected
+with it, before any proof was run. The next window registers the same: 6106, all succeeding.
+
+### Window eh-w2, the narrowed re-run at `2c05e73a1`
+
+Asked for by the coordinating session on 2026-11-27, since only the test file had changed after a whole suite that
+otherwise passed: the build, the changed test alone by its full name, ruff, and the three proofs.
+
+- **Build**: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.53.cpp".
+- **The changed test alone**: "Tests: 1 tests performed, 1 succeeded, 0 failed".
+- **ruff**: "All checks passed!".
+- **EHS PROVED**: with the break in, the test failed on "A HORDE FLOOR'S ECHO IS RAISED WITH THE FLOOR'S MULTIPLIER"
+  (1 where 30 was expected), "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY"
+  and "and at ten it is gone", as registered; restored, "1 tests performed, 1 succeeded, 0 failed".
+- **EHN PROVED**: with the break in, it failed on "IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN
+  NOTICE DISTANCE AWAY" and "and at ten it is gone", as registered; restored, it passed.
+- **EHC PROVED**: with the break in, it failed on "AND IS STILL STANDING WHEN IT REACHES ITS KIND'S NOTICE DISTANCE",
+  "its clock starts there" and "and at ten it is gone", as registered; restored, it passed.
 
 ---
 

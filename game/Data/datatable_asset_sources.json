@@ -76,20 +76,20 @@
     {
       "asset": "DT_EnchantmentEffects",
       "csv": "EnchantmentEffects.csv",
-      "rows": 709,
-      "csv_sha256": "9d61760887bbe333f7ee2d89752da1e3348a6e03a224bc409f5b9f2e5cb28807"
+      "rows": 712,
+      "csv_sha256": "ab72a2e6eee0cabbf51329fbfca43858a047dd122186951fcdf25b3ec9960a76"
     },
     {
       "asset": "DT_EnchantmentsNegative",
       "csv": "EnchantmentsNegative.csv",
       "rows": 196,
-      "csv_sha256": "56015e945b713b3a033b2cab50b50410192ed0dba7637d13f30379c1cde67b2d"
+      "csv_sha256": "6618f979ef9a0c4595b8e5398eceedbb88a03cbcb281d5e55cae9ca6ab5aebb6"
     },
     {
       "asset": "DT_EnchantmentsPositive",
       "csv": "EnchantmentsPositive.csv",
-      "rows": 379,
-      "csv_sha256": "ef4fcf0d5873352754146544a729efa183231820f8e165f42e3655be7458357c"
+      "rows": 382,
+      "csv_sha256": "75e23d255f88d7cfce760bdf8dea57780e5f70bd0b5a5fbba53bcd3f8a06aa59"
     },
     {
       "asset": "DT_EnemyArchetypes",
@@ -172,20 +172,20 @@
     {
       "asset": "DT_PassiveEffects",
       "csv": "PassiveEffects.csv",
-      "rows": 1003,
-      "csv_sha256": "c25ad0cb8cf0f39e1914cea161c811407407ee0952871cef27c28aa1aeeef9ff"
+      "rows": 1007,
+      "csv_sha256": "3d0d2c11f4276c08743c6dc4fdba482673a060e78e0c94faf7677ac1fd22c191"
     },
     {
       "asset": "DT_PassiveNodes",
       "csv": "PassiveNodes.csv",
       "rows": 661,
-      "csv_sha256": "b105d4d53e87999cad61787945dd63086af87bfbd202731d0db2bb0260ccaa8f"
+      "csv_sha256": "338c02033ff49abe9132e155e51ff7f6e4ba0dd529f0b6de8d116d1bce7a4d41"
     },
     {
       "asset": "DT_SkillSlots",
       "csv": "SkillSlots.csv",
       "rows": 7,
-      "csv_sha256": "1d5956c42a9e824b66185b2405f36d2b077adeee9786a48661af998182cbc8f5"
+      "csv_sha256": "a8c18beeaa6623f579aab34887fefb89fb9874f0c750b89b4044e91f266250c5"
     },
     {
       "asset": "DT_StatusEffects",

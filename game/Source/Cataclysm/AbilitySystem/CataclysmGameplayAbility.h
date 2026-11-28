@@ -306,8 +306,7 @@ public:
 	 * What one use costs THIS character, after the `mana_cost` stat. Issue #1815.
 	 *
 	 * THE ONE PLACE THE STAT IS ASKED, and every reader of a cost goes through
-	 * it: `CheckCost`, `ApplyCost`, an aura's per-pulse upkeep in
-	 * `UCataclysmAuraSkill::Pulse`, and `UCataclysmSkillBar`, which greys out a
+	 * it: `CheckCost`, `ApplyCost` and `UCataclysmSkillBar`, which greys out a
 	 * box the character cannot pay for. A reader left on `GetManaCost` would show
 	 * or refuse one number while the game charged another, and that disagreement
 	 * is the thing this function exists to make impossible.
@@ -331,8 +330,10 @@ public:
 	 * included. Not for a free start (`bFreeRepeat`), which is not a use of the
 	 * wearer's and spends no stack. Fervour is not mana and is still paid.
 	 *
-	 * @param bForAUse  false for an aura's per-pulse upkeep, which is no use of
-	 *                  an ability and so is never the free next one.
+	 * @param bForAUse  false for a charge that is no use of an ability and so is
+	 *                  never the free next one. An aura's per-pulse upkeep passed
+	 *                  false until 2026-11-27, when auras began to reserve mana
+	 *                  rather than drain it; no caller passes false now.
 	 */
 	float ManaCostFor(const UAbilitySystemComponent* AbilitySystem, bool bForAUse = true) const;
 
@@ -355,6 +356,15 @@ public:
 	 * pay from. Every player has one; no enemy does.
 	 */
 	float FervourCostFor(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/**
+	 * Maximum mana this skill holds while it is on, for THIS character: its designed slot's `ManaReserved` (the Aura's
+	 * 50, nought for every other slot), times its own level's cost factor, times Mana Weaver's doubling where that
+	 * reaches it, after the holder's reductions (`UCataclysmCommand::ManaReserveFor`). NOT SCALED BY THE CHARACTER'S
+	 * LEVEL: a flat figure is what makes an aura hard to hold early and easy late, as the owner asked. Ruled 2026-11-27
+	 * under the owner's choice "Reserve, don't drain". `UCataclysmAuraSkill` holds it; the skill bar shows it.
+	 */
+	float ManaReservationFor(const UAbilitySystemComponent* AbilitySystem) const;
 
 	/** Whether this character holds at least `Cost` Fervour. */
 	static bool FervourCovers(const UAbilitySystemComponent* AbilitySystem, float Cost);
@@ -404,8 +414,8 @@ public:
 	 *
 	 * THE MANA ACTUALLY TAKEN FROM THE MANA POOL TIMES `ManaCostAlsoTakenFromHealthPercentStat`, ruled 2026-10-23: the
 	 * cost after every reduction, and only when the pool `PoolPaying` chose is mana. Nothing for a cast paid from
-	 * health or the energy shield, a free cast, a cast Desperate Measures paid in health instead, or an aura's upkeep,
-	 * which never passes through `ApplyCost`. AN AMOUNT AND NOT A SHARE, because the share is of mana and is paid from
+	 * health or the energy shield, a free cast, or a cast Desperate Measures paid in health instead.
+	 * (An aura's upkeep, which never passed through `ApplyCost`, ended on 2026-11-27.) AN AMOUNT AND NOT A SHARE, because the share is of mana and is paid from
 	 * health. RECORDED AT THE PAYMENT, as the share above is, and cleared first on every one.
 	 */
 	float ManaAlsoTakenAsHealthThisCast() const
@@ -553,8 +563,8 @@ public:
 	 * Shield". A character whose mana became health (Water to Blood) never
 	 * reaches the shield: "when your mana is not enough" asks about mana.
 	 *
-	 * ONE ANSWER FOR EVERY PAYER, as `CostPool` is: the cast's check and payment,
-	 * an aura's upkeep and the skill bar all ask this.
+	 * ONE ANSWER FOR EVERY PAYER, as `CostPool` is: the cast's check and payment
+	 * and the skill bar all ask this.
 	 *
 	 * AND THEN HEALTH, AT A PRICE, when `CostPaidFromHealthWhenShortStat` is held
 	 * and health can cover that price. After the shield, a judgement: a shield
@@ -679,6 +689,7 @@ private:
 	mutable float SlotManaCostAtLevel100 = 0.0f;
 	mutable float SlotManaOnHitAtLevel100 = 0.0f;
 	mutable float SlotFervourCost = 0.0f;
+	mutable float SlotManaReserved = 0.0f;
 
 	/**
 	 * See `ManaCostPaidAsHealthPercentThisCast`. MUTABLE BECAUSE `ApplyCost` IS

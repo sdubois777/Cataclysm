@@ -6147,10 +6147,27 @@ void UCataclysmAuraSkill::ActivateAbility(
 
 	// AND THE KEY COUNTS AS STILL DOWN UNTIL A RELEASE ARRIVES. Issue #1114.
 	// Cleared here rather than in `EndAbility`, because the aura also ends for
-	// reasons that are not a key press -- running out of mana, or a duration
-	// expiring -- and a fresh activation is the only moment at which "the key
-	// has not been let go yet" is true again.
+	// reasons that are not a key press -- no longer fitting its holder's mana, or
+	// a duration expiring -- and a fresh activation is the only moment at which
+	// "the key has not been let go yet" is true again.
 	bKeyReleasedSinceActivation = false;
+
+	// AND A TOGGLED AURA HOLDS ITS RESERVATION FROM NOW UNTIL IT ENDS, ruled 2026-11-27 under the owner's choice
+	// "Reserve, don't drain". `CheckCost` has already found the room. NOT FIXED: the holder's ability system asks it
+	// again whenever the skill levels or the stat line moves (`RepriceAuraReservations`), ruled 2026-11-27, "reprice
+	// auras LIVE, as Fervour reserves are". Out of health, the same number, for a character whose mana pool became
+	// health (Water to Blood), as every cost of theirs is.
+	bTookAReservation = false;
+	if (Reserves(ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr))
+	{
+		if (UCataclysmAbilitySystemComponent* Reserving = Cast<UCataclysmAbilitySystemComponent>(
+				ActorInfo->AbilitySystemComponent.Get()))
+		{
+			Reserving->HoldAuraReservation(this, Handle, ManaReservationFor(Reserving),
+										   ManaPoolBecomesHealth(Reserving));
+			bTookAReservation = true;
+		}
+	}
 
 	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
 	World->GetTimerManager().SetTimer(
@@ -6158,13 +6175,62 @@ void UCataclysmAuraSkill::ActivateAbility(
 		Period, /*bLoop=*/true, /*InFirstDelay=*/Period);
 
 	// Living Pyre is an Ultimate lasting 6 seconds. Conflagration has no
-	// duration and is held until it is switched off or paid out.
+	// duration and is held until it is switched off, or let go because it no longer fits.
 	if (Params.Duration > 0.0f)
 	{
 		World->GetTimerManager().SetTimer(
 			FinishTimer, this, &UCataclysmAuraSkill::Finish,
 			Params.Duration, /*bLoop=*/false);
 	}
+}
+
+bool UCataclysmAuraSkill::Reserves(const UAbilitySystemComponent* AbilitySystem) const
+{
+	// A TOGGLE ONLY. A timed aura -- Living Pyre, an Ultimate of 6 seconds -- pays its slot's cost once and holds
+	// nothing, as it paid once and drained nothing before 2026-11-27; its slot reserves nought anyway.
+	return Params.Duration <= 0.0f && ManaReservationFor(AbilitySystem) > 0.0f;
+}
+
+float UCataclysmAuraSkill::ReservedNow() const
+{
+	const UCataclysmAbilitySystemComponent* Reserving = Cast<UCataclysmAbilitySystemComponent>(
+		CurrentActorInfo ? CurrentActorInfo->AbilitySystemComponent.Get() : nullptr);
+	return Reserving ? Reserving->AuraReservationOf(this) : 0.0f;
+}
+
+bool UCataclysmAuraSkill::HasRoomToReserve(const UAbilitySystemComponent* AbilitySystem) const
+{
+	const UCataclysmAbilitySystemComponent* Reserving = Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Reserving)
+	{
+		return false;
+	}
+	const float Reservation = ManaReservationFor(Reserving);
+
+	// AGAINST THE MAXIMUM LESS WHAT IS ALREADY RESERVED, NOT AGAINST THE POOL, as a Fervour reserve is measured
+	// (`UCataclysmCommand::HasRoomToReserve`): a reservation is a standing claim, so mana spent does not refuse one.
+	// HEALTH KEEPS A POINT, strictly more, as a cost paid from health does (`PoolCovers`).
+	return ManaPoolBecomesHealth(Reserving)
+		? Reserving->UnreservedMaximumHealth() > Reservation
+		: Reserving->UnreservedMaximumMana() >= Reservation;
+}
+
+bool UCataclysmAuraSkill::CheckCost(const FGameplayAbilitySpecHandle Handle,
+									const FGameplayAbilityActorInfo* ActorInfo,
+									FGameplayTagContainer* OptionalRelevantTags) const
+{
+	if (!Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags))
+	{
+		return false;
+	}
+	// AND ROOM FOR THE RESERVATION, for a toggle that reserves anything. Ruled 2026-11-27. An aura already on holds its
+	// own and is not asked again: its key's next press switches it off.
+	const UAbilitySystemComponent* AbilitySystem = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+	if (bHeld || !Reserves(AbilitySystem))
+	{
+		return true;
+	}
+	return HasRoomToReserve(AbilitySystem);
 }
 
 const TCHAR* UCataclysmAuraSkill::AuraEffectStat = TEXT("aura_effect");
@@ -6202,67 +6268,9 @@ int32 UCataclysmAuraSkill::Pulse()
 		return 0;
 	}
 
-	UAbilitySystemComponent* AbilitySystem =
-		UCataclysmTargeting::AbilitySystemOf(Self);
-
-	// PAID BEFORE IT WORKS, AND SWITCHING OFF WHEN IT CANNOT BE PAID IS THE
-	// REQUIREMENT. Issue #36: the aura must turn off when the resource is
-	// exhausted. The aura slot costs 20 mana a second, which empties a Ravager
-	// standing still in 48 seconds and never empties a Ritualist.
-	//
-	// A toggle has no duration to pay for, so the cost is per pulse rather than
-	// per activation, and it is the only cost that is not taken by CommitAbility.
-	if (AbilitySystem && Params.Duration <= 0.0f)
-	{
-		const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
-
-		// WHAT IT COSTS THIS CHARACTER, ASKED THE WAY THE ACTIVATION ASKS. Issue
-		// #1815. "Your aura costs 30%-50% less mana per second" is a row on this
-		// same stat, and an upkeep left on `GetManaCost` would drain the slot's
-		// figure while the cast that switched the aura on paid the reduced one.
-		// NOT AS A USE, ruled 2026-10-17: an upkeep is never the free next ability a row's kept stacks buy.
-		const float Cost = ManaCostFor(AbilitySystem, /*bForAUse=*/false) * Period;
-
-		// OUT OF THE SAME POOL THE ACTIVATION PAID FROM, ASKED THE SAME WAY.
-		// Issue #1901. This read mana directly, and a Masochist holding Water to
-		// Blood has none: the option empties the pool and pays every cost from
-		// health. So the activation was paid in health, and the first pulse found
-		// no mana and switched the aura off.
-		//
-		// THE UPKEEP COPIES THE ACTIVATION'S MANA COST, WHICH IS TAKEN WHOLE AND AT
-		// ONCE by `ApplyCost`. The Masochist's deferral and debt rules belong to the
-		// added health costs `PayHealthCost` charges, and do not apply to that cost
-		// or to this one.
-		//
-		// AND THE ENERGY SHIELD WHEN CAST FROM WARD IS HELD, ruled on 2026-09-24:
-		// an upkeep is a skill's cost, so it may be paid from the shield too.
-		// Issue #1515. `PoolPaying` is what the activation asked.
-		//
-		// AND WHAT IS TAKEN IS WHAT `PoolPaying` SAYS, as the activation takes it.
-		float Charged = Cost;
-		const FGameplayAttribute Pool =
-			Cost > 0.0f ? PoolPaying(AbilitySystem, Cost, &Charged) : CostPool(AbilitySystem);
-
-		if (Cost > 0.0f && !Pool.IsValid())
-		{
-			// SAID ONCE, AT `Log` AND NOT `Verbose`, because the aura ends here and
-			// nothing in the game read the flag below, so a playtest log could not
-			// show why an aura went out. Issue #1901.
-			UE_LOG(LogCataclysm, Log,
-				   TEXT("%s in %s switched off: a pulse's upkeep of %.1f %s could "
-						"not be paid from %.1f."),
-				   *SkillName, *CataclysmAbilitySlots::Tag(Slot).ToString(), Cost,
-				   *CostPool(AbilitySystem).GetName(),
-				   AbilitySystem->GetNumericAttribute(CostPool(AbilitySystem)));
-			bEndedForLackOfMana = true;
-			Finish();
-			return 0;
-		}
-		if (Cost > 0.0f)
-		{
-			AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Charged);
-		}
-	}
+	// NO UPKEEP SINCE 2026-11-27, ruled under the owner's choice "Reserve, don't drain": a toggled aura holds part of
+	// maximum mana from the moment it is switched on (`ActivateAbility`), and a pulse takes nothing. Until then this
+	// charged 20 mana a second here and switched the aura off when it could not be paid (issues #36, #1815, #1901).
 
 	// A ring around the caster, following them. An aura's damage is a figure
 	// PER SECOND, which the Skill Slots sheet says explicitly, so a pulse is
@@ -6867,6 +6875,20 @@ void UCataclysmAuraSkill::EndAbility(
 	{
 		World->GetTimerManager().ClearTimer(PulseTimer);
 		World->GetTimerManager().ClearTimer(FinishTimer);
+	}
+
+	// AND THE RESERVATION IS GIVEN BACK AT ONCE, ruled 2026-11-27: the mana is not refilled, only freed for
+	// regeneration to fill. HERE, where every way an aura stops meets. An aura its holder let go because it no longer
+	// fitted has had its hold taken away first (`ReleaseAurasThatNoLongerFit`), and that is how it knows why it ended.
+	if (bTookAReservation)
+	{
+		if (UCataclysmAbilitySystemComponent* Reserving = Cast<UCataclysmAbilitySystemComponent>(
+				ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr))
+		{
+			bEndedForLackOfMana = bWasCancelled && !Reserving->HoldsAuraReservation(this);
+			Reserving->ReleaseAuraReservation(this);
+		}
+		bTookAReservation = false;
 	}
 
 	// AND EVERY ALLY GIVES THE BONUS BACK. Conflagration's is granted for as

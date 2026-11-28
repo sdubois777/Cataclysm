@@ -624,6 +624,9 @@ public:
 	void SetStatInputs(TMap<FName, FCataclysmStatInputs>&& Inputs)
 	{
 		StatInputs = MoveTemp(Inputs);
+		// AND A HELD AURA'S RESERVATION FOLLOWS THE NEW LINE AT ONCE, ruled 2026-11-27 ("reprice auras LIVE"). Nothing
+		// for a component holding no aura. `UCataclysmPlayerClassStats::ApplyTo` asks again once both maxima are written.
+		RepriceAuraReservations();
 	}
 
 	/**
@@ -3075,6 +3078,69 @@ public:
 	 * be guard-proved from an automation test (issue #1623), and one here can.
 	 */
 	void HoldHealthToUnreserved();
+
+	/**
+	 * Hold `Amount` of maximum mana -- or of maximum health, when `bFromHealth` -- for the aura `Holder`, replacing
+	 * any hold it already has. Ruled 2026-11-27 under the owner's choice "Reserve, don't drain": an aura switched on
+	 * reserves rather than drains. Current mana (or health) above what is left unreserved is lost at once, as a
+	 * Fervour reserve takes its excess (`UCataclysmCommand::ClampFervourToSpendable`).
+	 *
+	 * IN THE ORDER SWITCHED ON, so `ReleaseAurasThatNoLongerFit` lets the newest go first.
+	 *
+	 * @param Handle  the aura's spec handle, which is what `ReleaseAurasThatNoLongerFit` cancels
+	 */
+	void HoldAuraReservation(const UObject* Holder, FGameplayAbilitySpecHandle Handle, float Amount, bool bFromHealth);
+
+	/** Give back whatever `Holder` holds. Nothing for a holder with no hold. Ruled 2026-11-27. */
+	void ReleaseAuraReservation(const UObject* Holder);
+
+	/** Whether `Holder` holds a reservation now. */
+	bool HoldsAuraReservation(const UObject* Holder) const;
+
+	/** What `Holder` holds now, after any reprice; nought for a holder with no hold. */
+	float AuraReservationOf(const UObject* Holder) const;
+
+	/**
+	 * Mana the held auras reserve, summed, held between nought and the maximum. Ruled 2026-11-27.
+	 *
+	 * RESERVATION AS `HealthReserved` HAS IT: the maximum attribute is untouched, and only how far mana may be filled
+	 * changes. See `UnreservedMaximumMana`.
+	 */
+	float ManaReserved() const;
+
+	/** Health the held auras reserve under Water to Blood, which `HealthReserved` adds to its rows'. Ruled 2026-11-27. */
+	float HealthReservedByAuras() const;
+
+	/**
+	 * The most mana this character may hold: maximum mana less what its auras reserve. Ruled 2026-11-27. Regeneration
+	 * stops here (`UCataclysmRegeneration::TopUp`), `HoldManaToUnreserved` brings mana down to it, a condition reading a
+	 * mana percentage reads against it, and an aura switching on asks it for room.
+	 */
+	float UnreservedMaximumMana() const;
+
+	/**
+	 * Bring current mana down to the unreserved maximum when it stands above it, and do nothing otherwise. Ruled
+	 * 2026-11-27. Called when an aura's hold is taken and by the regeneration step each second, as
+	 * `HoldHealthToUnreserved` is, and for the same reason it is not a clamp in `PreAttributeChange` (issue #1623).
+	 */
+	void HoldManaToUnreserved();
+
+	/**
+	 * When the held auras reserve more than the maximum now holds -- a passive point taken back, a buff ending --
+	 * cancel the most recently switched on until the rest fit. The design's draft, section 3 item 5, accepted
+	 * 2026-11-27. Called by the regeneration step each second. Answers how many it cancelled.
+	 */
+	int32 ReleaseAurasThatNoLongerFit();
+
+	/**
+	 * Ask every held aura its reservation again (`UCataclysmGameplayAbility::ManaReservationFor`), then let go of any
+	 * that no longer fit the whole maximum (`ReleaseAurasThatNoLongerFit`), then hold mana and health to what is left
+	 * unreserved. Ruled 2026-11-27 by the coordinating session: "reprice auras LIVE, as Fervour reserves are". A skill
+	 * level gained and a change to the reduction stats, up or down, move a held aura's reservation at once. An aura stays
+	 * on while its reservation fits the whole maximum, with current mana held to the new ceiling; one that would exceed
+	 * it switches off, with a log line. A hold whose holder is no ability keeps its amount. Answers how many were let go.
+	 */
+	int32 RepriceAuraReservations();
 
 	/**
 	 * The character's maximum class resource, with any row that scales it.
@@ -6441,6 +6507,21 @@ public:
 	void ActOnWhatWaitedForTheAbilityList();
 
 protected:
+	/** One aura's hold on a pool. Ruled 2026-11-27; see `HoldAuraReservation`. */
+	struct FAuraReservation
+	{
+		TWeakObjectPtr<const UObject> Holder;
+		FGameplayAbilitySpecHandle Handle;
+		float Amount = 0.0f;
+		bool bFromHealth = false;
+	};
+
+	/** The auras holding a reserve, in the order they were switched on. Not replicated: the server's abilities hold. */
+	TArray<FAuraReservation> AuraReservations;
+
+	/** The summed holds on one pool, unclamped, from live holders only. */
+	float SumOfAuraReservations(bool bFromHealth) const;
+
 	/** Slots pressed since the last ProcessAbilityInput. Not replicated; local input only. */
 	TArray<FGameplayAbilitySpecHandle> InputPressedSpecHandles;
 

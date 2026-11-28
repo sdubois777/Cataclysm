@@ -1792,4 +1792,111 @@ bool FCataclysmRemainsColossusHordeFloorTest::RunTest(const FString&)
 	return true;
 }
 
+// ==========================================================================
+// The giants' reserves take the Necromancer's reserve rows (ruled 2026-11-27)
+// ==========================================================================
+
+namespace CataclysmRemainsTest
+{
+	/** Cheap Bones, "Your minions reserve 4% reduced Fervour per point". */
+	const FName CheapBones(TEXT("Necromancer_basic_ch_c1"));
+
+	/**
+	 * The Fervour the Bone Colossus holds when it rises, for a player holding `CheapBonesPoints` of Cheap Bones, or -1
+	 * when it does not rise. A world of its own.
+	 */
+	float ColossusReserveWith(FAutomationTestBase& Test, int32 CheapBonesPoints)
+	{
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FRemainsNecromancer Player;
+		if (!Player.Make(Test, World))
+		{
+			return -1.0f;
+		}
+		TMap<FName, int32> Nodes;
+		if (CheapBonesPoints > 0)
+		{
+			Nodes.Add(CheapBones, CheapBonesPoints);
+		}
+		Player.Hold(Nodes, FirstRite, 2);
+		ACataclysmEnemyCharacter* First = RemainsCreatureAt(World, FVector(3 * M, 0, 0));
+		if (!First)
+		{
+			return -1.0f;
+		}
+		Player.Kill(First);
+		const ACataclysmMinion* Colossus = UCataclysmBoneGiants::ColossusOf(Player.Character);
+		return Colossus ? Colossus->ReservedFervour : -1.0f;
+	}
+
+	/** The Fervour the Abomination holds when it rises, as `ColossusReserveWith` asks, or -1. */
+	float AbominationReserveWith(FAutomationTestBase& Test, int32 CheapBonesPoints)
+	{
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FRemainsNecromancer Player;
+		if (!Player.Make(Test, World))
+		{
+			return -1.0f;
+		}
+		TMap<FName, int32> Nodes;
+		if (CheapBonesPoints > 0)
+		{
+			Nodes.Add(CheapBones, CheapBonesPoints);
+		}
+		Player.Hold(Nodes, FinalRite, 1);
+		TArray<ACataclysmEnemyCharacter*> Started;
+		for (int32 Index = 0; Index < 4; ++Index)
+		{
+			ACataclysmEnemyCharacter* Creature = RemainsCreatureAt(World, FVector(6 * M, (Index - 2) * 3 * M, 0));
+			if (!Creature)
+			{
+				return -1.0f;
+			}
+			UCataclysmBoneGiants::NoteStartedWith(Creature);
+			Started.Add(Creature);
+		}
+		Player.Kill(Started[0]);
+		Player.Kill(Started[1]);
+		const ACataclysmMinion* Abomination = UCataclysmBoneGiants::AbominationOf(Player.Character);
+		return Abomination ? Abomination->ReservedFervour : -1.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRemainsGiantsReserveRowsTest,
+	"Cataclysm.Remains.TheBoneColossusAndTheAbominationReserveLessUnderTheReserveRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-11-27 by the coordinating session: "Route the Bone Colossus and the Abomination through ReserveFor, so
+ * reductions reach them. Test it, with a control." Until then each reserved a flat figure no row reached.
+ *
+ * CONTROL: a player with no reserve row raises a Colossus holding 20 and an Abomination holding 100. The same player
+ * holding 5 points of Cheap Bones, 4% a point from the shipped effect table (20% less), raises a Colossus holding 16 and
+ * an Abomination holding 80. Each in a world of its own.
+ */
+bool FCataclysmRemainsGiantsReserveRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmRemainsTest;
+
+	const float PerPoint = RowValue(TEXT("Necromancer_basic_ch_c1#1"));
+	if (!TestEqual(TEXT("set-up: Cheap Bones is 4% reduced Fervour a point in the shipped table"), PerPoint, 4.0f,
+				   0.001f))
+	{
+		return false;
+	}
+	const float Less = 1.0f - 5.0f * PerPoint / 100.0f;
+
+	TestEqual(TEXT("CONTROL: with no reserve row the Colossus holds its 20"), ColossusReserveWith(*this, 0),
+			  UCataclysmBoneGiants::ColossusReserve, 0.01f);
+	TestEqual(TEXT("with 5 points of Cheap Bones it holds 20% less: 16"), ColossusReserveWith(*this, 5),
+			  UCataclysmBoneGiants::ColossusReserve * Less, 0.01f);
+	TestEqual(TEXT("CONTROL: with no reserve row the Abomination holds its 100"), AbominationReserveWith(*this, 0),
+			  UCataclysmBoneGiants::AbominationReserve, 0.01f);
+	TestEqual(TEXT("with 5 points of Cheap Bones it holds 20% less: 80"), AbominationReserveWith(*this, 5),
+			  UCataclysmBoneGiants::AbominationReserve * Less, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

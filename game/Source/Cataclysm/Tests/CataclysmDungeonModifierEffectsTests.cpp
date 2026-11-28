@@ -28849,6 +28849,135 @@ bool FCataclysmEchoesStrikeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// IN A HORDE DUNGEON AN ECHO NOTICES THE PLAYER AS THE HORDE'S OWN CREATURES DO, from the floor's widened distance, so
+// it comes for a player standing five times its own notice distance away, AND IS STILL STANDING WHEN IT REACHES ITS
+// OWN KIND'S NOTICE DISTANCE: its ten-second give-up clock (R4) starts there. ANYWHERE ELSE IT WAITS at that distance
+// until the player is within its own, and the clock starts at noticing, as before (the control). The owner's play test
+// of 2026-11-27: "the echoes don't come attack you, they wait till you get into their aggro range ... they just need
+// to follow the mob aggro rules for hordes if it's a horde dungeon". The clock rule is the coordinating session's
+// ruling of the same day.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesHordeAggroTest,
+	"Cataclysm.DungeonModifierEffects.InAHordeDungeonAnEchoComesForThePlayerFromAfarAndElsewhereItWaits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesHordeAggroTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// What one floor showed: whether the first echo moved in on a player five times its own notice distance away,
+	// whether it still stood after longer than its give-up time out there, and, once the player was within its own
+	// notice distance, whether it stood a beat short of the give-up time and was gone at it.
+	struct FWhatItDid
+	{
+		bool bMovedInFromAfar = false;
+		bool bStandingAfterTheWalk = false;
+		bool bStandingABeatShort = false;
+		bool bGoneOnTime = false;
+		float Multiplier = 0.0f;
+		float EchoMultiplier = 0.0f;
+		float NoticeCm = 0.0f;
+	};
+
+	// THE SAME FLOORS TWICE, A HORDE DUNGEON'S AND AN ORDINARY ONE'S: floor 2's two deaths, then floor 3 carrying the
+	// row. A beat does not move a creature, so the echo stays where it stands while the player is far: the walk in is
+	// that stretch of time.
+	constexpr float TimesItsOwnNotice = 5.0f;
+	const auto OneFloor = [this](bool bHorde, FWhatItDid& Out) -> bool
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!TestNotNull(TEXT("a test world was created"), World))
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FPossessedPlayer Player(World);
+		ACataclysmDungeonGameMode* Mode = nullptr;
+		if (!TwoDieOnFloorTwo(*this, World, Player, Mode) || !GiveThePlayerHealthForTypedDamage(*this, Player))
+		{
+			return false;
+		}
+		if (bHorde)
+		{
+			Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+		}
+		Mode->DungeonModifiers = {EchoesRow};
+		if (!TestTrue(TEXT("set-up: floor 3 was reached"), Mode->GoToFloor(3)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Beat(Mode, 1);
+		const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
+		if (!TestEqual(TEXT("set-up: two echoes stand"), Echoes.Num(), 2))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* const First = Echoes[0];
+		const auto Stands = [First]() { return IsValid(First) && !First->IsActorBeingDestroyed(); };
+		Out.Multiplier = Mode->FloorBrief.SightRadiusMultiplier;
+		Out.EchoMultiplier = First->SightRadiusMultiplier;
+		Out.NoticeCm = First->NoticeRadiusCm;
+
+		// FAR: five times its own notice distance.
+		StandThePlayerFrom(Player, First, Echoes[1], Out.NoticeCm * TimesItsOwnNotice);
+		Beat(Mode, 1);
+		Out.bMovedInFromAfar = First->EchoMovesInOn.Get() == Player.Character;
+		Beat(Mode, BeatsFor(Effects::EchoesGiveUpAfterSeconds) + 2);
+		Out.bStandingAfterTheWalk = Stands();
+
+		// WITHIN ITS OWN NOTICE DISTANCE, short of where it strikes. Not if it is already gone.
+		if (!Out.bStandingAfterTheWalk)
+		{
+			return true;
+		}
+		// ITS CLOCK'S FIRST BEAT: elsewhere the beat it notices on, which starts the clock at nought; in the Horde,
+		// having noticed from afar, the first beat within, which already counts. So the Horde has no extra beat here.
+		StandThePlayerFrom(Player, First, First, Out.NoticeCm - 100.0f);
+		if (!bHorde)
+		{
+			Beat(Mode, 1);
+		}
+		Beat(Mode, BeatsFor(Effects::EchoesGiveUpAfterSeconds) - 1);
+		Out.bStandingABeatShort = Stands();
+		Beat(Mode, 1);
+		Out.bGoneOnTime = !Stands();
+		return true;
+	};
+
+	FWhatItDid InTheHorde;
+	FWhatItDid Elsewhere;
+	if (!OneFloor(/*bHorde=*/true, InTheHorde) || !OneFloor(/*bHorde=*/false, Elsewhere))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("ECHOES AND HORDE AGGRO: the floor's multiplier %.0f in the Horde, %.0f elsewhere; "
+								 "the echo's own notice %.0f cm; the player stood %.0f cm away"),
+							InTheHorde.Multiplier, Elsewhere.Multiplier, InTheHorde.NoticeCm,
+							InTheHorde.NoticeCm * TimesItsOwnNotice));
+	TestEqual(TEXT("set-up: a Horde floor's creatures notice from thirty times their own distance"),
+			  InTheHorde.Multiplier, FCataclysmDungeonFloorRules::HordeSightRadiusMultiplier, 0.001f);
+	TestEqual(TEXT("set-up: an ordinary floor's from their own"), Elsewhere.Multiplier, 1.0f, 0.001f);
+	TestEqual(TEXT("A HORDE FLOOR'S ECHO IS RAISED WITH THE FLOOR'S MULTIPLIER"), InTheHorde.EchoMultiplier,
+			  InTheHorde.Multiplier, 0.001f);
+	TestEqual(TEXT("CONTROL: an ordinary floor's with one"), Elsewhere.EchoMultiplier, 1.0f, 0.001f);
+
+	TestTrue(TEXT("IN A HORDE DUNGEON AN ECHO COMES FOR A PLAYER FIVE TIMES ITS OWN NOTICE DISTANCE AWAY"),
+			 InTheHorde.bMovedInFromAfar);
+	TestTrue(TEXT("AND IS STILL STANDING WHEN IT REACHES ITS KIND'S NOTICE DISTANCE, longer than its give-up time on"),
+			 InTheHorde.bStandingAfterTheWalk);
+	TestTrue(TEXT("its clock starts there: a beat short of ten seconds within it, it still stands"),
+			 InTheHorde.bStandingABeatShort);
+	TestTrue(TEXT("and at ten it is gone"), InTheHorde.bGoneOnTime);
+
+	TestFalse(TEXT("CONTROL: elsewhere it waits at that distance"), Elsewhere.bMovedInFromAfar);
+	TestTrue(TEXT("CONTROL: waiting, it still stands"), Elsewhere.bStandingAfterTheWalk);
+	TestTrue(TEXT("CONTROL: its clock starts at noticing: a beat short of ten seconds, it still stands"),
+			 Elsewhere.bStandingABeatShort);
+	TestTrue(TEXT("CONTROL: and at ten it is gone"), Elsewhere.bGoneOnTime);
+	return true;
+}
+
 // WHAT IS RECORDED: NOT A DEATH THAT PAYS NOTHING; EVERY OTHER DEATH, NO LIMIT; THE RECORD COVERS ONE FLOOR; A FLOOR
 // WITHOUT THE ROW BRINGS NONE; HORDE WAVES BRING THEM; LEAVING THE DUNGEON FORGETS THEM. Until issue #2740 only the last
 // six were kept.
@@ -64611,8 +64740,10 @@ bool FCataclysmCorruptedStalkerChoicesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// ITS BRAIN CHOOSES THE FIRST SKILL IN THE RULED ORDER IT MAY USE: the aura with mana, the support skill below half its
-// health, the movement skill beyond 15 m, the ultimate with its Fervour, then the heavy skill and the special by reach.
+// ITS BRAIN CHOOSES THE FIRST SKILL IN THE RULED ORDER IT MAY USE: the aura when it fits, the support skill below half
+// its health, the movement skill beyond 15 m, the ultimate with its Fervour, then the heavy skill and the special by
+// reach. "WHEN IT FITS" SINCE 2026-11-27: its aura reserves mana as the player's does, and is chosen when what its auras
+// leave unreserved holds the reservation. Until then it was "with mana", 30% of it, a rule removed with the drain.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerChoosesTest,
 	"Cataclysm.DungeonModifierEffects.TheCorruptedStalkersBrainChoosesTheFirstSkillItMayUseInTheRuledOrder",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -64637,9 +64768,19 @@ bool FCataclysmCorruptedStalkerChoosesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// NO ROOM FOR ITS AURA: something already holds all but 10 of its maximum mana. Held for the Stalker itself, which
+	// is a hold the component lets go of only when asked.
+	UCataclysmAbilitySystemComponent* Holder = StalkerHolder(Stalker);
+	if (!TestNotNull(TEXT("set-up: its ability system"), Holder))
+	{
+		return false;
+	}
+	const float MaxMana = Holder->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxManaAttribute());
+	Holder->HoldAuraReservation(Stalker, FGameplayAbilitySpecHandle(), MaxMana - 10.0f, /*bFromHealth=*/false);
+
 	StalkerAt(Stalker, 0.2f, 1.0f, 0.0f);
-	TestEqual(TEXT("below 30% mana, full health, no Fervour, at 3 m: the heavy skill"), Brain->ChooseAbility(300.0f),
-			  StalkerChoiceIndex(Slot::Heavy));
+	TestEqual(TEXT("with no room for its aura, full health, no Fervour, at 3 m: the heavy skill"),
+			  Brain->ChooseAbility(300.0f), StalkerChoiceIndex(Slot::Heavy));
 	TestEqual(TEXT("at 8 m: the special, which reaches 12 m"), Brain->ChooseAbility(800.0f),
 			  StalkerChoiceIndex(Slot::Special));
 	TestEqual(TEXT("at 20 m: the movement skill"), Brain->ChooseAbility(2000.0f), StalkerChoiceIndex(Slot::Movement));
@@ -64656,14 +64797,19 @@ bool FCataclysmCorruptedStalkerChoosesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("CONTROL: above half its health, the ultimate again"), Brain->ChooseAbility(300.0f),
 			  StalkerChoiceIndex(Slot::Ultimate));
 
-	StalkerAt(Stalker, 1.0f, 0.45f, 100.0f);
-	TestEqual(TEXT("with its mana: the aura first of all"), Brain->ChooseAbility(300.0f), StalkerChoiceIndex(Slot::Aura));
+	// ROOM AGAIN: AT A FIFTH OF ITS MANA, which until 2026-11-27 kept its aura off.
+	Holder->ReleaseAuraReservation(Stalker);
+	StalkerAt(Stalker, 0.2f, 0.45f, 100.0f);
+	TestEqual(TEXT("with room for its aura, at a fifth of its mana: the aura first of all"), Brain->ChooseAbility(300.0f),
+			  StalkerChoiceIndex(Slot::Aura));
 	return true;
 }
 
-// ONE AURA AT A TIME, AND IT GOES OFF BELOW 30% MANA.
+// ONE AURA AT A TIME, AND IT RESERVES MANA AS THE PLAYER'S DOES: it stays on at a fifth of the Stalker's mana. Ruled
+// 2026-11-27: "Its aura reserves like the player's." Until then this test was
+// `ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana`, for the rule that switched it off.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCorruptedStalkerAuraTest,
-	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsOneAuraAtATimeAndTurnsItOffBelowThirtyPercentMana",
+	"Cataclysm.DungeonModifierEffects.ACorruptedStalkerHoldsOneAuraAtATimeAndItReservesManaAsThePlayersDoes",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCorruptedStalkerAuraTest::RunTest(const FString& Parameters)
@@ -64697,9 +64843,12 @@ bool FCataclysmCorruptedStalkerAuraTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and while it runs the aura cannot be chosen again"), Stalker->EnemyAbilities()[Aura].MaxRangeCm, 0.0f,
 			  0.0001f);
 
+	const UCataclysmAbilitySystemComponent* Holder = StalkerHolder(Stalker);
+	TestTrue(TEXT("and it holds part of the Stalker's maximum mana"), Holder && Holder->ManaReserved() > 0.0f);
+
 	StalkerAt(Stalker, 0.2f, 1.0f, 0.0f);
 	Stalker->AfterRegenerationStep();
-	TestFalse(TEXT("below 30% mana its aura goes off"), Stalker->IsRunningASkillIn(Slot::Aura));
+	TestTrue(TEXT("at a fifth of its mana its aura stays on"), Stalker->IsRunningASkillIn(Slot::Aura));
 	return true;
 }
 
@@ -65333,8 +65482,20 @@ bool FCataclysmCorruptedStalkerStartingFervourTest::RunTest(const FString& Param
 	TestEqual(TEXT("twenty seconds alone and it still holds its Ultimate's Fervour"),
 			  StalkerRead(Stalker, Resource::GetClassResourceAttribute()), Effects::CorruptedStalkerStartingFervour, 0.01f);
 
-	// BESIDE THE PLAYER, BELOW ITS AURA'S MANA SHARE AND AT FULL HEALTH: ITS ULTIMATE, AND IT CASTS IT.
+	// BESIDE THE PLAYER, WITH NO ROOM FOR ITS AURA AND AT FULL HEALTH: ITS ULTIMATE, AND IT CASTS IT. NO ROOM SINCE
+	// 2026-11-27, when its aura began to reserve mana as the player's does: all but 10 of its maximum mana is held for it.
+	// Until then a fifth of its mana, below a 30% rule removed with the drain, kept the aura out.
 	Stalker->SetActorLocation(Player.Character->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f));
+	const auto NoRoomForItsAura = [](ACataclysmCorruptedStalkerCharacter* Who)
+	{
+		if (UCataclysmAbilitySystemComponent* Holder = StalkerHolder(Who))
+		{
+			Holder->HoldAuraReservation(Who, FGameplayAbilitySpecHandle(),
+										StalkerRead(Who, UCataclysmVitalAttributeSet::GetMaxManaAttribute()) - 10.0f,
+										/*bFromHealth=*/false);
+		}
+	};
+	NoRoomForItsAura(Stalker);
 	StalkerSet(Stalker, Vital::GetManaAttribute(), StalkerRead(Stalker, Vital::GetMaxManaAttribute()) * 0.2f);
 	const int32 Ultimate = StalkerChoiceIndex(Slot::Ultimate);
 	TestEqual(TEXT("at 3 m its brain chooses its Ultimate"), Brain->ChooseAbility(300.0f), Ultimate);
@@ -65344,6 +65505,7 @@ bool FCataclysmCorruptedStalkerStartingFervourTest::RunTest(const FString& Param
 
 	// CONTROL: A STALKER AT NO FERVOUR CHOOSES ITS HEAVY SKILL THERE INSTEAD.
 	StalkerSet(Empty, Resource::GetClassResourceAttribute(), 0.0f);
+	NoRoomForItsAura(Empty);
 	StalkerSet(Empty, Vital::GetManaAttribute(), StalkerRead(Empty, Vital::GetMaxManaAttribute()) * 0.2f);
 	TestEqual(TEXT("CONTROL: a Stalker at no Fervour chooses its heavy skill at 3 m"), EmptyBrain->ChooseAbility(300.0f),
 			  StalkerChoiceIndex(Slot::Heavy));

@@ -222,6 +222,13 @@ public:
 	static const TCHAR* ManaFillHex;
 
 	/**
+	 * The reserved part of the player's mana bar: what held auras reserve, at the right-hand end. Ruled 2026-11-27
+	 * under the owner's choice "Reserve, don't drain". A much darker shade of the mana fill, as the health reserve's
+	 * is of health's.
+	 */
+	static const TCHAR* ManaReservedHex;
+
+	/**
 	 * Fervour, the one resource every class shares. Issue #954.
 	 *
 	 * A MAGENTA, AND THE CHOICE IS BY ELIMINATION RATHER THAN BY TASTE. The
@@ -983,6 +990,12 @@ public:
 	 * as the dark band at the end of the health bar.
 	 */
 	static float HealthReservedOf(const AActor* Actor);
+
+	/**
+	 * How much of this actor's maximum mana its held auras reserve, or 0 for an actor whose ability system is not this
+	 * project's. Ruled 2026-11-27. The HUD draws it as the dark band at the end of the mana bar, with its figure.
+	 */
+	static float ManaReservedOf(const AActor* Actor);
 
 	/**
 	 * What this actor's temporary absorb holds, or 0 for an actor whose ability system is not this project's. The

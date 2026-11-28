@@ -693,7 +693,181 @@ float UCataclysmAbilitySystemComponent::HealthReserved() const
 	// AT LEAST ONE POINT STAYS UNRESERVED, so "99% reserved" on a small maximum,
 	// or four minions at 500 each, never leaves a character that cannot hold any
 	// health at all. A judgement under the owner's delegation, 2026-09-30.
-	return FMath::Clamp(Points + Whole * Share / 100.0f, 0.0f, FMath::Max(0.0f, Whole - 1.0f));
+	// AND WHAT AURAS HOLD UNDER WATER TO BLOOD, ruled 2026-11-27: with no mana pool an aura reserves health, the same
+	// number, as every cost converts (`UCataclysmGameplayAbility::CostPool`).
+	return FMath::Clamp(Points + Whole * Share / 100.0f + HealthReservedByAuras(), 0.0f,
+						FMath::Max(0.0f, Whole - 1.0f));
+}
+
+void UCataclysmAbilitySystemComponent::HoldAuraReservation(const UObject* Holder, FGameplayAbilitySpecHandle Handle,
+														   float Amount, bool bFromHealth)
+{
+	if (!Holder)
+	{
+		return;
+	}
+	ReleaseAuraReservation(Holder);
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+	FAuraReservation& Held = AuraReservations.AddDefaulted_GetRef();
+	Held.Holder = Holder;
+	Held.Handle = Handle;
+	Held.Amount = Amount;
+	Held.bFromHealth = bFromHealth;
+
+	// THE EXCESS IS LOST AT ONCE, as a Fervour reserve's is.
+	if (bFromHealth)
+	{
+		HoldHealthToUnreserved();
+	}
+	else
+	{
+		HoldManaToUnreserved();
+	}
+}
+
+void UCataclysmAbilitySystemComponent::ReleaseAuraReservation(const UObject* Holder)
+{
+	// AND ANY HOLD WHOSE HOLDER IS GONE, which can no longer release its own.
+	AuraReservations.RemoveAll([Holder](const FAuraReservation& Held)
+	{
+		return !Held.Holder.IsValid() || Held.Holder.Get() == Holder;
+	});
+}
+
+int32 UCataclysmAbilitySystemComponent::RepriceAuraReservations()
+{
+	if (AuraReservations.IsEmpty())
+	{
+		return 0;
+	}
+	// EACH HOLD ASKED AGAIN, by the ability that holds it, the way it was asked at switch-on: its designed slot's
+	// figure, its skill's level now, the reduction rows now. AND THE POOL AGAIN, so Water to Blood taken or given up
+	// moves the hold to the pool every cost of the character now comes from.
+	const bool bHealthPool = UCataclysmSkillTemplate::ManaPoolBecomesHealth(this);
+	for (FAuraReservation& Held : AuraReservations)
+	{
+		if (const UCataclysmGameplayAbility* Ability = Cast<const UCataclysmGameplayAbility>(Held.Holder.Get()))
+		{
+			Held.Amount = Ability->ManaReservationFor(this);
+			Held.bFromHealth = bHealthPool;
+		}
+	}
+	const int32 LetGo = ReleaseAurasThatNoLongerFit();
+	HoldManaToUnreserved();
+	HoldHealthToUnreserved();
+	return LetGo;
+}
+
+float UCataclysmAbilitySystemComponent::AuraReservationOf(const UObject* Holder) const
+{
+	const FAuraReservation* Held = AuraReservations.FindByPredicate([Holder](const FAuraReservation& Each)
+	{
+		return Holder && Each.Holder.Get() == Holder;
+	});
+	return Held ? Held->Amount : 0.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::HoldsAuraReservation(const UObject* Holder) const
+{
+	return Holder && AuraReservations.ContainsByPredicate([Holder](const FAuraReservation& Held)
+	{
+		return Held.Holder.Get() == Holder;
+	});
+}
+
+float UCataclysmAbilitySystemComponent::SumOfAuraReservations(bool bFromHealth) const
+{
+	float Sum = 0.0f;
+	for (const FAuraReservation& Held : AuraReservations)
+	{
+		if (Held.Holder.IsValid() && Held.bFromHealth == bFromHealth)
+		{
+			Sum += Held.Amount;
+		}
+	}
+	return Sum;
+}
+
+float UCataclysmAbilitySystemComponent::HealthReservedByAuras() const
+{
+	return SumOfAuraReservations(/*bFromHealth=*/true);
+}
+
+float UCataclysmAbilitySystemComponent::ManaReserved() const
+{
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(SumOfAuraReservations(/*bFromHealth=*/false), 0.0f,
+						FMath::Max(0.0f, GetNumericAttribute(Maximum)));
+}
+
+float UCataclysmAbilitySystemComponent::UnreservedMaximumMana() const
+{
+	const FGameplayAttribute Maximum = UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, GetNumericAttribute(Maximum) - ManaReserved());
+}
+
+void UCataclysmAbilitySystemComponent::HoldManaToUnreserved()
+{
+	const FGameplayAttribute Mana = UCataclysmVitalAttributeSet::GetManaAttribute();
+	if (!HasAttributeSetForAttribute(Mana))
+	{
+		return;
+	}
+	const float Ceiling = UnreservedMaximumMana();
+	if (GetNumericAttribute(Mana) > Ceiling)
+	{
+		SetNumericAttributeBase(Mana, Ceiling);
+	}
+}
+
+int32 UCataclysmAbilitySystemComponent::ReleaseAurasThatNoLongerFit()
+{
+	int32 Cancelled = 0;
+	for (const bool bFromHealth : {false, true})
+	{
+		const FGameplayAttribute Maximum = bFromHealth ? UCataclysmVitalAttributeSet::GetMaxHealthAttribute()
+													   : UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+		if (!HasAttributeSetForAttribute(Maximum))
+		{
+			continue;
+		}
+		// HEALTH KEEPS ONE POINT UNRESERVED, as `HealthReserved` holds it; mana may be reserved whole.
+		const float Room = GetNumericAttribute(Maximum) - (bFromHealth ? 1.0f : 0.0f);
+		while (SumOfAuraReservations(bFromHealth) > Room + KINDA_SMALL_NUMBER)
+		{
+			const int32 Newest = AuraReservations.FindLastByPredicate([bFromHealth](const FAuraReservation& Held)
+			{
+				return Held.Holder.IsValid() && Held.bFromHealth == bFromHealth;
+			});
+			if (Newest == INDEX_NONE)
+			{
+				break;
+			}
+			const FAuraReservation Held = AuraReservations[Newest];
+			// THE HOLD GOES FIRST, so an aura whose end does not reach its own release cannot hold this loop.
+			AuraReservations.RemoveAt(Newest);
+			// SAID, at `Log`, because nothing else on screen says why an aura went out. Ruled 2026-11-27.
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("AURA LET GO: %s's %s no longer fits: its auras reserve %.1f %s with this one, of a maximum of "
+						"%.1f."),
+				   *GetNameSafe(GetOwner()), *GetNameSafe(Held.Holder.Get()), SumOfAuraReservations(bFromHealth) + Held.Amount,
+				   bFromHealth ? TEXT("health") : TEXT("mana"), GetNumericAttribute(Maximum));
+			CancelAbilityHandle(Held.Handle);
+			++Cancelled;
+		}
+	}
+	return Cancelled;
 }
 
 float UCataclysmAbilitySystemComponent::UnreservedMaximumHealth() const
@@ -1345,7 +1519,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// Read by `mana_below`. A maximum of zero leaves it unknown rather than
 		// at zero percent: a character with no mana pool has nothing to run low
 		// on, and every cost it pays already comes from health.
-		const float MaxMana = ForMana->GetMaxMana();
+		//
+		// AGAINST THE UNRESERVED MAXIMUM SINCE 2026-11-27, ruled by the coordinating session: "Conditions that read a
+		// mana percentage read the unreserved maximum." Mana an aura holds can never be filled, so a character holding
+		// auras and full of what it may hold reads full, as in Path of Exile 1. The maximum itself, above, is unchanged.
+		const float MaxMana = UnreservedMaximumMana();
 		State.ManaPercent = MaxMana > 0.0f
 			? FMath::Clamp(ForMana->GetMana() / MaxMana * 100.0f, 0.0f, 100.0f)
 			: -1.0f;

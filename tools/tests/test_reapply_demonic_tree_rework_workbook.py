@@ -20,9 +20,14 @@ import pytest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-import reapply_demonic_tree_rework_workbook as reapply  # noqa: E402
+sys.path.insert(0, str(REPO_ROOT / "tools" / "tests"))
 
-WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
+import reapply_demonic_tree_rework_workbook as reapply  # noqa: E402
+import without_the_aura_reservation  # noqa: E402
+
+# COMPARED WITH THE AURA RESERVATION OF 2026-11-27 TAKEN OUT: it came after this script and adds rows to its nodes.
+# `without_the_aura_reservation.py` says why.
+WORKBOOK = without_the_aura_reservation.workbook()
 
 
 def sheet_rows(path: pathlib.Path) -> list[tuple]:

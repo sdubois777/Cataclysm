@@ -159,7 +159,7 @@ Negative_Spells_deal_20_35_less_damage_while_you_are_mo,Spells deal 20%-35% less
 Negative_Every_15_seconds_a_random_debuff_is_applied_to_y,Every 15 seconds a random debuff is applied to you,Generic,4.0,"Trigger.Timer, Type.Debuff",True,,0
 Negative_Every_20_seconds_your_damage_is_halved_for_5_sec,Every 20 seconds your damage is halved for 5 seconds,Generic,3.0,"Trigger.Timer, Stat.Offense.Global",True,,0
 Negative_You_take_20_35_increased_damage_from_melee_att,You take 20%-35% increased damage from melee attacks while your HP is above 75%,Generic,4.0,"Stat.Defense.Melee, Stat.Defense.Life",True,,0
-Negative_Your_auras_cost_100_200_increased_mana_per_sec,Your auras cost 100%-200% increased mana per second,Generic,4.0,"Type.AOE.Aura, Stat.Resource.Mana",True,,0
+Negative_Your_auras_reserve_50_100_increased_mana,Your auras reserve 50%-100% increased mana,Generic,4.0,"Type.AOE.Aura, Stat.Resource.Mana",True,,0
 Negative_Can_t_inflict_bleeding,Can't inflict bleeding,Generic,4.0,Keyword.DoT.Bleed,True,,0
 Negative_You_have_25_50_less_crit_chance,You have 25%-50% less crit chance,Generic,3.0,Stat.Offense.Crit,True,,0
 Negative_Energy_shield_can_now_be_effected_by_bleed,Energy shield can now be effected by bleed,Generic,4.0,"Stat.Defense.EnergyShield, Keyword.DoT.Bleed",True,,0
