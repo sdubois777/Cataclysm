@@ -2,6 +2,76 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The game holds every loaded object of the Paragon art packs for the rest of the session, which stops the packaged game's crash when a Paragon creature is drawn again after a garbage collection (#2968)
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmParagonHold.h` and `.cpp`: `UCataclysmParagonHold`, a game instance subsystem.
+  Before every garbage collection it adds every live object whose package lies under the Paragon packs' folders to
+  `Held`, a property the collector follows.
+- `game/Source/Cataclysm/Tests/CataclysmParagonHoldTests.cpp`:
+  `Cataclysm.ParagonHold.WhatItHoldsSurvivesACollectionAndWhatItDoesNotIsFreed`.
+- `tools/tests/test_the_paragon_hold.py`.
+
+**What the owner saw**: the packaged game closed after about two minutes of play, with an access violation on the
+render thread while it set a draw's shader parameters (`SetSamplerTable` under `RHISetShaderParameters`). Asked which
+creatures, the owner, verbatim: "it's the paragon enemies. That's my guess". That proved right.
+
+**How it was found.** A bisect on the packaged game, 2026-11-27, every run on a copy of the same character's saves
+(resuming dungeon 7 floor 1) and walking the same route, with the diagnostic switches of the branch
+`fix/packaged-render-crash`, which is not merged:
+
+| Run | Settings | Result |
+| :-- | :-- | :-- |
+| ordinary play | none | crashed 2 to 4 minutes after a floor loaded, when the character moved again |
+| validation | `-rhivalidation` | crashed reading a freed uniform buffer; the validation layer could not name it |
+| (a) | parallel animation off | crashed |
+| (0) | `gc.CollectGarbageEveryFrame 1` | crashed about 10 s into walking: the fast repro |
+| additive clips | additive single-node clips skipped | crashed |
+| (b) | PSO proxy creation at once, GPU skin cache off | crashed |
+| (c) | texture streaming off | crashed |
+| effects | our Niagara effects, telegraphs and projectile visuals off | crashed |
+| the Brute's rock | its failing material `M_Rock_To_Throw` never drawn | crashed |
+| uncooked | `UnrealEditor.exe -game`, the same saves, collection every frame | **survived** 2.5 minutes |
+| no creatures drawn | `DrawOnlyCreatureKinds None` | **survived** |
+| Wraith only, Lich only | | **survived** |
+| Imp only, Brute only, Sentinel only | | crashed, at 26 to 38 s |
+| Imp only, no animation | | crashed |
+| all creatures in the engine's default material | `PlainCreatureMaterials 1` | **survived** 94 s |
+| all creatures in their own materials, every loaded Paragon object held | `HoldParagonAssets 1` | **survived** 94 s |
+
+So the fault needs the cooked Paragon materials and a garbage collection. Every creature that crashed alone is from a
+Paragon pack (Minions, Rampage). The Imp's and the Brute's materials are built with material attributes and the
+Wraith's and Lich's are not (read in the editor; the Sentinel's were not read). A garbage collection frees an object of
+the Paragon packs that a cooked Paragon material still needs when it is drawn. Why the uncooked game keeps it is not
+established; references the cook removes are the likeliest reason, and a judgement.
+
+**Which object, not established.** The freed-asset log named no texture or material still used by a kept component,
+and the Imp's own material and textures were never freed in the run that drew only Imps. The bisect proved that holding
+the loaded Paragon objects stops it, not which object it is. Narrowing the hold to the kinds of object that matter is
+#2973.
+
+**The scope, a judgement.** Everything of the Paragon packs that has been loaded once stays loaded for the session: the
+scope the bisect proved, at the cost of never unloading that content. The memory this costs was not measured; #2973 asks for it.
+
+**Built and run in window hold-w1, 2026-11-28, at 2066c8ca6.**
+
+| Step | Printed |
+| :-- | :-- |
+| Python, `python -u -m pytest --junit-xml=...` | `9741 passed, 10 skipped`; the JUnit file: tests 9751, failures 0, errors 0, skipped 10 |
+| Three compiles | all `Build: Succeeded`, 0 compiler warning or error lines; the second marked both new `.cpp` files to compile alone but reported compiling only two unity files, most likely because both had already been compiled alone in earlier builds and were unchanged |
+| `Cataclysm.ParagonHold.` alone | `1 tests performed, 1 succeeded, 0 failed. 1 skipped part of what they check` (the Paragon half, as the worktree has no Paragon art) |
+| The whole Unreal suite | performed 6134, succeeded 6134, failed 0; `895 written and deleted, 0 left behind`; 63 skipped halves |
+| Python beside it | tests 9751, failures 0, errors 0, skipped 10; `ruff check .` clean |
+| C++ guard proof: `HoldObjectsUnder` keeps nothing under the prefix | `PROVED: with the break in: 1 tests performed, 0 succeeded, 1 failed: WhatItHoldsSurvivesACollectionAndWhatItDoesNotIsFreed ... \| restored: 1 tests performed, 1 succeeded, 0 failed` |
+
+**The packaged game, 2026-11-28.** The coordinating session packaged 2066c8ca6, which carries no diagnostic switch, and
+ran it on a copy of the test character's saves with `gc.CollectGarbageEveryFrame 1` only. The log said "Paragon hold:
+1556 more objects held before this garbage collection, 1556 in all." It walked the route that had crashed every unheld
+run within 38 seconds, twice, and fought a crowd of Elite Imps in their own materials: still running at 95 seconds, with
+no crash. One run; it does not show the crash cannot come back after longer play.
+
+---
+
 ## 2026-11-27 — The player controller holds its input configuration, so a right click over the inventory still equips after the packaged game's first garbage collection
 
 **Affects:**
@@ -30,7 +100,10 @@ added (`UEnhancedPlayerInput::AppliedInputContextData` is a `UPROPERTY`).
 editor holds the asset whatever the controller does; the test checks that the controller holds it, and the packaged
 game is the check that the right click still equips after two minutes.
 
-**Built and run in window icf-w1, 2026-11-27, at dc8ad9504.** Nothing has been checked in the packaged game yet.
+**Built and run in window icf-w1, 2026-11-27, at dc8ad9504.** **In the packaged game, 2026-11-28**: in the coordinating
+session's run of the package built from 2066c8ca6 (the Paragon hold, on a development that has this change), with
+`gc.CollectGarbageEveryFrame 1`, the skill bar kept its key letters (MB, Q, E, R, Space) for the whole 95-second run.
+The report of that run does not mention a right click over the inventory, so the click itself is not shown there.
 
 | Step | Printed |
 | :-- | :-- |
