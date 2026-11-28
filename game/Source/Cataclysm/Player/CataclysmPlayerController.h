@@ -298,6 +298,16 @@ public:
 	 */
 	static bool PressEndsTheHold(const FKey& Key, EInputEvent Event);
 
+	/**
+	 * The view as the camera manager holds it, the view target, the pawn's top-down camera and the conditions the
+	 * engine's camera update asks, in one line for the log. The package of e0a690c97 still showed the ground-level view
+	 * during the hold; these lines are to find out why from the real game.
+	 */
+	FString DescribeTheView() const;
+
+	/** Logs `DescribeTheView` once per hold, while held; the heads-up display calls it each frame it draws the line. */
+	void LogTheHeldViewOnce();
+
 	/** The line the heads-up display draws while the walk is held. */
 	static const TCHAR* HeldUntilFirstInputLine() { return TEXT("Press any key or button to resume"); }
 
@@ -1314,6 +1324,9 @@ private:
 
 	/** See `IsHeldUntilFirstInput`. Issue #2970. */
 	bool bHeldUntilFirstInput = false;
+
+	/** Whether `LogTheHeldViewOnce` has logged during this hold. */
+	bool bLoggedTheHeldView = false;
 
 	/** See `SetAScreenOpenForTest`. */
 	bool bScreenOpenForTest = false;

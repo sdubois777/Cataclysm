@@ -38,6 +38,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Camera/CameraComponent.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Input/CataclysmInputComponent.h"
 #include "Input/CataclysmInputConfig.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
@@ -752,7 +754,14 @@ bool ACataclysmPlayerController::HoldUntilFirstInput()
 	// floor, until the first press let the world tick and the view snapped to the boom's. Measured by the coordinating
 	// session in the package of 1dda47127, 2026-11-28. One update now takes the view from the character's top-down
 	// camera, at the end of its boom; nothing moves while paused, so it stays right.
+	//
+	// THE PACKAGE OF e0a690c97 STILL SHOWED THE GROUND-LEVEL VIEW, so the view is logged before and after this update,
+	// and again at the first frame the heads-up display draws during the hold (`LogTheHeldViewOnce`), to find out from
+	// the real game which of these is wrong.
+	UE_LOG(LogCataclysm, Log, TEXT("Resume hold, before the camera update: %s"), *DescribeTheView());
 	UpdateCameraManager(0.0f);
+	UE_LOG(LogCataclysm, Log, TEXT("Resume hold, after the camera update: %s"), *DescribeTheView());
+	bLoggedTheHeldView = false;
 
 	if (!IsPaused())
 	{
@@ -766,8 +775,42 @@ bool ACataclysmPlayerController::HoldUntilFirstInput()
 	return bPaused;
 }
 
+FString ACataclysmPlayerController::DescribeTheView() const
+{
+	const AActor* Target = GetViewTarget();
+	const APawn* Body = GetPawn();
+	const UCameraComponent* TopDown = Body ? Body->FindComponentByClass<UCameraComponent>() : nullptr;
+	const APlayerCameraManager* Manager = PlayerCameraManager;
+	return FString::Printf(
+		TEXT("view target %s (the pawn: %s); camera manager %s at %s rotation %s, its cache from game time %.3f; top-down "
+			 "camera %s at %s (active %s); pawn at %s; local player %s, local controller %s, client-side camera updates "
+			 "%s; world paused %s, game time %.3f"),
+		Target ? *Target->GetName() : TEXT("none"), Body ? *Body->GetName() : TEXT("none"),
+		Manager ? *Manager->GetName() : TEXT("none"),
+		Manager ? *Manager->GetCameraLocation().ToCompactString() : TEXT("-"),
+		Manager ? *Manager->GetCameraRotation().ToCompactString() : TEXT("-"),
+		Manager ? Manager->GetCameraCacheTime() : -1.0f,
+		TopDown ? *TopDown->GetName() : TEXT("none"), TopDown ? *TopDown->GetComponentLocation().ToCompactString() : TEXT("-"),
+		TopDown && TopDown->IsActive() ? TEXT("yes") : TEXT("no"),
+		Body ? *Body->GetActorLocation().ToCompactString() : TEXT("-"), Player ? TEXT("yes") : TEXT("no"),
+		IsLocalPlayerController() ? TEXT("yes") : TEXT("no"),
+		Manager && Manager->bUseClientSideCameraUpdates ? TEXT("on") : TEXT("off"), IsPaused() ? TEXT("yes") : TEXT("no"),
+		GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0);
+}
+
+void ACataclysmPlayerController::LogTheHeldViewOnce()
+{
+	if (!bHeldUntilFirstInput || bLoggedTheHeldView)
+	{
+		return;
+	}
+	bLoggedTheHeldView = true;
+	UE_LOG(LogCataclysm, Log, TEXT("Resume hold, the first frame drawn: %s"), *DescribeTheView());
+}
+
 bool ACataclysmPlayerController::ReleaseTheHold()
 {
+	UE_LOG(LogCataclysm, Log, TEXT("Resume hold, at the first press: %s"), *DescribeTheView());
 	bHeldUntilFirstInput = false;
 
 	// NOT WHILE THE PAUSE SCREEN IS UP, which holds the pause for its own reason. Nothing puts it up during the hold,
