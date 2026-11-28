@@ -14445,6 +14445,11 @@ namespace CataclysmStatExemptionTest
 					   UCataclysmGems::SocketedGemEffectOf(Piece, Effects), 0.5f, 0.0001f);
 	}
 
+	// THE TWO BERSERKING PROBES ARE DEFINED BELOW THIS TABLE, beside the Ravager rework holder's other users, so they are
+	// declared here (the War trees' engine slice E3, 2026-11-27; the compile of 26d02a690 refused them undeclared).
+	void ProbeConditionedBerserkingOnEveryMeleeHit(FAutomationTestBase& Test);
+	void ProbeConditionedBerserkingSpendsHalf(FAutomationTestBase& Test);
+
 	const TMap<FString, FProbe>& ConditionedProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
