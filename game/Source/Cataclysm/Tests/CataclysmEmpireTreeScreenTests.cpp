@@ -489,10 +489,13 @@ bool FCataclysmEmpireTreeScreenRingTest::RunTest(const FString&)
 	}
 	AddInfo(FString::Printf(TEXT("RING: zoom %.3f; %s"), Screen->GetZoom(), *FString::Join(Parts, TEXT("; "))));
 
-	// THE CONTROL, worked out rather than drawn: fitted to the nodes alone, the ring's lowest point is past the margin.
+	// THE CONTROL, worked out rather than drawn: fitted to the nodes alone, AT THE SAME MARGIN, the ring's lowest point is
+	// past the margin. (Window emp-w2's first try fitted this at the class tree's 90 unit margin and compared it with the
+	// whole view's 24, so it showed nothing and failed; 2026-11-27.)
 	const FCataclysmTreeExtent NodesOnly = UCataclysmEmpireTreeLayout::ExtentOf(Nodes, UCataclysmEmpireTreeLayout::WholeTreeView);
 	const FVector2D Lowest = UCataclysmPassiveTreeLayout::ScreenPositionFor(
-		FVector2D(0.0, 740.0), NodesOnly.Centre(), UCataclysmPassiveTreeLayout::ZoomToFit(NodesOnly, Panel), Panel);
+		FVector2D(0.0, 740.0), NodesOnly.Centre(),
+		UCataclysmPassiveTreeLayout::ZoomToFit(NodesOnly, Panel, UCataclysmEmpireTreeLayout::WholeTreeFitMarginPx), Panel);
 	TestTrue(FString::Printf(TEXT("CONTROL: fitted to the nodes alone, the ring's lowest point would be at %.1f, past %.1f"),
 							 Lowest.Y, Panel.Y - Margin),
 			 Lowest.Y > Panel.Y - Margin);
