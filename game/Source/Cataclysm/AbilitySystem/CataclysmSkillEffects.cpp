@@ -1616,6 +1616,35 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	MachinesPlayer->ActOnEvent(FName(TEXT("deployable_hit")), &GadgetsTags, TrapsBlowDealt,
 							  /*bLanded=*/!Result->bEvaded && !Result->bRefusedByImmunityToAttacker, Target);
 
+	// AND THE LAST SURPRISE (the War trees' window 2, 2026-11-28): every trap blow's damage noted, and a blow of the trap
+	// that armed it deals each enemy it reaches the total once, as a hit of its own, unscaled, on the next tick.
+	if (!GadgetsPlayer)
+	{
+		MachinesPlayer->NoteTrapDamageDealt(Result->DealtToHealth + Result->AbsorbedByShield);
+		const TWeakObjectPtr<const AActor> TrapOfTheBlow = Machine
+			? TWeakObjectPtr<const AActor>(Machine)
+			: TWeakObjectPtr<const AActor>(NamedCastBy);
+		const float Surprise = Result->Landed() ? MachinesPlayer->TakeLastSurpriseFor(TrapOfTheBlow, Target) : 0.0f;
+		UWorld* const SurpriseWorld = Target ? Target->GetWorld() : nullptr;
+		if (Surprise > 0.0f && SurpriseWorld)
+		{
+			const TWeakObjectPtr<AActor> From(Instigator);
+			const TWeakObjectPtr<AActor> At(Target);
+			SurpriseWorld->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(
+				MachinesPlayer, [From, At, Surprise]()
+			{
+				if (From.IsValid() && At.IsValid() && !IsDead(At.Get()))
+				{
+					FCataclysmHitDelivery Delivery;
+					Delivery.bCannotCriticallyStrike = true;
+					Delivery.bCarriesNoWeaponSubType = true;
+					Delivery.bCannotLeech = true;
+					ApplyDirectDamage(From.Get(), At.Get(), Surprise, Delivery);
+				}
+			}));
+		}
+	}
+
 	// AND THE SABOTEUR'S FERVOUR FOR A SKILL GADGET'S OR SKILL TRAP'S LANDED BLOW, "one of them dealing damage", landed
 	// as the event above says it, with the same tags. Slice C, 2026-11-24.
 	if (!Result->bEvaded && !Result->bRefusedByImmunityToAttacker)

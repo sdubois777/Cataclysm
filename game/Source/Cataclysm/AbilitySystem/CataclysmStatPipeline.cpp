@@ -117,6 +117,7 @@ namespace
 		{ TEXT("while_moving"),                 ECataclysmStatCondition::WhileMoving },
 		{ TEXT("while_stationary"),             ECataclysmStatCondition::WhileStationary },
 		{ TEXT("stationary_for_seconds"),       ECataclysmStatCondition::StationaryForSeconds },
+		{ TEXT("player_stationary_for_seconds"), ECataclysmStatCondition::PlayerStationaryForSeconds },
 		{ TEXT("metres_moved_before_attack"),   ECataclysmStatCondition::MetresMovedBeforeAttack },
 		{ TEXT("not_attacked_for_seconds"),     ECataclysmStatCondition::NotAttackedForSeconds },
 		{ TEXT("attacker_beyond_metres"),       ECataclysmStatCondition::OpponentBeyondMetres },
@@ -196,6 +197,8 @@ namespace
 		{ TEXT("while_crowd_controlled"),       ECataclysmStatCondition::WhileCrowdControlled },
 		{ TEXT("dual_wielding_outside_frenzy"),                ECataclysmStatCondition::DualWieldingOutsideFrenzy },
 		{ TEXT("hit_taken_was_unblocked"),      ECataclysmStatCondition::HitTakenWasUnblocked },
+		{ TEXT("gadget_reprieved_below_full_health"), ECataclysmStatCondition::GadgetReprievedBelowFullHealth },
+		{ TEXT("gadget_fell_below_quarter_within_seconds"), ECataclysmStatCondition::GadgetFellBelowQuarterWithinSeconds },
 		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
 		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
 		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
@@ -234,6 +237,15 @@ namespace
 		{ TEXT("increased_max_health"), ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth },
 		{ TEXT("max_health_from_other_sources"), ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources },
 		{ TEXT("combat_seconds_held"), ECataclysmStatScale::PerSecondOfCombatHeld },
+		{ TEXT("class_resource_spent_recently"), ECataclysmStatScale::PerPointOfClassResourceSpentRecently },
+		{ TEXT("class_resource_above_half"), ECataclysmStatScale::PerPointOfClassResourceAboveHalf },
+		{ TEXT("evasion"), ECataclysmStatScale::PerPercentOfEvasion },
+		{ TEXT("evasion_before_removal"), ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval },
+		{ TEXT("trap_kinds_active"), ECataclysmStatScale::PerTrapKindActive },
+		{ TEXT("player_seconds_stationary"), ECataclysmStatScale::PerSecondPlayerStationary },
+		{ TEXT("gadget_empowered_fervour"), ECataclysmStatScale::PerFervourGadgetEmpowered },
+		{ TEXT("gadget_overclock_fervour"), ECataclysmStatScale::PerFervourGadgetOverclocked },
+		{ TEXT("traps_maximum_fervour_could_hold"), ECataclysmStatScale::PerTrapMaximumFervourCouldHold },
 		{ TEXT("enemies_struck_recently"), ECataclysmStatScale::PerEnemyStruckRecently },
 		{ TEXT("enemies_that_struck_you_recently"), ECataclysmStatScale::PerEnemyThatStruckYouRecently },
 		{ TEXT("remains_in_reach"),    ECataclysmStatScale::PerOwnRemainsInReach },
@@ -475,8 +487,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::WhileCrowdControlled:
 	case ECataclysmStatCondition::DualWieldingOutsideFrenzy:
 	case ECataclysmStatCondition::HitTakenWasUnblocked:
+	case ECataclysmStatCondition::GadgetReprievedBelowFullHealth:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the sixty-three says
+		// nothing for a number to be compared against. Each of the sixty-four says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -637,6 +650,10 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfMeleeHitTaken:
 	case C::WithinSecondsOfCrowdControl:
 	case C::StationaryForSeconds:
+	case C::PlayerStationaryForSeconds:
+	// AND A GADGET'S OWN HEALTH AND ITS FALL BELOW A QUARTER, which change with no notice this pipeline hears (window 2).
+	case C::GadgetReprievedBelowFullHealth:
+	case C::GadgetFellBelowQuarterWithinSeconds:
 	case C::NotAttackedForSeconds:
 	case C::MovedWithinSeconds:
 	case C::WhileBleeding:
@@ -1266,6 +1283,14 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// 0 IS A HIT TAKEN IN HAND THAT WAS NOT BLOCKED; -1, NONE, REFUSES. The War trees' engine slice E2.
 		return State.HitTakenBlocked == 0;
 
+	case ECataclysmStatCondition::GadgetReprievedBelowFullHealth:
+		// SAVED BY JURY RIGGED AND BELOW FULL HEALTH; NO GADGET NAMED REFUSES. The War trees' window 2.
+		return State.bGadgetReprieved && State.GadgetHealthPercent >= 0.0f && State.GadgetHealthPercent < 100.0f;
+
+	case ECataclysmStatCondition::GadgetFellBelowQuarterWithinSeconds:
+		// THE SAME TWO RULES AS EVERY WINDOW: never fallen, or no gadget named, refuses. The War trees' window 2.
+		return State.SecondsSinceGadgetFellBelowQuarter >= 0.0f && State.SecondsSinceGadgetFellBelowQuarter <= Value;
+
 	case ECataclysmStatCondition::TargetCarriesBleed:
 		// THE SAME WALK AS THE VOID SPLINTER'S, ON THE BLEED'S TAG. The War trees' slice E1 (2026-11-27).
 		// `HasTagExact`, for the reason given there: `Keyword.DoT` itself must not count.
@@ -1423,6 +1448,10 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// AT LEAST THAT LONG, so three seconds of standing still meets a threshold
 		// of three. A negative clock is no character to read and refuses.
 		return State.SecondsSinceMoved >= 0.0f && State.SecondsSinceMoved >= Value;
+
+	case ECataclysmStatCondition::PlayerStationaryForSeconds:
+		// THE SAME, ON THE CHARACTER'S OWN CLOCK. The War trees' window 2 (Siege Mode).
+		return State.PlayerSecondsSinceMoved >= 0.0f && State.PlayerSecondsSinceMoved >= Value;
 
 	case ECataclysmStatCondition::MetresMovedBeforeAttack:
 		// AT LEAST THAT FAR, measured before the blow in hand. Negative means no
@@ -2460,6 +2489,56 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(State.CombatSecondsHeld / Modifier.ScaleStep));
 	}
 
+	// THE WAR TREES' WINDOW 2 (2026-11-28): the Saboteur's six, each whole steps, each nothing when unread.
+	case ECataclysmStatScale::PerPointOfClassResourceSpentRecently:
+	case ECataclysmStatScale::PerPointOfClassResourceAboveHalf:
+	case ECataclysmStatScale::PerPercentOfEvasion:
+	case ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval:
+	case ECataclysmStatScale::PerSecondPlayerStationary:
+	case ECataclysmStatScale::PerFervourGadgetEmpowered:
+	case ECataclysmStatScale::PerFervourGadgetOverclocked:
+	case ECataclysmStatScale::PerTrapMaximumFervourCouldHold:
+	{
+		float Reading = -1.0f;
+		switch (Modifier.Scale)
+		{
+		case ECataclysmStatScale::PerPointOfClassResourceSpentRecently:
+			Reading = State.FervourSpentRecently;
+			break;
+		case ECataclysmStatScale::PerPointOfClassResourceAboveHalf:
+			Reading = State.ClassResourceHeld >= 0.0f && State.ClassResourceMaximum > 0.0f
+				? FMath::Max(0.0f, State.ClassResourceHeld - State.ClassResourceMaximum * 0.5f)
+				: -1.0f;
+			break;
+		case ECataclysmStatScale::PerPercentOfEvasion:
+			Reading = State.Evasion;
+			break;
+		case ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval:
+			Reading = State.EvasionBeforeRemoval;
+			break;
+		case ECataclysmStatScale::PerFervourGadgetEmpowered:
+			Reading = State.GadgetEmpoweredFervour;
+			break;
+		case ECataclysmStatScale::PerFervourGadgetOverclocked:
+			Reading = State.GadgetOverclockFervour;
+			break;
+		case ECataclysmStatScale::PerTrapMaximumFervourCouldHold:
+			Reading = State.TrapsMaximumFervourCouldHold;
+			break;
+		default:
+			Reading = State.PlayerSecondsSinceMoved;
+			break;
+		}
+		if (Reading < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(Reading / Modifier.ScaleStep));
+	}
+
+	case ECataclysmStatScale::PerTrapKindActive:
+		return StackedValue(Modifier, State.TrapKindsActive);
+
 	// MAXIMUM HEALTH FROM OTHER SOURCES IN WHOLE STEPS, the shape of the maximum health one. The War trees' slice E3.
 	case ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources:
 	{
@@ -2781,6 +2860,7 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	// still. The node would read as conditional and be unconditional, which is
 	// the silent failure the checks above exist for.
 	if ((Modifier.Condition == ECataclysmStatCondition::StationaryForSeconds
+			|| Modifier.Condition == ECataclysmStatCondition::PlayerStationaryForSeconds
 			|| Modifier.Condition == ECataclysmStatCondition::NotAttackedForSeconds
 			|| Modifier.Condition
 				== ECataclysmStatCondition::MetresMovedBeforeAttack)

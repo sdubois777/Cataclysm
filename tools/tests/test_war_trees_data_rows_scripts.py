@@ -32,12 +32,14 @@ def _all_rows():
 
 
 def test_there_are_seventy_five_rows_on_forty_three_nodes():
-    """The name is the first slice's; since engine slices E2, E3 and the riders (2026-11-27) it is 174 rows on 90."""
-    assert len(_all_rows()) == 174
-    assert len({node for node, _, _ in rows.NODES}) == len(rows.NODES) == 90
-    assert (len(rows.DATA_NODES), len(rows.E1_NODES), len(rows.E2_NODES), len(rows.E3_NODES)) == (23, 20, 26, 21)
+    """The name is the first slice's; since engine slices E2, E3 and the riders (2026-11-27) it is 174 rows on 90, and
+    since window 2's Saboteur nodes (E4, 2026-11-28) 224 rows on 117."""
+    assert len(_all_rows()) == 224
+    assert len({node for node, _, _ in rows.NODES}) == len(rows.NODES) == 117
+    assert (len(rows.DATA_NODES), len(rows.E1_NODES), len(rows.E2_NODES), len(rows.E3_NODES),
+            len(rows.E4_NODES)) == (23, 20, 26, 21, 27)
     assert [sum(len(wanted) for _, _, wanted in group)
-            for group in (rows.DATA_NODES, rows.E1_NODES, rows.E2_NODES, rows.E3_NODES)] == [39, 36, 57, 42]
+            for group in (rows.DATA_NODES, rows.E1_NODES, rows.E2_NODES, rows.E3_NODES, rows.E4_NODES)]         == [39, 36, 57, 42, 50]
 
 
 def test_the_nodes_split_by_tree():
@@ -124,7 +126,7 @@ def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
 def test_the_script_writes_the_rows_once(tmp_path):
     copy = _workbook_without_the_rows(tmp_path)
     first = rows.apply(copy)
-    assert sum(1 for line in first if ": + " in line) == 174, first
+    assert sum(1 for line in first if ": + " in line) == 224, first
     second = rows.apply(copy)
     assert second[-1] == "every row is already written; nothing written", second
 
@@ -187,8 +189,8 @@ def test_the_sentence_script_writes_each_once_and_keeps_the_rest_of_the_file(tmp
     folder = _tree_files_before(tmp_path)
     before = (folder / "Bulwark_Class_Tree_Final.json").read_bytes()
     first = sentences.apply(folder)
-    # 26 SINCE THE RIDERS' SENTENCES (2026-11-27).
-    assert first[-1] == "written" and sum(1 for line in first if line.endswith(": written")) == 26, first
+    # 26 SINCE THE RIDERS' SENTENCES (2026-11-27); 37 SINCE WINDOW 2'S ELEVEN SABOTEUR SENTENCES (2026-11-28).
+    assert first[-1] == "written" and sum(1 for line in first if line.endswith(": written")) == 37, first
     after = (folder / "Bulwark_Class_Tree_Final.json").read_bytes()
     assert after == (sentences.DOCS / "Bulwark_Class_Tree_Final.json").read_bytes() != before
     assert sentences.apply(folder)[-1] == "every sentence is already written; nothing written"

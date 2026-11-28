@@ -5713,6 +5713,13 @@ CONDITIONS = {
     # AND "If you take two hits within 1 second" is `two_hits_taken_within_seconds` with a value of 1: the last two landed
     # hits taken, not ticks, came that close together. Counter Stance, the War trees' engine slice E2 (2026-11-27).
     "two_hits_taken_within_seconds": (0.0, 10.0, "a number of seconds"),
+    # AND "Once you have stood still for 3 seconds" ON THE CHARACTER'S OWN CLOCK, never a gadget's: Siege Mode (R19, the
+    # War trees' window 2, 2026-11-28).
+    "player_stationary_for_seconds": (0.0, 60.0, "a number of seconds"),
+    # AND THE GADGET ASKED: Jury Rigged's "until repaired to full HP" after its save, and Last Stand Protocol's "When a
+    # gadget is reduced below 25% HP ... for 5 seconds" (window 2, 2026-11-28).
+    "gadget_reprieved_below_full_health": None,
+    "gadget_fell_below_quarter_within_seconds": (0.0, 60.0, "a number of seconds"),
 
     # "When your class resource is full, gain 10%-20% damage reduction for 3
     # seconds" is `seconds_after_resource_full` with 3. Issue #1815.
@@ -6795,6 +6802,22 @@ SCALES = {
     # AND "for every 10 seconds in continuous combat" WHEN ITS STACKS ARE "lost 50% slower when leaving combat" is
     # `combat_seconds_held` (Grinding Advance), the same slice: seconds held, rising in combat and falling out of it.
     "combat_seconds_held": (0.0, 600.0, "a number of seconds"),
+    # AND THE WAR TREES' WINDOW 2 (2026-11-28), the Saboteur's six: Hot Deploy's "for every 10 Fervour spent in the last 5
+    # seconds", Steady Power's "each point of Fervour above 50% of your maximum", Callous Setup's "for every 10% of your
+    # evasion chance", Calculated Risk's "for every 1% of evasion chance you would have had", Hair Wire Expertise's "each
+    # unique trap type currently active" and Siege Mode's "for each second you have stood still" (R19).
+    "class_resource_spent_recently": (0.0, 1000.0, "an amount of the class resource"),
+    "class_resource_above_half": (0.0, 1000.0, "points of the class resource"),
+    "evasion": (0.0, 100.0, "a percentage of evasion chance"),
+    "evasion_before_removal": (0.0, 100.0, "a percentage of evasion chance"),
+    "trap_kinds_active": (0.0, 10.0, "a number of trap kinds"),
+    "player_seconds_stationary": (0.0, 60.0, "a number of seconds"),
+    # AND THE GADGET ASKED, ITS EMPOWERED AND OVERCLOCKED FERVOUR: Overcharge's "per Fervour consumed" and Overclock's
+    # "for each Fervour drained".
+    "gadget_empowered_fervour": (0.0, 1000.0, "an amount of the class resource"),
+    "gadget_overclock_fervour": (0.0, 1000.0, "an amount of the class resource"),
+    # AND PRECISION PLACEMENT'S "for every 4 traps your maximum Fervour could hold", read at the last trap's placing.
+    "traps_maximum_fervour_could_hold": (0.0, 1000.0, "a number of traps"),
 
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish
@@ -8028,7 +8051,9 @@ PLACED_ACTIONS = {
     # THE WAR TREES' ENGINE SLICE E2 (2026-11-27): issue #964's mark, a stack on the enemy of the event that raises
     # the damage it takes from every source (Open Wound on a critical strike; Marked Territory on a trap's blow), and
     # Rend's, which lowers its damage reduction. `enemy_armor_removed` below gains `critical_strike` for Shatter.
-    "enemy_damage_taken": ("hit_dealt", "critical_strike", "deployable_hit"),
+    # AND ON `trap_triggered` SINCE THE WAR TREES' WINDOW 2 (2026-11-28): Marked Territory's "Enemies that trigger a
+    # trap are marked", the enemy that set the trap off, which that event names.
+    "enemy_damage_taken": ("hit_dealt", "critical_strike", "deployable_hit", "trap_triggered"),
     "enemy_damage_reduction_removed": ("hit_dealt",),
     "enemy_armor_removed": ("hit_dealt", "deployable_hit", "critical_strike"),
     "attacker_damage_removed": ("melee_hit_taken",),
@@ -8872,6 +8897,9 @@ EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK = (
     # Necrosis to it, and NO STRIKE ON IT IS RULED, as for `minion_hit` above.
     "minion_raised_on_remains",
     "remains_detonation_hit",
+    # The War trees' window 2, 2026-11-28. `gadget_ignored_hit` carries the
+    # wearer's own gadget.
+    "gadget_ignored_hit",
 )
 
 #: The most a strike may be, in per cent of attack damage. A bound for typing
@@ -8910,9 +8938,30 @@ FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION = "fervour_per_percent_of_max_h
 FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION = "fervour_of_frenzy_drain_seconds"
 RETALIATION_BURST_ON_KILL_ACTION = "retaliation_burst_on_kill"
 ECHO_STRIKE_LATER_ACTION = "echo_strike_later"
-RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION)
+#: AND `gadgets_pulled_to_placed`, on `gadget_placed` only: every other gadget the wearer commands moves to a ring around
+#: the gadget just placed. Forward Operating Base, the War trees' window 2 (2026-11-28). Its value is 100, the whole rule.
+GADGETS_PULLED_TO_PLACED_ACTION = "gadgets_pulled_to_placed"
+#: AND `gadget_empowered` (Overcharge: the value in Fervour, the Event Value the health per cent for each) and
+#: `gadget_overclocked` (Overclock: the value in Fervour, drained over the Event Value in seconds), on `gadget_placed`.
+GADGET_EMPOWERED_ACTION = "gadget_empowered"
+GADGET_OVERCLOCKED_ACTION = "gadget_overclocked"
+#: AND `gadget_explodes_for_share_of_maximum_health` (Volatile Construction: the value the share of the destroyed gadget's
+#: maximum health, to enemies within 4 m) and `gadget_move_cooldown_cut` (Scrap and Rebuild: the value in seconds), on
+#: `gadget_destroyed`; and `gadgets_attack_hit_enemy` (Coordinated Strike: the value the bonus in per cent), on
+#: `hit_dealt`. Window 2 (2026-11-28).
+GADGET_EXPLODES_ACTION = "gadget_explodes_for_share_of_maximum_health"
+GADGET_MOVE_COOLDOWN_CUT_ACTION = "gadget_move_cooldown_cut"
+GADGETS_ATTACK_HIT_ENEMY_ACTION = "gadgets_attack_hit_enemy"
+RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION,
+                 GADGETS_PULLED_TO_PLACED_ACTION, GADGET_EMPOWERED_ACTION, GADGET_OVERCLOCKED_ACTION,
+                 GADGET_EXPLODES_ACTION, GADGET_MOVE_COOLDOWN_CUT_ACTION, GADGETS_ATTACK_HIT_ENEMY_ACTION)
 RIDER_ACTION_EVENTS = {RETALIATION_BURST_ON_KILL_ACTION: ("kill",), ECHO_STRIKE_LATER_ACTION: ("hit_dealt",),
-                       "next_attack_bonus_of_blocked_damage": ("block",)}
+                       "next_attack_bonus_of_blocked_damage": ("block",),
+                       GADGETS_PULLED_TO_PLACED_ACTION: ("gadget_placed",),
+                       GADGET_EMPOWERED_ACTION: ("gadget_placed",), GADGET_OVERCLOCKED_ACTION: ("gadget_placed",),
+                       GADGET_EXPLODES_ACTION: ("gadget_destroyed",),
+                       GADGET_MOVE_COOLDOWN_CUT_ACTION: ("gadget_destroyed",),
+                       GADGETS_ATTACK_HIT_ENEMY_ACTION: ("hit_dealt",)}
 MOST_ECHO_DELAY_SECONDS = 5.0
 #: AND `execute_nearby_below`: every enemy within the row's Event Value in metres (required, up to
 #: `MAX_SMITE_NEARBY_BY_HIT_METRES`) below the value's per cent of its maximum health, that may be executed, loses the
@@ -9439,6 +9488,12 @@ ACTION_ONLY_EVENTS = (
     # same slice: Grave Spores' Necrosis is an `apply_status` row on it.
     # Clockless.
     "remains_detonation_hit",
+    # A HIT ONE OF THE WEARER'S GADGETS IGNORED, raised once per hit on its
+    # summoner by `ACataclysmMinion::RollToIgnoreAHit` with the gadget's tags,
+    # naming the gadget. The War trees' window 2 (2026-11-28): Redundant
+    # Systems' "When a gadget successfully ignores damage gain 5 Fervour" is a
+    # `class_resource` row on it. Clockless.
+    "gadget_ignored_hit",
 )
 
 #: The events a `consecutive_hits` row may count: the ones that name who was
@@ -12105,6 +12160,20 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_RETALIATION_PULSE_METRES:g}.")
+    elif action in (GADGET_EMPOWERED_ACTION, GADGET_OVERCLOCKED_ACTION):
+        # OR OVERCHARGE'S HEALTH PER CENT FOR EACH FERVOUR, AND OVERCLOCK'S
+        # SECONDS, required. The War trees' window 2 (2026-11-28).
+        what = ("the health per cent for each Fervour"
+                if action == GADGET_EMPOWERED_ACTION else "the seconds the drain lasts")
+        if not event_value_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} pays {action} and "
+                f"states no Event Value. It is {what}.")
+        event_value = number(event_value_text, "Event Value", index)
+        if not 0 < event_value <= 100:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states "
+                f"{event_value:g} for {what}. It is above 0 and up to 100.")
     elif event_value_text:
         raise DataError(
             f"Enchantment Effects row {index}: {name} states an Event Value on "
@@ -13013,6 +13082,15 @@ STATS_WITH_AN_ASKER = frozenset({
     "health_regen",
     "mana_regen",
     "fervour_per_second",
+    # ADDED IN THE WAR TREES' WINDOW 2 (2026-11-28): Hair Wire Expertise's trap arming speed for each trap kind, read by
+    # `ACataclysmMinion::SkillTrapArmingSecondsFor` through `IncreasesForStat` with the state; and the gadget range of
+    # Combat Engineer and Siege Mode, read through `UCataclysmCommand::SummonerMultiplierFor` with the summoner's state.
+    # `ProbeScaledTrapArmingSpeed` and `ProbeScaledMinionRange`.
+    "trap_arming_speed",
+    "minion_range",
+    # AND EFFICIENT DESIGN'S RESERVE, "Each other active gadget reduces the Fervour your gadgets reserve by 1% per point"
+    # (ruled 2026-11-28), asked by `UCataclysmCommand::ReserveFor` with the state; `ProbeScaledMinionReservePercentLess`.
+    "minion_reserve_percent_less",
     "fervour_per_enemy_in_reach",
     "fervour_from_minions",
     "max_energy_shield",
@@ -13360,6 +13438,12 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # AND EYE OF THE STORM'S BLOCK FLOOR under "While 3 or more enemies are within 3 meters", the same slice, asked by
     # `UCataclysmDamageCalculation::Resolve` at the block step as `block_chance` is; `ProbeConditionedBlockChanceFloor`.
     "block_chance_floor": ASKER_PASSES_A_BLOW_TAKEN,
+    # AND SIEGE MODE'S GADGET RANGE under "Once you have stood still for 3 seconds" (R19, window 2, 2026-11-28), asked by
+    # `UCataclysmCommand::SummonerMultiplierFor` with the summoner's state; `ProbeConditionedMinionRange`.
+    "minion_range": ASKER_PASSES_NOTHING_MORE,
+    # AND A GADGET'S ATTACK SPEED under its own readings (Last Stand Protocol, Jury Rigged), asked with the gadget named
+    # by `ACataclysmMinion::SkillGadgetSecondsBetweenCasts`; `ProbeConditionedMinionAttackSpeed`.
+    "minion_attack_speed": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,

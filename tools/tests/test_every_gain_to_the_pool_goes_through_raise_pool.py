@@ -65,6 +65,17 @@ INVENTORY: dict[tuple[str, str], tuple[int, str]] = {
      "UCataclysmHealthDebt::DrainWhileDebtExceedsHealth"): (1, "health, not the pool"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::StepNoDamageAndDrain"): (
         1, "a minion's health, not the pool"),
+    # THE WAR TREES' WINDOW 2 (2026-11-28).
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::Empower"): (
+        1, "Overcharge's payment, taken from the pool"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::StepGadgetReadings"): (
+        2, "Overclock's drain, taken from the pool, and Persistent Systems' regeneration, a gadget's health"),
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::StepUnreservedSkillTrap"): (
+        1, "Calculated Chaos's drain, taken from the pool"),
+    # THE PARSER NAMES THIS AFTER THE LAST MEMBER ABOVE IT: `CataclysmWarTreesW2::TakeFervourExactly`, Reinforced
+    # Housing's payment for a trap's later triggering, taken from the pool.
+    ("game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp", "ACataclysmMinion::IsGadget"): (
+        1, "Reinforced Housing's payment, taken from the pool"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp", "UCataclysmSkillTemplate::PayHealthCost"): (
         1, "health, not the pool"),
     ("game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp", "UCataclysmSkillTemplate::PayManaOnHitTo"): (

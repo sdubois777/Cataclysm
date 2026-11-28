@@ -463,7 +463,128 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
 )
 
 #: Every node this script writes.
-NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES
+#: WINDOW 2, THE SABOTEUR (2026-11-28), its data rows and engine slice E4's.
+E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
+    # MARKED TERRITORY: "Enemies that trigger a trap are marked for 5 seconds. Marked enemies take +5% increased damage per
+    # point from all sources." The enemy that set the trap off; one mark, its window refreshed.
+    ("Saboteur_basic_trap_ql_004", "Marked Territory",
+     (R(None, "", 5, action="enemy_damage_taken", action_event="trap_triggered", stack_seconds=5, cap=1),)),
+    # PERSISTENT SYSTEMS (ruled 2026-11-28): "Gadgets above 50% HP regenerate 1.5% of their maximum HP per second per
+    # point. At 4 points: Gadgets that survive for 20 seconds gain a permanent +10% damage stack."
+    ("Saboteur_basic_gadget_sus_002", "Persistent Systems",
+     (R("gadget_regen_percent_above_half", "flat", 1.5),
+      R("minion_damage", "increased", 10, tags=GADGET, scale="minion_seconds_active", step=20, cap=1, min_points=4))),
+    # SCRAP AND REBUILD (ruled 2026-11-28): "When a gadget is destroyed gain 5 Fervour per point and your next gadget
+    # move is ready 2 seconds sooner per point."
+    ("Saboteur_basic_gadget_deep_003", "Scrap and Rebuild",
+     (R(None, "", 5, action="class_resource", action_event="gadget_destroyed", fraction_of="points"),
+      R(None, "", 2, action="gadget_move_cooldown_cut", action_event="gadget_destroyed"))),
+    # FORWARD OPERATING BASE: "When you deploy a gadget, all other active gadgets are pulled to the most recent gadget."
+    ("Saboteur_keystone_gadget_dep", "Forward Operating Base",
+     (R(None, "", 100, action="gadgets_pulled_to_placed", action_event="gadget_placed"),)),
+    # STEADY POWER (ruled 2026-11-27): each active gadget drains 1 Fervour a second; "+4% damage per point for each point
+    # of Fervour above 50% of your maximum".
+    ("Saboteur_basic_gadget_sus_001", "Steady Power",
+     (R("fervour_drain_per_second", "flat", 1, scale="gadgets_active", step=1, min_points=1),
+      *_damage(4, tags=GADGET, scale="class_resource_above_half", step=1))),
+    # HOT DEPLOY: "+2% gadget attack speed per point for every 10 Fervour spent in the last 5 seconds."
+    ("Saboteur_basic_gadget_dep_001", "Hot Deploy",
+     (R("minion_attack_speed", "increased", 2, tags=GADGET, scale="class_resource_spent_recently", step=10),)),
+    # CALLOUS SETUP: "+5% trap damage per point for every 10% of your evasion chance, up to a maximum of 60%."
+    ("Saboteur_basic_trap_mid_007", "Callous Setup",
+     (R("minion_damage", "increased", 5, tags=TRAP, scale="evasion", step=10, cap=6),)),
+    # CALCULATED RISK: "Your evasion chance is permanently set to 0%. All gadget damage is increased by 3% for every 1% of
+    # evasion chance you would have had from all sources."
+    ("Saboteur_basic_gadget_mid_005", "Calculated Risk",
+     (R("evasion", "removed", 1), *_damage(3, tags=GADGET, scale="evasion_before_removal", step=1))),
+    # HAIR WIRE EXPERTISE (ruled 2026-11-28): "+8% trap arming speed per point for each unique trap type you have active."
+    ("Saboteur_basic_trap_mid_004", "Hair Wire Expertise",
+     (R("trap_arming_speed", "increased", 8, tags=TRAP, scale="trap_kinds_active", step=1),)),
+    # SIEGE MODE (R19): "Once you have stood still for 3 seconds, your gadgets gain +5% damage and +3% range for each
+    # second you have stood still, up to 10 seconds. Moving ends the bonus."
+    ("Saboteur_keystone_gadget_sus", "Siege Mode",
+     (*_damage(5, tags=GADGET, scale="player_seconds_stationary", step=1, cap=10, cond="player_stationary_for_seconds",
+               cond_value=3),
+      R("minion_range", "increased", 3, tags=GADGET, scale="player_seconds_stationary", step=1, cap=10,
+        cond="player_stationary_for_seconds", cond_value=3))),
+    # COMBAT ENGINEER: "+8% gadget attack range per point for each active gadget on the battlefield." Its 5-point half,
+    # "Gadgets can attack enemies through terrain within their range", is already true: a gadget's targeting has no
+    # line-of-sight test (`ACataclysmMinion`, `UCataclysmTargeting`), so it has no row.
+    ("Saboteur_basic_gadget_deep_001", "Combat Engineer",
+     (R("minion_range", "increased", 8, tags=GADGET, scale="gadgets_active", step=1),)),
+    # OVERCHARGE: "When a gadget is deployed, it automatically consumes 2 Fervour per point to grant +5% damage and +5% HP
+    # per Fervour consumed."
+    ("Saboteur_basic_gadget_stem_004", "Overcharge",
+     (R(None, "", 2, action="gadget_empowered", action_event="gadget_placed", event_value=5),
+      # "per Fervour consumed", not per point: paid once (the Fervour is what the points raise).
+      *_damage(5, tags=GADGET, scale="gadget_empowered_fervour", step=1, min_points=1))),
+    # OVERCLOCK: "When a gadget is deployed, it passively drains 2 Fervour per point over 10 seconds, gaining +5% attack
+    # speed for each Fervour drained."
+    ("Saboteur_basic_gadget_dep_002", "Overclock",
+     (R(None, "", 2, action="gadget_overclocked", action_event="gadget_placed", event_value=10),
+      R("minion_attack_speed", "increased", 5, tags=GADGET, scale="gadget_overclock_fervour", step=1, min_points=1))),
+    # RAPID DEPLOYMENT: "Reduces the Fervour cost of all automatic gadget empowerment effects by 1 per point. At 6 points:
+    # Once every 15 seconds, your next gadget deployment costs no Fervour to empower."
+    ("Saboteur_basic_gadget_dep_005", "Rapid Deployment",
+     (R("gadget_empower_cost_less", "flat", 1), R("gadget_empower_free_every_seconds", "flat", 15, min_points=6))),
+    # LAST STAND PROTOCOL: "When a gadget is reduced below 25% HP, it gains +8% attack speed and +8% damage per point for
+    # 5 seconds."
+    ("Saboteur_basic_gadget_dep_004", "Last Stand Protocol",
+     (R("minion_attack_speed", "increased", 8, tags=GADGET, cond="gadget_fell_below_quarter_within_seconds", cond_value=5),
+      *_damage(8, tags=GADGET, cond="gadget_fell_below_quarter_within_seconds", cond_value=5))),
+    # JURY RIGGED (ruled 2026-11-27): "Your gadgets cannot be destroyed. Instead, when they would be destroyed they are
+    # reduced to 1 HP and gain +100% damage and +100% attack speed while below full HP. Once per gadget per deployment."
+    ("Saboteur_basic_gadget_mid_007", "Jury Rigged",
+     (R("gadget_survives_lethal_once", "flat", 1),
+      R("minion_attack_speed", "increased", 100, tags=GADGET, cond="gadget_reprieved_below_full_health"),
+      *_damage(100, tags=GADGET, cond="gadget_reprieved_below_full_health"))),
+    # EFFICIENT DESIGN (ruled 2026-11-28): "Each other active gadget reduces the Fervour your gadgets reserve by 1% per
+    # point." Inside the 75% cap every reserve reduction shares.
+    ("Saboteur_basic_gadget_stem_003", "Efficient Design",
+     (R("minion_reserve_percent_less", "flat", 1, tags=GADGET, scale="gadgets_active", step=1),)),
+    # VOLATILE CONSTRUCTION (radius ruled 2026-11-28: 4 m): "When a gadget is destroyed, it explodes dealing damage equal
+    # to +15% of its maximum HP per point to all nearby enemies."
+    ("Saboteur_basic_gadget_dep_003", "Volatile Construction",
+     (R(None, "", 15, action="gadget_explodes_for_share_of_maximum_health", action_event="gadget_destroyed"),)),
+    # REDUNDANT SYSTEMS: "+5% chance per point that a gadget ignores damage from a hit entirely. At 6 points: When a
+    # gadget successfully ignores damage gain 5 Fervour."
+    ("Saboteur_basic_gadget_sus_005", "Redundant Systems",
+     (R("gadget_ignore_hit_chance", "flat", 5),
+      R(None, "", 5, action="class_resource", action_event="gadget_ignored_hit", fraction_of="points", min_points=6))),
+    # COORDINATED STRIKE: "Once per second when you hit an enemy your nearest active gadget also attacks that enemy
+    # dealing +8% bonus damage per point. At 4 points: This effect triggers for all active gadgets simultaneously."
+    ("Saboteur_basic_gadget_deep_002", "Coordinated Strike",
+     (R(None, "", 8, action="gadgets_attack_hit_enemy", action_event="hit_dealt", trigger_cooldown=1),
+      R("coordinated_strike_all_gadgets", "flat", 1, min_points=4))),
+    # POWER SURGE (radius ruled 2026-11-28: the gadget's own attack reach).
+    ("Saboteur_basic_gadget_sus_003", "Power Surge",
+     (R("gadget_power_surge", "flat", 1),)),
+    # SCATTERSHOT (ruled 2026-11-27: the extra trap reserves as normal).
+    ("Saboteur_basic_trap_qty_004", "Scattershot",
+     (R("trap_copy_on_place_chance", "flat", 10),)),
+    # REINFORCED HOUSING (ruled 2026-11-27): "Traps are not consumed when triggered. Instead each subsequent trigger costs
+    # 15 Fervour, reduced by 1 Fervour per point. At 5 points: Each subsequent trigger deals 20% more damage than the last."
+    ("Saboteur_basic_trap_ql_002", "Reinforced Housing",
+     (R("trap_reuse_fervour_cost", "flat", 15, min_points=1), R("trap_reuse_fervour_cost_less", "flat", 1),
+      R("trap_reuse_more_percent", "flat", 20, min_points=5))),
+    # PRECISION PLACEMENT (ruled 2026-11-28): one active trap; +10% damage and +25% area for every 4 traps the maximum
+    # Fervour could hold, read at placing.
+    ("Saboteur_keystone_trap_ql", "Precision Placement",
+     (R("trap_most_active", "flat", 1),
+      R("minion_damage", "increased", 10, tags=TRAP, scale="traps_maximum_fervour_could_hold", step=4),
+      R("area_of_effect", "increased", 25, tags=TRAP, scale="traps_maximum_fervour_could_hold", step=4))),
+    # THE LAST SURPRISE (ruled 2026-11-28).
+    ("Saboteur_keystone_trap_deep_001", "The Last Surprise",
+     (R("trap_last_surprise", "flat", 1),)),
+    # CALCULATED CHAOS: "Each trap placed that way reserves nothing and drains 5 Fervour per second instead."
+    ("Saboteur_keystone_trap_deep_002", "Calculated Chaos",
+     (R("trap_unreserved_drain_per_second", "flat", 5),)),
+    # CONCEALED (R20, ruled 2026-11-27): "The first enemy to trigger each of your traps is stunned for 1 second."
+    ("Saboteur_basic_trap_mid_003", "Concealed",
+     (R("trap_first_trigger_stun_seconds", "flat", 1),)),
+)
+
+NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES + E4_NODES
 
 
 def apply(path: pathlib.Path = base.WORKBOOK, check_only: bool = False) -> list[str]:

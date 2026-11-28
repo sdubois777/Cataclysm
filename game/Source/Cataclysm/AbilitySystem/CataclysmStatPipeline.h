@@ -670,6 +670,22 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Stationary For Seconds"),
 
 	/**
+	 * THE CHARACTER ITSELF has stood still for at least `Value` seconds, read from `PlayerSecondsSinceMoved`, which a
+	 * gadget's blow does not replace: Siege Mode's "Once you have stood still for 3 seconds" (R19), on a gadget's stat. The
+	 * War trees' window 2 (2026-11-28). A negative clock, no character, refuses.
+	 */
+	PlayerStationaryForSeconds
+		UMETA(DisplayName = "Player Stationary For Seconds"),
+
+	/**
+	 * THE GADGET WHOSE STAT IS ASKED FELL BELOW A QUARTER OF ITS HEALTH NO MORE THAN `Value` SECONDS AGO: Last Stand
+	 * Protocol's "When a gadget is reduced below 25% HP, it gains ... for 5 seconds". The War trees' window 2
+	 * (2026-11-28). Read from `SecondsSinceGadgetFellBelowQuarter`; never fallen, or no gadget named, -1, refuses.
+	 */
+	GadgetFellBelowQuarterWithinSeconds
+		UMETA(DisplayName = "Gadget Fell Below Quarter Within Seconds"),
+
+	/**
 	 * The blow in hand was dealt after the character moved AT LEAST THAT FAR since
 	 * its own last attack. Issue #41, slice 2.
 	 *
@@ -2327,6 +2343,14 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	HitTakenWasUnblocked
 		UMETA(DisplayName = "Hit Taken Was Unblocked"),
+
+	/**
+	 * THE GADGET WHOSE STAT IS ASKED WAS SAVED BY JURY RIGGED AND IS BELOW FULL HEALTH: Jury Rigged's "+100% damage and
+	 * +100% attack speed until repaired to full HP" (ruled 2026-11-27: while below full health). The War trees' window 2
+	 * (2026-11-28). Read from `bGadgetReprieved` and `GadgetHealthPercent`; with no gadget named, unknown, it refuses.
+	 */
+	GadgetReprievedBelowFullHealth
+		UMETA(DisplayName = "Gadget Reprieved Below Full Health"),
 };
 
 /**
@@ -3319,6 +3343,57 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Second Of Combat Held"),
 
 	/**
+	 * THE WAR TREES' WINDOW 2 (2026-11-28), the Saboteur's scales, each counting whole steps and nothing unread:
+	 * `Value` per `ScaleStep` of the class resource SPENT IN THE LAST 5 SECONDS (Hot Deploy's "for every 10 Fervour spent
+	 * in the last 5 seconds"), from `FervourSpentRecently`.
+	 */
+	PerPointOfClassResourceSpentRecently
+		UMETA(DisplayName = "Per Point Of Class Resource Spent Recently"),
+
+	/** `Value` per `ScaleStep` points of the class resource HELD ABOVE HALF ITS MAXIMUM (Steady Power), from the pool. */
+	PerPointOfClassResourceAboveHalf
+		UMETA(DisplayName = "Per Point Of Class Resource Above Half"),
+
+	/** `Value` per `ScaleStep` per cent of EVASION, the attribute (Callous Setup), from `Evasion`. */
+	PerPercentOfEvasion
+		UMETA(DisplayName = "Per Percent Of Evasion"),
+
+	/**
+	 * `Value` per `ScaleStep` per cent of EVASION AS IT WOULD HAVE BEEN WITHOUT A ROW THAT REMOVES IT (Calculated Risk's
+	 * "for every 1% of evasion chance you would have had from all sources"), from `EvasionBeforeRemoval`: the `evasion`
+	 * line evaluated with an empty state and its removal rows left out. Filled only for a component some row of which
+	 * asks.
+	 */
+	PerPercentOfEvasionBeforeRemoval
+		UMETA(DisplayName = "Per Percent Of Evasion Before Removal"),
+
+	/** `Value` per DISTINCT KIND OF TRAP the character has standing, a slot each (Hair Wire Expertise), from `TrapKindsActive`. */
+	PerTrapKindActive
+		UMETA(DisplayName = "Per Trap Kind Active"),
+
+	/**
+	 * `Value` per `ScaleStep` seconds THE CHARACTER ITSELF has stood still, never a gadget's (Siege Mode, R19), from
+	 * `PlayerSecondsSinceMoved`, which a gadget's blow does not replace.
+	 */
+	PerSecondPlayerStationary
+		UMETA(DisplayName = "Per Second Player Stationary"),
+
+	/** `Value` per `ScaleStep` Fervour the gadget asked was EMPOWERED WITH at its placing (Overcharge), window 2. */
+	PerFervourGadgetEmpowered
+		UMETA(DisplayName = "Per Fervour Gadget Empowered"),
+
+	/** `Value` per `ScaleStep` Fervour OVERCLOCK HAS DRAINED into the gadget asked, window 2. */
+	PerFervourGadgetOverclocked
+		UMETA(DisplayName = "Per Fervour Gadget Overclocked"),
+
+	/**
+	 * `Value` per `ScaleStep` TRAPS THE WEARER'S MAXIMUM FERVOUR COULD HOLD, read when its last trap was placed: its
+	 * maximum over that trap's reserve, whole traps. Precision Placement (ruled 2026-11-28), window 2.
+	 */
+	PerTrapMaximumFervourCouldHold
+		UMETA(DisplayName = "Per Trap Maximum Fervour Could Hold"),
+
+	/**
 	 * `Value` per hostile character the character STRUCK IN THE LAST 3 SECONDS: Dancing Blades, "each unique enemy you
 	 * have hit in the last 3 seconds drains 2 additional Fervour per second". The War trees' slice E1 (2026-11-27). Read
 	 * from `EnemiesStruckRecently`, which `WithEnemiesInReach` counts when a row asks: every hostile within
@@ -4270,6 +4345,36 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceMoved = -1.0f;
+
+	/** THE CHARACTER'S OWN seconds since it moved, never a gadget's. The War trees' window 2 (2026-11-28), Siege Mode. */
+	float PlayerSecondsSinceMoved = -1.0f;
+
+	/** The class resource spent in the last 5 seconds, or -1 unread. Hot Deploy (window 2). */
+	float FervourSpentRecently = -1.0f;
+
+	/** The evasion attribute, or -1 unread. Callous Setup (window 2). */
+	float Evasion = -1.0f;
+
+	/** Evasion as it would have been without its removal rows, or -1 unread. Calculated Risk (window 2). */
+	float EvasionBeforeRemoval = -1.0f;
+
+	/** How many distinct kinds of trap stand, a slot each, or -1 unread. Hair Wire Expertise (window 2). */
+	int32 TrapKindsActive = -1;
+
+	/**
+	 * THE GADGET WHOSE STAT IS ASKED, its own readings, filled by `ACataclysmMinion::FillGadgetReadings` while one is
+	 * named (its blow priced, its attack speed asked, or a War machine asking): its health share in per cent, the Fervour
+	 * it was empowered with and Overclock has drained into it, the seconds since it fell below a quarter of its health,
+	 * and whether Jury Rigged saved it. -1 (or 0 for the flag) with none named. The War trees' window 2 (2026-11-28).
+	 */
+	float GadgetHealthPercent = -1.0f;
+	float GadgetEmpoweredFervour = -1.0f;
+	float GadgetOverclockFervour = -1.0f;
+	float SecondsSinceGadgetFellBelowQuarter = -1.0f;
+	bool bGadgetReprieved = false;
+
+	/** Whole traps the wearer's maximum Fervour could hold at its last trap's placing, or -1 none. Precision Placement. */
+	float TrapsMaximumFervourCouldHold = -1.0f;
 
 	/**
 	 * Seconds since the character last attacked. Issue #41, slice 2.
@@ -5684,6 +5789,41 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bEchoStrikeLater = false;
 
 	/**
+	 * Every other gadget the wearer commands pulled to the gadget the event names: `gadgets_pulled_to_placed`, on
+	 * `gadget_placed`. Forward Operating Base, the War trees' window 2 (2026-11-28).
+	 */
+	bool bGadgetsPulledToPlaced = false;
+
+	/**
+	 * The gadget the event names empowered with `Percent` Fervour, its health raised by `EventValue` per cent for each:
+	 * `gadget_empowered`, on `gadget_placed`. Overcharge, the War trees' window 2 (2026-11-28).
+	 */
+	bool bGadgetEmpowered = false;
+
+	/** The same gadget overclocked: `Percent` Fervour drained over `EventValue` seconds: `gadget_overclocked`. Overclock. */
+	bool bGadgetOverclocked = false;
+
+	/**
+	 * The gadget the event names, destroyed, bursts for `Percent` of its maximum health to the enemies within 4 m:
+	 * `gadget_explodes_for_share_of_maximum_health`, on `gadget_destroyed`. Volatile Construction, window 2 (ruled
+	 * 2026-11-28: 4 m), through the Ferryman's burst.
+	 */
+	bool bGadgetExplodes = false;
+
+	/**
+	 * The wearer's nearest skill gadget, or every one while `coordinated_strike_all_gadgets` is held, fires once at the
+	 * enemy the wearer's own hit struck, at 1 + `Percent`/100 of its shot: `gadgets_attack_hit_enemy`, on `hit_dealt`.
+	 * Coordinated Strike, window 2. Never for a device's or a minion's blow.
+	 */
+	bool bGadgetsAttackHitEnemy = false;
+
+	/**
+	 * The wearer's gadget move cooldown, running, cut by `Percent` seconds, or the next one cut when none runs:
+	 * `gadget_move_cooldown_cut`, on `gadget_destroyed`. Scrap and Rebuild (ruled 2026-11-28), window 2.
+	 */
+	bool bGadgetMoveCooldownCut = false;
+
+	/**
 	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed
 	 * (`UCataclysmAbilitySystemComponent::CanBeExecuted`: alive, no Boss, damage reaches it), loses the health it has left:
 	 * `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27), Killing Blow's "when you attack at maximum
@@ -6597,7 +6737,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a hundred-and-twenty-sixth, which is the drift that put the passive tree eight
+	 * adds a hundred-and-twenty-ninth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -6614,7 +6754,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * SIXTY-THREE OF THE HUNDRED-AND-TWENTY-FIVE COMPARE NOTHING. They are the case labels
+	 * SIXTY-FOUR OF THE HUNDRED-AND-TWENTY-EIGHT COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

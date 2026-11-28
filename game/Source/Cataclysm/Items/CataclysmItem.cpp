@@ -1844,6 +1844,21 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::RetaliationBurstOnKillAction, ESearchCase::IgnoreCase);
 					Action.bEchoStrikeLater = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::EchoStrikeLaterAction, ESearchCase::IgnoreCase);
+					// AND FORWARD OPERATING BASE'S PULL, the War trees' window 2 (2026-11-28).
+					Action.bGadgetsPulledToPlaced = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetsPulledToPlacedAction, ESearchCase::IgnoreCase);
+					// AND OVERCHARGE AND OVERCLOCK, the same window.
+					Action.bGadgetEmpowered = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetEmpoweredAction, ESearchCase::IgnoreCase);
+					Action.bGadgetOverclocked = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetOverclockedAction, ESearchCase::IgnoreCase);
+					// AND VOLATILE CONSTRUCTION, COORDINATED STRIKE AND SCRAP AND REBUILD'S COOLDOWN, the same window.
+					Action.bGadgetExplodes = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetExplodesAction, ESearchCase::IgnoreCase);
+					Action.bGadgetsAttackHitEnemy = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetsAttackHitEnemyAction, ESearchCase::IgnoreCase);
+					Action.bGadgetMoveCooldownCut = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetMoveCooldownCutAction, ESearchCase::IgnoreCase);
 					if (bArmourRemovedNearby)
 					{
 						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;

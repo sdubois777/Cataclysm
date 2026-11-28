@@ -240,6 +240,104 @@ public:
 	float SummonersGadgetStat(const TCHAR* Stat) const;
 
 	/**
+	 * THE WAR TREES' WINDOW 2 (2026-11-28), A GADGET'S OWN READINGS AND STATE. `FillGadgetReadings` writes this gadget's
+	 * health share, its empowered and overclocked Fervour, the seconds since it fell below a quarter of its health and
+	 * whether Jury Rigged saved it into `State`; its summoner's ability system calls it while this gadget's stat is asked.
+	 */
+	void FillGadgetReadings(struct FCataclysmStatConditions& State) const;
+
+	/**
+	 * Empower this gadget with `NominalFervour` (Overcharge): the summoner pays it less `gadget_empower_cost_less`, or
+	 * nothing when `bFree`, and the gadget counts the whole nominal figure (a judgement: the cost is what Rapid Deployment
+	 * lowers, not the bonus). Its maximum health and health are raised by `HealthPercentPerFervour` for each Fervour.
+	 * Returns what the summoner paid.
+	 */
+	float Empower(float NominalFervour, float HealthPercentPerFervour, bool bFree);
+
+	/** Begin Overclock's drain: `NominalFervour` over `Seconds`, paid as `Empower` pays, counted as it is drained. */
+	void BeginOverclock(float NominalFervour, float Seconds, bool bFree);
+
+	/**
+	 * Jury Rigged's save, asked where a blow would destroy this gadget: when its summoner holds
+	 * `gadget_survives_lethal_once` and it has not been saved this placing, it is now, and the blow leaves it 1 HP.
+	 */
+	bool TryJuryRig();
+
+	/** The stats window 2 reads off the summoner for its gadgets, by name. */
+	static const TCHAR* GadgetEmpowerCostLessStat;
+	static const TCHAR* GadgetEmpowerFreeEverySecondsStat;
+	static const TCHAR* GadgetSurvivesLethalOnceStat;
+	static const TCHAR* GadgetRegenPercentAboveHalfStat;
+	static const TCHAR* GadgetIgnoreHitChanceStat;
+	static const TCHAR* CoordinatedStrikeAllGadgetsStat;
+	static const TCHAR* GadgetPowerSurgeStat;
+
+	/**
+	 * Redundant Systems: whether this gadget ignores the hit in hand, rolled against its summoner's
+	 * `gadget_ignore_hit_chance` (the roll pinned by `Cataclysm.GadgetIgnoreRoll`). An ignored hit raises
+	 * `gadget_ignored_hit` on the summoner, naming this gadget. Window 2 (2026-11-28).
+	 */
+	bool RollToIgnoreAHit();
+
+	/** Power Surge (window 2): a charge every `PowerSurgeStackSeconds`, and at `PowerSurgeMostStacks` a discharge. */
+	static constexpr float PowerSurgeStackSeconds = 5.0f;
+	static constexpr int32 PowerSurgeMostStacks = 5;
+	static constexpr float PowerSurgeDischargeShare = 0.4f;
+	float PowerSurgeSeconds = 0.0f;
+	int32 PowerSurgeStacks = 0;
+
+	/**
+	 * THE TRAPS OF WINDOW 2 (2026-11-28), read off the player by name. Scattershot's chance to place a second trap
+	 * (`trap_copy_on_place_chance`); Reinforced Housing's cost for each trigger after the first, less a point's worth,
+	 * and its "more" for each (`trap_reuse_fervour_cost`, `trap_reuse_fervour_cost_less`, `trap_reuse_more_percent`);
+	 * Precision Placement's limit (`trap_most_active`); Concealed's stun (`trap_first_trigger_stun_seconds`, R20); and
+	 * Calculated Chaos's drain for a trap placed with no room (`trap_unreserved_drain_per_second`).
+	 */
+	static const TCHAR* TrapCopyOnPlaceChanceStat;
+	static const TCHAR* TrapReuseFervourCostStat;
+	static const TCHAR* TrapReuseFervourCostLessStat;
+	static const TCHAR* TrapReuseMorePercentStat;
+	static const TCHAR* TrapMostActiveStat;
+	static const TCHAR* TrapFirstTriggerStunSecondsStat;
+	static const TCHAR* TrapUnreservedDrainPerSecondStat;
+
+	/** Scattershot's second trap lands this far from the first, a judgement of window 2. */
+	static constexpr float ScattershotNearestCm = 150.0f;
+	static constexpr float ScattershotFarthestCm = 300.0f;
+
+	/** Placed by Calculated Chaos with no room: it reserves nothing, drains its player, and goes off at 0 Fervour. */
+	bool bSkillTrapUnreserved = false;
+
+	/** Calculated Chaos's drain for this trap's step, and, at 0 Fervour, every such trap of its player set off. */
+	void StepUnreservedSkillTrap(float StepSeconds);
+
+	/**
+	 * THE READERS OF WINDOW 2'S PLAYER STATS, each asked where the behaviour runs and each measured by its probe in
+	 * `CataclysmStatExemptionTests.cpp`: Precision Placement's limit, Scattershot's chance, Concealed's stun, Calculated
+	 * Chaos's drain, Reinforced Housing's cost for a later triggering (-1 when not held, else the cost less the cut,
+	 * never below nought), Coordinated Strike's every-gadget switch and Power Surge's switch.
+	 */
+	static float TrapsMostActiveFor(const AActor* Player);
+	static float ScattershotChanceFor(const AActor* Player);
+	static float ConcealedStunSecondsFor(const AActor* Player);
+	static float UnreservedTrapDrainPerSecondFor(const AActor* Player);
+	static float ReinforcedHousingCostFor(const AActor* Player);
+	static bool CoordinatedStrikeReachesEveryGadgetFor(const AActor* Player);
+	static bool PowerSurgeFor(const AActor* Player);
+
+	/** Overclock's step, the fall below a quarter, and Persistent Systems' regeneration, run by `GadgetStep`. */
+	void StepGadgetReadings(float StepSeconds);
+
+	float EmpoweredFervour = 0.0f;
+	float OverclockFervourDrained = 0.0f;
+	float OverclockFervourLeft = 0.0f;
+	float OverclockSecondsLeft = 0.0f;
+	float OverclockPaidShare = 1.0f;
+	float FellBelowQuarterAtSeconds = -1.0f;
+	bool bWasBelowQuarter = false;
+	bool bJuryRigged = false;
+
+	/**
 	 * How far past its reach a body may measure and still be within it, in centimetres. A body placed at exactly
 	 * the reach can measure a hair beyond it in floating point; this is far inside the 2 cm the brain already
 	 * allows a creature in contact (`ACataclysmEnemyController::ContactToleranceCm`).
@@ -550,6 +648,14 @@ public:
 	 * order, the first due east of the point and the rest at equal angles. Returns how many moved.
 	 */
 	static int32 MoveEveryGadgetOf(AActor* Player, const FVector& Point);
+
+	/**
+	 * Move every gadget `Player` commands EXCEPT `Placed` to a ring of `GadgetMoveRingRadiusCm` around `Placed`, in placing
+	 * order, the first due east: Forward Operating Base's "When you deploy a gadget, all other active gadgets are pulled to
+	 * the most recent gadget" (the War trees' window 2, 2026-11-28). Each keeps its health and clock, as a move does.
+	 * Returns how many moved.
+	 */
+	static int32 PullOtherGadgetsTo(AActor* Player, ACataclysmMinion* Placed);
 
 	/** The ring moved gadgets land on, in centimetres from the point. Ruled G2. */
 	static constexpr float GadgetMoveRingRadiusCm = 150.0f;
