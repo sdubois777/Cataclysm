@@ -526,7 +526,9 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	using FTree = UCataclysmPassiveTree;
 	// COLOSSUS (`Berserker_twoh_ks_001`) SINCE THE WAR TREES' ENGINE SLICE E3 (2026-11-27), which gave Open Wounds
 	// (`Berserker_trunk_006`) rows: Colossus waits on the Earthquake skill (#2972) and has none. The screen's tool tip
-	// below reads the loaded table, so the node has to be one with no row there.
+	// below reads the loaded table, so the node has to be one with no row there. WHEN #2972 BUILDS EARTHQUAKE AND WIRES
+	// COLOSSUS, Colossus gets a row and this test fails on "set-up: Colossus has no row": pick another node with no row
+	// then (the note on #2972 says the same).
 	const FName Unbuilt(TEXT("Berserker_twoh_ks_001"));
 	const FName Built(TEXT("Berserker_twoh_001"));
 	const FName FinalOath(TEXT("Saboteur_capstone_100"));
