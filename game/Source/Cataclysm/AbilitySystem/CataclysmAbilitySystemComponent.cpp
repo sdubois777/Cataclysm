@@ -7,6 +7,8 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmNecromancerArmy.h"
 #include "AbilitySystem/CataclysmMinion.h"
+// For Colossus's Earthquake, cast through the free start (the War weapon skills' slice WS1, issue #2972).
+#include "AbilitySystem/CataclysmTriggeredSkill.h"
 #include "AbilitySystem/CataclysmDeviceWire.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -7087,6 +7089,47 @@ const TCHAR* UCataclysmAbilitySystemComponent::GadgetOverclockedAction = TEXT("g
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetExplodesAction = TEXT("gadget_explodes_for_share_of_maximum_health");
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetsAttackHitEnemyAction = TEXT("gadgets_attack_hit_enemy");
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetMoveCooldownCutAction = TEXT("gadget_move_cooldown_cut");
+const TCHAR* UCataclysmAbilitySystemComponent::CastEarthquakeByFervourAction = TEXT("cast_earthquake_by_fervour");
+const TCHAR* UCataclysmAbilitySystemComponent::ColossusSkillRow = TEXT("War_Warhammer_Heavy");
+
+float UCataclysmAbilitySystemComponent::ColossusShare(float EmptySharePercent) const
+{
+	const float Empty = FMath::Clamp(EmptySharePercent / 100.0f, 0.0f, 1.0f);
+	if (!GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		return 1.0f;
+	}
+	const float Maximum = GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute());
+	const float Held = GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	const float Full = Maximum > 0.0f ? FMath::Clamp(Held / Maximum, 0.0f, 1.0f) : 0.0f;
+	return Empty + (1.0f - Empty) * Full;
+}
+
+bool UCataclysmAbilitySystemComponent::CastEarthquakeByFervour(float EmptySharePercent)
+{
+	AActor* Self = GetAvatarActor();
+	UWorld* World = GetWorld();
+	if (!Self || !World)
+	{
+		return false;
+	}
+	const float Share = ColossusShare(EmptySharePercent);
+	const FVector Landing = Self->GetActorLocation();
+	const TWeakObjectPtr<AActor> Caster(Self);
+	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [Caster, Landing, Share]()
+	{
+		AActor* const Player = Caster.Get();
+		FCataclysmWeaponSkill Earthquake;
+		if (!Player || UCataclysmSkillEffects::IsDead(Player)
+			|| !UCataclysmTriggeredSkill::FindSkillRowNamed(FName(ColossusSkillRow), TEXT("War"), Earthquake))
+		{
+			return;
+		}
+		UCataclysmTriggeredSkill::Trigger(Player, Earthquake, Landing, /*DamageShare=*/Share, /*bPaysCost=*/false,
+										  /*CastFrom=*/&Landing, /*CastBy=*/nullptr, /*RadiusShare=*/Share);
+	}));
+	return true;
+}
 
 const TCHAR* UCataclysmAbilitySystemComponent::TrapLastSurpriseStat = TEXT("trap_last_surprise");
 
@@ -10270,6 +10313,20 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 						UCataclysmSkillEffects::ApplyDirectDamage(
 							Self, Near, LastRetaliationTaken * Action.Percent / 100.0f, Burst);
 					}
+				}
+			}
+			continue;
+		}
+		// COLOSSUS CASTS EARTHQUAKE WHERE THE WEARER LANDS (the War weapon skills' slice WS1, issue #2972). The row's
+		// conditions (in Wrath, a two-handed weapon) are judged before this, as every row's are.
+		if (Action.bCastsEarthquakeByFervour)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				if (CastEarthquakeByFervour(Action.Percent))
+				{
+					NoteTriggerFired(Action);
 				}
 			}
 			continue;

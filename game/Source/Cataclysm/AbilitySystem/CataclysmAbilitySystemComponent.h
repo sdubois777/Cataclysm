@@ -2141,6 +2141,20 @@ public:
 	static const TCHAR* GadgetExplodesAction;
 	static const TCHAR* GadgetsAttackHitEnemyAction;
 	static const TCHAR* GadgetMoveCooldownCutAction;
+	/** `cast_earthquake_by_fervour`, Colossus (the War weapon skills' slice WS1, issue #2972). */
+	static const TCHAR* CastEarthquakeByFervourAction;
+	/** The row Colossus casts. */
+	static const TCHAR* ColossusSkillRow;
+
+	/**
+	 * Colossus's cast: Earthquake where the wearer stands, on the next tick (an event raised as a movement skill ends may
+	 * come inside an ability's activation, where a grant is deferred and refused), its share read NOW, "at the moment
+	 * of landing": `EmptySharePercent` at an empty pool, 100 at a full one, in a straight line. Whether it was queued.
+	 */
+	bool CastEarthquakeByFervour(float EmptySharePercent);
+
+	/** The share `CastEarthquakeByFervour` reads, 0 to 1, from the Fervour held now. 1 with no pool. */
+	float ColossusShare(float EmptySharePercent) const;
 
 	/**
 	 * Cut the gadget move cooldown that runs by `Seconds`, or, with none running, the next one the same amount. Scrap and

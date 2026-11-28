@@ -8992,16 +8992,22 @@ GADGET_OVERCLOCKED_ACTION = "gadget_overclocked"
 GADGET_EXPLODES_ACTION = "gadget_explodes_for_share_of_maximum_health"
 GADGET_MOVE_COOLDOWN_CUT_ACTION = "gadget_move_cooldown_cut"
 GADGETS_ATTACK_HIT_ENEMY_ACTION = "gadgets_attack_hit_enemy"
+#: AND `cast_earthquake_by_fervour`, on `movement_skill_ends`: Colossus casts Earthquake where the wearer lands, its
+#: damage and area scaled by the Fervour held, the value the share in per cent at an empty pool. The War weapon skills'
+#: slice WS1 (issue #2972, 2026-11-28).
+CAST_EARTHQUAKE_BY_FERVOUR_ACTION = "cast_earthquake_by_fervour"
 RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION,
                  GADGETS_PULLED_TO_PLACED_ACTION, GADGET_EMPOWERED_ACTION, GADGET_OVERCLOCKED_ACTION,
-                 GADGET_EXPLODES_ACTION, GADGET_MOVE_COOLDOWN_CUT_ACTION, GADGETS_ATTACK_HIT_ENEMY_ACTION)
+                 GADGET_EXPLODES_ACTION, GADGET_MOVE_COOLDOWN_CUT_ACTION, GADGETS_ATTACK_HIT_ENEMY_ACTION,
+                 CAST_EARTHQUAKE_BY_FERVOUR_ACTION)
 RIDER_ACTION_EVENTS = {RETALIATION_BURST_ON_KILL_ACTION: ("kill",), ECHO_STRIKE_LATER_ACTION: ("hit_dealt",),
                        "next_attack_bonus_of_blocked_damage": ("block",),
                        GADGETS_PULLED_TO_PLACED_ACTION: ("gadget_placed",),
                        GADGET_EMPOWERED_ACTION: ("gadget_placed",), GADGET_OVERCLOCKED_ACTION: ("gadget_placed",),
                        GADGET_EXPLODES_ACTION: ("gadget_destroyed",),
                        GADGET_MOVE_COOLDOWN_CUT_ACTION: ("gadget_destroyed",),
-                       GADGETS_ATTACK_HIT_ENEMY_ACTION: ("hit_dealt",)}
+                       GADGETS_ATTACK_HIT_ENEMY_ACTION: ("hit_dealt",),
+                       CAST_EARTHQUAKE_BY_FERVOUR_ACTION: ("movement_skill_ends",)}
 MOST_ECHO_DELAY_SECONDS = 5.0
 #: AND `execute_nearby_below`: every enemy within the row's Event Value in metres (required, up to
 #: `MAX_SMITE_NEARBY_BY_HIT_METRES`) below the value's per cent of its maximum health, that may be executed, loses the

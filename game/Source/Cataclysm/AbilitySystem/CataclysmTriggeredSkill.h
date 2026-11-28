@@ -66,7 +66,14 @@ public:
 	 */
 	static bool Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
 						float DamageShare = 1.0f, bool bPaysCost = false, const FVector* CastFrom = nullptr,
-						AActor* CastBy = nullptr);
+						AActor* CastBy = nullptr, float RadiusShare = 1.0f);
+
+	/**
+	 * The generated skill row named `Named`, of `DamageType`, whatever weapon the character holds: the War weapon
+	 * skills' slice WS1 (issue #2972, 2026-11-28), for Colossus's Earthquake ("a passive trigger that uses the earthquake
+	 * skill regardless of if they have the skill", the owner). Whether it was found.
+	 */
+	static bool FindSkillRowNamed(FName Named, const FString& DamageType, FCataclysmWeaponSkill& Out);
 
 	/**
 	 * The row of the skill of this name the character HOLDS, from its weapon slots, copied into `Out`. Ruled

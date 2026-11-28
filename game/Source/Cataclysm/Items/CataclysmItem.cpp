@@ -1859,6 +1859,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::GadgetsAttackHitEnemyAction, ESearchCase::IgnoreCase);
 					Action.bGadgetMoveCooldownCut = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::GadgetMoveCooldownCutAction, ESearchCase::IgnoreCase);
+					// AND COLOSSUS (the War weapon skills' slice WS1, issue #2972).
+					Action.bCastsEarthquakeByFervour = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::CastEarthquakeByFervourAction, ESearchCase::IgnoreCase);
 					if (bArmourRemovedNearby)
 					{
 						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;

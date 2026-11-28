@@ -5824,6 +5824,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bGadgetMoveCooldownCut = false;
 
 	/**
+	 * Colossus (`Berserker_twoh_ks_001`): the wearer casts Earthquake (`War_Warhammer_Heavy`) where it stands, free,
+	 * whether or not it holds the skill, its damage and area scaled by the Fervour held, `Percent` per cent at an empty
+	 * pool rising in a straight line to 100 at a full one: `cast_earthquake_by_fervour`, on `movement_skill_ends`. The
+	 * War weapon skills' slice WS1 (issue #2972, 2026-11-28), wired as the owner ruled on 2026-11-27.
+	 */
+	bool bCastsEarthquakeByFervour = false;
+
+	/**
 	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed
 	 * (`UCataclysmAbilitySystemComponent::CanBeExecuted`: alive, no Boss, damage reaches it), loses the health it has left:
 	 * `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27), Killing Blow's "when you attack at maximum

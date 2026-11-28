@@ -584,7 +584,18 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
      (R("trap_first_trigger_stun_seconds", "flat", 1),)),
 )
 
-NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES + E4_NODES
+#: COLOSSUS, the War weapon skills' slice WS1 (issue #2972, 2026-11-28), wired as the owner ruled on 2026-11-27 ("a passive
+#: trigger that uses the earthquake skill regardless of if they have the skill"): "Two-handed weapons only. While in
+#: Wrath, using a movement skill triggers your Earthquake skill at your landing location at no cooldown cost. The damage
+#: and AOE radius of this Earthquake are scaled by your current Fervour at the moment of landing -- 100% potency at
+#: maximum Fervour, scaling down to 25% potency at minimum Fervour." The value is the 25.
+WS1_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
+    ("Berserker_twoh_ks_001", "Colossus",
+     (R(None, "", 25, action="cast_earthquake_by_fervour", action_event="movement_skill_ends", cond="in_wrath",
+        cond2="wielding_two_handed_weapon"),)),
+)
+
+NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES + E4_NODES + WS1_NODES
 
 
 def apply(path: pathlib.Path = base.WORKBOOK, check_only: bool = False) -> list[str]:

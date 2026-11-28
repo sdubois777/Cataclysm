@@ -553,6 +553,13 @@ public:
 	float FreeRepeatDamageShare = 1.0f;
 
 	/**
+	 * What share of its area a free start reaches: 1 is all of it, read only while `bFreeRepeat` is set, and put back to
+	 * 1 when that use ends. The War weapon skills' slice WS1 (issue #2972, 2026-11-28): Colossus's "The damage and AOE
+	 * radius of this Earthquake are scaled by your current Fervour". Read by `UCataclysmSkillTemplate::AreaOfEffectMultiplier`.
+	 */
+	float FreeRepeatRadiusShare = 1.0f;
+
+	/**
 	 * The pool that pays `Cost` for this character now, or an invalid attribute
 	 * if none can. Issue #1515.
 	 *

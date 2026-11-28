@@ -68,8 +68,23 @@ static bool FindTheSkillUsed(AActor* Character, FName Named, FCataclysmWeaponSki
 	return false;
 }
 
+bool UCataclysmTriggeredSkill::FindSkillRowNamed(FName Named, const FString& DamageType, FCataclysmWeaponSkill& Out)
+{
+	for (const FCataclysmWeaponSkill& Skill :
+		 UCataclysmWeaponSkills::SkillsOfDamageType(UCataclysmWeaponSkills::LoadGeneratedTable(), DamageType))
+	{
+		if (FName(*Skill.Name) == Named)
+		{
+			Out = Skill;
+			return true;
+		}
+	}
+	return false;
+}
+
 bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeaponSkill& Skill, const FVector& Aim,
-									   float DamageShare, bool bPaysCost, const FVector* CastFrom, AActor* CastBy)
+									   float DamageShare, bool bPaysCost, const FVector* CastFrom, AActor* CastBy,
+									   float RadiusShare)
 {
 	UCataclysmAbilitySystemComponent* System =
 		Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Character));
@@ -101,6 +116,7 @@ bool UCataclysmTriggeredSkill::Trigger(AActor* Character, const FCataclysmWeapon
 	Template->bFreeRepeatPaysCost = bPaysCost;
 	Template->FreeRepeatAim = Aim;
 	Template->FreeRepeatDamageShare = DamageShare;
+	Template->FreeRepeatRadiusShare = RadiusShare;
 	// AND WHERE IT IS CAST FROM, when the caller gives a place. Ruled 2026-10-14: a gadget's copy. A fresh instance,
 	// so nothing else reads it; see `UCataclysmSkillTemplate::bFreeRepeatHasOrigin`.
 	Template->bFreeRepeatHasOrigin = CastFrom != nullptr;

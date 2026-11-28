@@ -980,6 +980,7 @@ void UCataclysmSkillTemplate::EndAbility(
 	bFreeRepeat = false;
 	bFreeRepeatPaysCost = false;
 	FreeRepeatDamageShare = 1.0f;
+	FreeRepeatRadiusShare = 1.0f;
 	// AND THE PLACE A USE WAS CAST FROM, ruled 2026-10-14. Only a one-use grant ever holds one, and it is removed as
 	// it ends; cleared all the same, so nothing that outlives the use can read it.
 	bFreeRepeatHasOrigin = false;
@@ -4032,19 +4033,22 @@ float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const
 	// area's base times one plus its increases, times its more multipliers; one plus the increases is swapped for one plus
 	// the increases and Pyre's, so Pyre adds to the increases as any increased area does and is not a multiplier of its
 	// own.
+	// AND A FREE START'S RADIUS SHARE (the War weapon skills' slice WS1, issue #2972): Colossus's Earthquake, its area
+	// scaled by the Fervour held. 1 for every other use, so nothing else moves.
+	const float Share = bFreeRepeat ? FMath::Max(0.0f, FreeRepeatRadiusShare) : 1.0f;
 	const UCataclysmAbilitySystemComponent* Mine = Cast<const UCataclysmAbilitySystemComponent>(Source);
 	const float Fives = FMath::FloorToFloat(FMath::Max(0.0f, FervourSpentByThisUse) / 5.0f);
 	if (!Mine || Fives <= 0.0f)
 	{
-		return Multiplier;
+		return Multiplier * Share;
 	}
 	const float PerFive = Mine->StatForSkill(FName(AreaPerFiveFervourSpentStat), SkillTags, 0.0f);
 	const float Increases = Mine->IncreasesForStat(FName(UCataclysmItemModifiers::AreaOfEffectStat), SkillTags);
 	if (PerFive <= 0.0f || 1.0f + Increases <= 0.0f)
 	{
-		return Multiplier;
+		return Multiplier * Share;
 	}
-	return Multiplier * (1.0f + Increases + PerFive * Fives / 100.0f) / (1.0f + Increases);
+	return Multiplier * (1.0f + Increases + PerFive * Fives / 100.0f) / (1.0f + Increases) * Share;
 }
 
 const TCHAR* UCataclysmSkillTemplate::MeleeReachMetresStat =
