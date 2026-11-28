@@ -2,6 +2,122 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The War passive trees finished: every Berserker, Bulwark and Saboteur node does what its sentence says (window 1: the data rows, the rulings, and the engine slices E1 to E3)
+
+**Affects (so far; each slice adds its own):**
+- `tools/reapply_war_trees_data_rows_workbook.py`, new: 39 rows on 23 War nodes in `docs/All_Things_Cataclysm.xlsx`,
+  Passive Effects, with slice D's machinery (`tools/reapply_war_data_rows_workbook.py`). `game/Data/PassiveEffects.csv`
+  (1,046 rows). **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/apply_war_trees_sentences_2026_11_27.py`, new: the ruled sentences, by node id, in the War tree files.
+  `docs/Bulwark_Class_Tree_Final.json` (R8, R9) and `game/Data/PassiveNodes.csv`.
+- Tests: `tools/tests/test_war_trees_data_rows_scripts.py` and `tools/tests/without_the_war_trees_rows.py`, new;
+  `test_passive_effects_match_the_node_text.py` (the words of these nodes; the pins, 1,046 rows and 566 nodes),
+  `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (Battle Scars), `without_the_aura_reservation.py` and
+  `test_apply_aura_reservation.py` (they now start from a copy with these rows taken out); `docs/README.md` (the
+  Passive Effects count).
+
+### SAID FIRST
+
+- **NOTHING HERE HAS BEEN BUILT OR RUN IN UNREAL.** Window 1 compiles the engine slices, rebuilds the two DataTable
+  assets and runs the Unreal tests. Until then `test_datatable_assets_are_current.py` fails, naming the two CSVs, as it
+  does on every branch that changes a table before its window.
+- **THE PLAN'S 29 DATA-ONLY NODES ARE 23.** War Cry and Rapid Fire need "after attacking at maximum Fervour": a
+  Condition on a row scaled by `own_stacks` is judged when the stat is asked, not when the stack is granted
+  (`refuse_a_condition_nothing_asks_for`), so it cannot be written as data. Resolve to Steel, Living Fortress and
+  Unyielding Guard each scale block chance, which nothing asks with a scale; Undying Rage puts
+  `retaliation_cannot_be_mitigated` under a condition, which nothing asks with one. The generator refused those four.
+  All six are written whole in engine slice E1.
+- **CHAIN REACTION'S "At 4 points: This chain can occur once per second" IS NOT WRITTEN:** the generator refuses a
+  Trigger Cooldown on `trigger_traps_nearby`. It is engine slice E2's. Its first sentence is written.
+
+### THE RULINGS
+
+The War trees plan of 2026-11-27 (118 War nodes with no row: Berserker 45, Bulwark 41, Saboteur 32) was accepted by the
+coordinating session the same day, with these rulings.
+
+**The project owner, 2026-11-27, relayed by the coordinating session:**
+- **Berserker's Rage** (`Berserker_twoh_ks_002`): Berserking spends half the pool instead of all of it. The owner chose
+  the recommendation.
+- **Unstoppable Force** (`Berserker_dw_ks_002`): a kill in Frenzy triggers one Frenetic strike, and entering Frenzy
+  strikes the nearest enemy three times. The owner chose the recommendation.
+- **Colossus** (`Berserker_twoh_ks_001`), not the recommendation. The owner, verbatim: "I think I wanted that to act
+  like a passive trigger that uses the earthquake skill regardless of if they have the skill". It casts the Earthquake
+  skill as a passive trigger whether or not the weapon holds it, with no button and no skill slot. **This is the
+  owner's own exception to "a class tree never adds a skill or a button press" (2026-11-24).** Its potency by the share
+  of Fervour held is as planned: 100% at a full pool, down to 25% at an empty one.
+
+**The coordinating session, under the owner's delegation of details:**
+- The other ruling-needed nodes take the plan's recommended readings (listed in the slice that builds each), **except
+  Jury Rigged** (`Saboteur_basic_gadget_mid_007`): gadgets are never repaired, so its bonus lasts while the gadget is
+  below full health, which is the rest of its life. Nothing is added about the gadget being destroyed afterwards.
+- Issue [#932](https://github.com/sdubois777/Cataclysm/issues/932): before any point is spent, a character stands on the
+  line of the first class the design lists for the damage type chosen at creation (War: the Bulwark); after that, on
+  the chosen class with the most points, a tie going to the class chosen first; when the line changes, maxima are
+  recomputed and current pools held to them, not refilled; and three War class stat lines are written as judgements.
+- Engine work approved for three rulings nothing could build: largest-wins overleech (R14), crowd control immunity
+  that takes a condition, and an event for crowd control received (Iron Mind, R27, R4).
+- Two Unreal windows: window 1 holds E1, E2, E3, the Berserker and Bulwark rows, these data rows and #932; window 2
+  holds E4 and the Saboteur rows.
+
+### THE DATA ROWS (23 nodes, 39 rows)
+
+| Tree | Node | Rows |
+|---|---|---|
+| Berserker | Battle Cry `trunk_007` | decay out of combat, -0.2 a point |
+| Berserker | Crusher `twoh_005` | `apply_status` Stagger on a melee hit, 8% a point, two-handed |
+| Berserker | Flurry of Blows `dw_010` | 1% attack and spell damage a stack, a stack per melee attack, 10 at most, 2 s; from 5 points 3 s |
+| Berserker | Blur `dw_011` | 2% movement speed a stack, a stack per hit, 5 at most, 4 s |
+| Berserker | Bloodlust `dw_016` | 4% attack speed a stack, a stack per kill, 5 at most, 4 s; 5 Fervour a kill in Frenzy |
+| Berserker | Feast `leech_006` | 0.3% life leech a point per 10 Fervour held; 1% maximum health a point when the pool empties |
+| Bulwark | Battle Scars `trunk_005` | 10% increased maximum Fervour a point |
+| Bulwark | Tempered Steel `trunk_006` | 2% armour and 1% attack and spell damage a point per 25 Fervour held; from 6 points again at a full pool |
+| Bulwark | Blood and Sweat `keystone_trunk_002` | 1 Fervour a kill, at most once every 0.2 s |
+| Bulwark | Last Resort `keystone_trunk_003` | 50 Fervour on falling below 20% health, once every 60 s |
+| Bulwark | Aegis Strike `ic_stem_004` | 3% attack and spell damage a point per 10% block chance |
+| Bulwark | Indomitable `ic_final_001` | 0.02% more damage reduction a point per 1% block chance |
+| Bulwark | War of Attrition `jg_t3_001` | 2% attack and spell damage a point per 5 s in combat, 10 steps |
+| Bulwark | Thick Hide `tw_stem_002` | 3% more damage reduction a point; from 6 points 1% retaliation a hit taken, 10 at most, 5 s |
+| Bulwark | Martyrdom `tw_t2_002` | 5% retaliation a point for 5 s after falling below 50% health |
+| Bulwark | Serrated Edge `tw_t1_001` | 10% Bleed duration a point |
+| Bulwark | Blood Price `tw_t1_002` (R9) | 5% Bleed damage a point |
+| Bulwark | Hemorrhage `keystone_tw_t1` (R8) | `apply_status_sized` Bleed of size 2 on `retaliation_dealt` |
+| Saboteur | Overkill `trunk_002` | 5% attack and spell damage a stack of Fervour overflow, 4 at most, a 2 s window |
+| Saboteur | Chain Reaction `trap_qty_002` | the nearest trap within 8 m set off when a trap triggers |
+| Saboteur | Bleeding Ground `trap_mid_005` | `apply_status` Bleed on a trap's blow, 10% a point |
+| Saboteur | Symbiosis `gadget_sus_004` | 2% gadget damage a point per second a gadget has been active, 20 at most |
+| Saboteur | Synchronized `gadget_mid_003` | a gadget's normal blow at a trap's triggering enemy; the nearest trap within 30 m set off when a gadget is destroyed |
+
+**Judgements**, each a reading of a sentence and none measured:
+- "+X% damage" is attack and spell damage, the owner's rule of 2026-08-25.
+- "Dual wield only" and "Two-handed weapons only" are `dual_wielding` and `wielding_two_handed_weapon` on every row of
+  the node. On a stack row they are judged when the stat is asked, so a stack gained otherwise counts for nothing.
+- Flurry of Blows counts melee attacks made (`melee_attack_use`), so a swing that strikes nothing still counts; Blur
+  counts hits dealt (`hit_dealt`), one for each enemy struck.
+- Battle Scars' "At 8 points: Fervour no longer decays while you are in combat" has no row: the Bulwark's Fervour
+  decays only out of combat (`Bulwark_basic_trunk_000`), so the rider is already true.
+- Overkill's "+5% damage" a stack says no "per point", so it is 5 whatever the points.
+- Synchronized's "the nearest active trap" is the nearest within 30 m; the sentence names no distance.
+- Indomitable's "(multiplicative)" is a More, as the tree writes it elsewhere (Iron Wall, Dense Muscle).
+
+### EVIDENCE
+
+| Check | Printed |
+|---|---|
+| Dry run on a copy of the workbook, then `generate_datatables.py --workbook <copy> --output-dir <scratch>` | "wrote 39 row(s) after sheet row 1008"; the generator wrote 35 CSVs, PassiveEffects 1046 rows |
+| The script on the workbook | 39 rows appended; `generate_datatables.py --check`: "All 35 DataTable CSVs are up to date." |
+| The whole Python suite, before the order fixes below | "5 failed, 9745 passed, 9 skipped in 1245.20s"; JUnit tests 9,759, failures 5, errors 0 |
+| The same failures after the order fixes | 119 passed in the eight affected files; the Battle Scars check, 3 passed |
+| ruff | All checks passed |
+
+**The five failures of that run.** One is the asset check above, expected before the window. Three were older scripts'
+tests that compare whole sheets after taking out the rows of the scripts that came after them; these rows were the
+newest, and nothing took them out. `without_the_war_trees_rows.py` now does, by each new script's own `take_out`, and
+the aura helper and test start from it. The fifth was Battle Scars, whose sentence says "in combat" with no row
+carrying it; the reason is recorded in that test's `EXPRESSED_ANOTHER_WAY`. **The whole suite was not re-run after
+those fixes.** It runs again before the window is registered.
+
+---
+
 ## 2026-11-27 — The empire upgrade tree screen draws the whole tree at once, as the owner built it: every node at its file position, the builder's rings, lines and labels, and each node a mark
 
 **Affects:**

@@ -55,6 +55,11 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Bulwark_basic_trunk_005", "0", "in_combat_for_seconds"):
+        "Battle Scars' 'At 8 points: Fervour no longer decays while you are in combat' has no row because it is already "
+        "true: the Bulwark's Fervour decays only out of combat (Bulwark_basic_trunk_000's "
+        "fervour_decay_out_of_combat_per_second), so there is no decay in combat to remove (the War trees' data rows, "
+        "2026-11-27)",
     ("Shadow_capstone_50", "2", "target_rarity_at_least"):
         "Shadow Clone's 'Every third kill of an Elite or stronger' is the rung the kill counter asks of the slain "
         "creature (rarity rung 1 and up, UCataclysmShadowImages::NoteKillForShadowClone); its two rows are the count "

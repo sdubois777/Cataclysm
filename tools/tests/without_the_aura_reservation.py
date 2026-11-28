@@ -22,7 +22,12 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import apply_aura_reservation_2026_11_27 as aura  # noqa: E402
 
-DOCS = REPO_ROOT / "docs"
+sys.path.insert(0, str(REPO_ROOT / "tools" / "tests"))
+import without_the_war_trees_rows  # noqa: E402
+
+#: STARTED FROM A COPY WITH THE WAR TREES' ROWS OF 2026-11-27 TAKEN OUT, which came after the aura reservation and
+#: append rows after its rows. `without_the_war_trees_rows.py` says why.
+DOCS = without_the_war_trees_rows.docs()
 
 
 @functools.lru_cache(maxsize=1)

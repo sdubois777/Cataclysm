@@ -1365,7 +1365,7 @@
       "data": {
         "kind": "basic",
         "name": "Blood Price",
-        "description": "+5% bleed damage per point for each bleed stack on the target.",
+        "description": "+5% bleed damage per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -1497,7 +1497,7 @@
       "data": {
         "kind": "keystone",
         "name": "Hemorrhage",
-        "description": "Your retaliation damage no longer deals instant damage. Instead it is converted into a bleed whose total damage equals the amount that would have been reflected.",
+        "description": "Your retaliation also applies Bleed to the attacker, at twice its normal strength.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
