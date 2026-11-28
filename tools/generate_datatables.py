@@ -8870,6 +8870,9 @@ STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION = "strike_target_of_target_missing
 #: critical strike or your Fervour reaching 0 resets the streak" and Consecutive Blocks' "Resets if you take an
 #: unblocked hit". Its value is 100, all of them. On any event the game fires.
 OWN_STACKS_REMOVED_ACTION = "own_stacks_removed"
+#: AND `next_retaliation_more`: the next retaliation payment deals the value's per cent more, up to
+#: `MAX_SIZED_BY_A_STAT_PERCENT`, the larger of it and what is held. Spiteful. On any event the game fires.
+NEXT_RETALIATION_MORE_ACTION = "next_retaliation_more"
 KNOCK_BACK_TARGET_ACTION = "knock_back_target"
 MAX_KNOCK_BACK_METRES = 10.0
 NEXT_ATTACK_BONUS_ACTIONS = ("next_attack_bonus_of_max_health", "next_attack_bonus_of_armor")
@@ -8921,6 +8924,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             # AND THE WAR TREES' ACTIONS SIZED BY A STAT (engine slice E2): Mountain's Wrath's "Once every 10 seconds".
             or action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS
             or action == STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION or action == KNOCK_BACK_TARGET_ACTION
+            or action == NEXT_RETALIATION_MORE_ACTION
             # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
             # a second" is its Trigger Cooldown (V4b, 2026-11-25).
             or action == COUNTERFIRE_ACTION
@@ -9535,7 +9539,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
                                     kind, raw, headers)
         return
     if action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
-                  KNOCK_BACK_TARGET_ACTION, OWN_STACKS_REMOVED_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS:
+                  KNOCK_BACK_TARGET_ACTION, OWN_STACKS_REMOVED_ACTION, NEXT_RETALIATION_MORE_ACTION) \
+            or action in NEXT_ATTACK_BONUS_ACTIONS:
         _check_sized_by_a_stat_action(index, who, action, event, fraction_of, kind, raw, headers)
         return
     if action == EXECUTE_TARGET_ACTION:
@@ -10703,6 +10708,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION \
                 and action != KNOCK_BACK_TARGET_ACTION \
                 and action != OWN_STACKS_REMOVED_ACTION \
+                and action != NEXT_RETALIATION_MORE_ACTION \
                 and action not in NEXT_ATTACK_BONUS_ACTIONS \
                 and action != EXECUTE_TARGET_ACTION \
                 and action != TEMPORARY_ABSORB_ACTION \
@@ -11102,8 +11108,8 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
             raise DataError(
                 f"Enchantment Effects row {index}: {name} knocks back {low:g} to {high:g} metres. It is above 0 and "
                 f"up to {MAX_KNOCK_BACK_METRES:g}.")
-    elif action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION) \
-            or action in NEXT_ATTACK_BONUS_ACTIONS:
+    elif action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
+                    NEXT_RETALIATION_MORE_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS:
         if not (0 < low <= MAX_SIZED_BY_A_STAT_PERCENT and 0 < high <= MAX_SIZED_BY_A_STAT_PERCENT):
             raise DataError(
                 f"Enchantment Effects row {index}: {name} is {low:g} to {high:g} per cent of a stat of the "

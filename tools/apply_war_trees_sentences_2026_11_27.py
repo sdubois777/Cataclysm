@@ -109,6 +109,10 @@ SENTENCES: tuple[Sentence, ...] = (
     Sentence("Unrelenting (coordinator, 2026-11-27)", "Berserker", "dw_015",
              "Dual wield only. Killing an enemy refunds 20% of your maximum Fervour per point up to a maximum of 60%.",
              "Dual wield only. Killing an enemy refunds 10% of your maximum Fervour per point."),
+    Sentence("Spiteful (coordinator, 2026-11-27)", "Bulwark", "basic_tw_stem_003",
+             "+3% Fervour generated from taking hits per point. At 5 points: When you reach maximum Fervour from taking hits, your next retaliation deals 50% bonus damage.",
+             "+3% Fervour generated from taking hits per point. At 5 points: when your Fervour becomes full, your next "
+             "retaliation deals 50% more damage."),
     Sentence("The Inevitable (coordinator, 2026-11-27)", "Bulwark", "keystone_jg_t3",
              "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all nearby "
              "enemies equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for every "

@@ -5590,6 +5590,13 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	bool bRemoveOwnStacks = false;
 
+	/**
+	 * The next retaliation payment deals `Percent` more: `next_retaliation_more`, the larger of it and what is held. The
+	 * War trees' engine slice E2 (2026-11-27), Spiteful's "when your Fervour becomes full, your next retaliation deals 50%
+	 * more damage" (the coordinating session's reading).
+	 */
+	bool bNextRetaliationMore = false;
+
 	/** See `bRemoveOwnStacks`. */
 	FString OwnStacksRemovedOf;
 

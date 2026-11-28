@@ -310,6 +310,19 @@ E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Bulwark_basic_ic_t2_002", "Consecutive Blocks", (
         R("damage_reduction", "flat", 2, scale="own_stacks", step=1, cap=5, action_event="block", stack_seconds=10),
         R(None, "", 100, action="own_stacks_removed", action_event="hit_taken", cond="hit_taken_was_unblocked"))),
+    # FEEDING FRENZY: "+0.3% life leech per point for each melee attack you have landed in the last 2 seconds, up to 10
+    # attacks. While in Frenzy this cap is doubled." Two counts, each granted on every hit: one up to 10 that pays
+    # outside Frenzy, one up to 20 that pays in it.
+    ("Berserker_dw_008", "Feeding Frenzy", (
+        R("life_leech", "flat", 0.3, scale="own_stacks", step=1, cap=10, action_event="hit_dealt", stack_seconds=2,
+          cond="dual_wielding_outside_frenzy"),
+        R("life_leech", "flat", 0.3, scale="own_stacks", step=1, cap=20, action_event="hit_dealt", stack_seconds=2,
+          cond="in_frenzy"))),
+    # SPITEFUL, the coordinating session's reading: "+3% Fervour generated from taking hits per point. At 5 points: when
+    # your Fervour becomes full, your next retaliation deals 50% more damage."
+    ("Bulwark_basic_tw_stem_003", "Spiteful", (
+        R("fervour_per_hit_taken", "increased", 3),
+        R(None, "", 50, action="next_retaliation_more", action_event="resource_full", min_points=5))),
     # SHATTER: "Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times."
     ("Berserker_twoh_009", "Shatter", (
         R(None, "", 5, tags=MELEE, action="enemy_armor_removed", action_event="critical_strike", stack_seconds=5,

@@ -6871,6 +6871,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::KnockBackTargetAction =
 	TEXT("knock_back_target");
 const TCHAR* UCataclysmAbilitySystemComponent::OwnStacksRemovedAction =
 	TEXT("own_stacks_removed");
+const TCHAR* UCataclysmAbilitySystemComponent::NextRetaliationMoreAction =
+	TEXT("next_retaliation_more");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
 	TEXT("retaliation_pulse");
 const TCHAR* UCataclysmAbilitySystemComponent::FrenzyChainAction =
@@ -9697,6 +9699,17 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				NoteTriggerFired(Action);
 				UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Amount);
+			}
+			continue;
+		}
+		// THE NEXT RETALIATION DEALS MORE, the larger of it and what is held: Spiteful (the War trees' engine slice E2).
+		if (Action.bNextRetaliationMore)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				NextRetaliationMorePercent = FMath::Max(NextRetaliationMorePercent, Action.Percent);
 			}
 			continue;
 		}

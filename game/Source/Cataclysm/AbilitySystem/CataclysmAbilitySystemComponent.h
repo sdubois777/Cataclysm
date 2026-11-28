@@ -2108,6 +2108,22 @@ public:
 	static const TCHAR* KnockBackTargetAction;
 	/** `own_stacks_removed`. The War trees' engine slice E2 (2026-11-27). */
 	static const TCHAR* OwnStacksRemovedAction;
+	/** `next_retaliation_more`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* NextRetaliationMoreAction;
+
+	/**
+	 * What the next retaliation payment deals more, in per cent, spent by reading it: nought when none is held. Called
+	 * by `UCataclysmRetaliation::Pay` for a payment that sends something. The War trees' engine slice E2 (Spiteful).
+	 */
+	float SpendNextRetaliationMorePercent()
+	{
+		const float Was = NextRetaliationMorePercent;
+		NextRetaliationMorePercent = 0.0f;
+		return Was;
+	}
+
+	/** What the next retaliation payment will deal more, or nought. For a test and the overlay. */
+	float NextRetaliationMoreHeld() const { return NextRetaliationMorePercent; }
 
 	/**
 	 * Wrath Incarnate's pulse. The War vow options' third slice, V3a, 2026-11-25: "When a single hit takes more than 10%
@@ -7036,6 +7052,9 @@ protected:
 
 	/** Whether the hit taken being announced was blocked: 1, 0, or -1 with none. Held by `NoteHitTaken`. War trees E2. */
 	int32 HitTakenBlockedNow = -1;
+
+	/** See `SpendNextRetaliationMorePercent`. The War trees' engine slice E2 (2026-11-27). */
+	float NextRetaliationMorePercent = 0.0f;
 
 	/**
 	 * Whether some row in `StatInputs` is scaled by `increased_max_health`, set by `NoteWhatTheRowsAsk` whenever the

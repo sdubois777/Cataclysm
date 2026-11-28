@@ -1793,6 +1793,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::StrikeTargetOfTargetMissingHealthAction, ESearchCase::IgnoreCase);
 					Action.bKnockBackTarget = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::KnockBackTargetAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT STORES MORE FOR THE NEXT RETALIATION, the same slice (Spiteful).
+					Action.bNextRetaliationMore = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::NextRetaliationMoreAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REMOVES ITS NODE'S OWN STACKS, the War trees' engine slice E2 (2026-11-27).
 					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::OwnStacksRemovedAction,
 											  ESearchCase::IgnoreCase))

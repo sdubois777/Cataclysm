@@ -1211,7 +1211,7 @@
       "data": {
         "kind": "basic",
         "name": "Spiteful",
-        "description": "+3% Fervour generated from taking hits per point. At 5 points: When you reach maximum Fervour from taking hits, your next retaliation deals 50% bonus damage.",
+        "description": "+3% Fervour generated from taking hits per point. At 5 points: when your Fervour becomes full, your next retaliation deals 50% more damage.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6

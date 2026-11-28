@@ -310,8 +310,17 @@ float UCataclysmRetaliation::Pay(UAbilitySystemComponent* Defender,
 	// the player's own increases raise, and `AmountFor` prices this one through the defender's, as a retaliation or as a
 	// reflected melee hit. `Instigator` is the defending body, the character the curse lands on. A minion carries no
 	// curse, so its payment keeps its whole figure. A block's reflect is not paid here, and no increase raises it.
-	const float Amount = AmountFor(Defender, DamageTaken, PercentInPlaceOfTheStat)
+	float Amount = AmountFor(Defender, DamageTaken, PercentInPlaceOfTheStat)
 		* UCataclysmSkillEffects::KeptUnderWitheredTouch(Instigator);
+	// AND A STORED "NEXT RETALIATION DEALS MORE", SPENT BY A PAYMENT THAT SENDS SOMETHING: Spiteful (the War trees' engine
+	// slice E2, 2026-11-27). A payment of nothing leaves it held.
+	if (Amount > 0.0f)
+	{
+		if (UCataclysmAbilitySystemComponent* Spending = Cast<UCataclysmAbilitySystemComponent>(Defender))
+		{
+			Amount *= 1.0f + Spending->SpendNextRetaliationMorePercent() / 100.0f;
+		}
+	}
 	if (Amount <= 0.0f)
 	{
 		// A CHARACTER WITH NONE OF THE STAT SENDS NOTHING BACK. Three things
