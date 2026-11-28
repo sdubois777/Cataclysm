@@ -46,6 +46,12 @@ additive clip and log it once per clip name. The Python check fails on a `PlayAn
 game's source except the files not yet moved, each at its exact count, so the list can only shrink. In slice 1 the other
 creatures keep their single-node calls, unchanged, so their flinches still show the fault until slice 2 moves them.
 
+**Every creature's death clip now goes through `PlayLoop`.** On a creature without the instance that is the same two
+calls as before (`PlayAnimation` once, then a rate of 1), with only an additive clip refused, and no death clip in any
+pack is additive (the `AAT_` string, read from every `.uasset` named for a death). On the Imp it is the pose under the
+slot, played once and held; `Cataclysm.CreatureAnim.TheImpsDeathClipPlaysOnceAndHoldsItsLastPose` measures that, as the
+coordinating session asked, in the same window that moves the Imp.
+
 **Not compiled and not run when this was written.**
 
 ---

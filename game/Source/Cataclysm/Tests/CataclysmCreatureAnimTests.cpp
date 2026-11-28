@@ -287,4 +287,105 @@ bool FCataclysmCreatureAnimPoseTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * The Imp's death on the instance: its death clip is played once and held, not looped, and the pose it holds is the
+ * clip's last pose, not the idle and not the reference pose. The death clip went through `PlayLoop` for every creature in
+ * this change, and the Imp is the one creature whose death now plays on the instance.
+ *
+ * THE CLIP'S POSE is the same clip on a single-node mesh, which plays a full-pose clip correctly, advanced as far: the
+ * control the instance's pose is compared with. The idle is a second Imp, idling. Without the art, nothing plays. Prints
+ * "IMP DEATH".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreatureAnimDeathTest,
+	"Cataclysm.CreatureAnim.TheImpsDeathClipPlaysOnceAndHoldsItsLastPose",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreatureAnimDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmCreatureAnimTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("set-up: a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmImpCharacter* Dying = SpawnDressedImp(World, FVector::ZeroVector);
+	ACataclysmImpCharacter* Idling = SpawnDressedImp(World, FVector(500.0f, 0.0f, 0.0f));
+	USkeletalMesh* Body = Dying && Dying->GetMesh() ? Dying->GetMesh()->GetSkeletalMeshAsset() : nullptr;
+	if (!Body || !Dying->IdleAnimation || Dying->DeathAnimations.IsEmpty())
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this,
+			TEXT("the Paragon Minions pack is not present, so the Imp has no death clip: whether it plays once and holds "
+				 "its last pose on the instance was NOT checked."));
+		return true;
+	}
+	USkeletalMeshComponent* DyingMesh = Dying->GetMesh();
+	USkeletalMeshComponent* IdleMesh = Idling->GetMesh();
+	UCataclysmCreatureAnimInstance* Instance = UCataclysmCreatureAnimInstance::On(DyingMesh);
+	if (!TestNotNull(TEXT("set-up: the Imp plays on the instance"), Instance))
+	{
+		return false;
+	}
+
+	// BOTH IDLE FIRST, as a creature stands before it dies.
+	UCataclysmCreatureAnimInstance::PlayLoop(DyingMesh, Dying->IdleAnimation, /*bLooping=*/true);
+	UCataclysmCreatureAnimInstance::PlayLoop(IdleMesh, Idling->IdleAnimation, /*bLooping=*/true);
+	Advance(DyingMesh, 0.1f);
+	Advance(IdleMesh, 0.1f);
+
+	Dying->HandleDeath();
+	UAnimSequence* Clip = Dying->DiedWith.Get();
+	if (!TestNotNull(TEXT("set-up: it died with a clip"), Clip))
+	{
+		return false;
+	}
+	const float Length = Clip->GetPlayLength();
+
+	// THE SAME CLIP IN SINGLE-NODE MODE, which shows a full-pose clip correctly: the pose to compare with. The one other
+	// direct call in this file, for the same reason as the control above.
+	USkeletalMeshComponent* SingleNode = MakeSingleNodeMesh(World, Body);
+	if (!TestNotNull(TEXT("set-up: a single-node mesh wearing the Imp's body"), SingleNode))
+	{
+		return false;
+	}
+	SingleNode->PlayAnimation(Clip, /*bLooping=*/false);
+
+	// PAST ITS END, by half a second: a held clip stays on its last frame, a looping one would have started again.
+	const float Past = Length + 0.5f;
+	Advance(DyingMesh, Past);
+	Advance(SingleNode, Past);
+	Advance(IdleMesh, Past);
+
+	const TArray<FVector> Died = BoneLocations(DyingMesh);
+	const TArray<FVector> ClipPose = BoneLocations(SingleNode);
+	const TArray<FVector> Idle = BoneLocations(IdleMesh);
+	const TArray<FVector> Reference = ReferenceLocations(Body);
+	const float FromClip = MeanDistance(Died, ClipPose);
+	const float FromIdle = MeanDistance(Died, Idle);
+	const float FromReference = MeanDistance(Died, Reference);
+
+	AddInfo(FString::Printf(TEXT("IMP DEATH: %s, %.3f s; the instance's clip %s, looping %s, time %.3f s after %.3f s; mean "
+								 "bone distance, cm, from the clip's own held pose %.2f, from the idle %.2f, from the "
+								 "reference pose %.2f"),
+							*Clip->GetName(), Length,
+							Instance->GetLoopClip() ? *Instance->GetLoopClip()->GetName() : TEXT("none"),
+							Instance->IsLoopLooping() ? TEXT("YES") : TEXT("no"), Instance->GetLoopTimeSeconds(), Past,
+							FromClip, FromIdle, FromReference));
+
+	TestTrue(TEXT("CONTROL: the clip is one of the Imp's death clips"), Dying->DeathAnimations.Contains(Clip));
+	TestTrue(TEXT("the death clip is the pose under the slot"), Instance->GetLoopClip() == Clip);
+	TestFalse(TEXT("played once, not looped"), Instance->IsLoopLooping());
+	TestEqual(TEXT("and held at its end, half a second after it"), Instance->GetLoopTimeSeconds(), Length, 0.05f);
+	if (!TestTrue(TEXT("set-up: every pose has the same bones"), FromClip >= 0.0f && FromIdle >= 0.0f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the pose it holds is the clip's own last pose"), FromClip < 0.5f);
+	TestTrue(TEXT("not the idle"), FromIdle > 1.0f);
+	TestTrue(TEXT("and not the reference pose"), FromReference > 1.0f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
