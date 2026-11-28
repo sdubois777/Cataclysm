@@ -71,6 +71,12 @@ SENTENCES: tuple[Sentence, ...] = (
              "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP as flat damage. "
              "Requires 20,000 Maximum HP to activate.",
              "Once every 10 seconds, your next attack deals bonus damage equal to 5% of your Maximum HP."),
+    Sentence("R12", "Berserker", "dw_003",
+             "Dual wield only. Alternating main hand and offhand attacks increases damage by 2% per point up to 6 stacks. "
+             "While in Frenzy, each alternating strike costs 3 Fervour but the damage bonus per stack is doubled.",
+             "Dual wield only. Using a different melee skill from the one you used last increases your damage by 2% per "
+             "point, stacking up to 6 times. Using the same melee skill twice in a row removes the stacks. While in "
+             "Frenzy, each stack you gain costs 3 Fervour and the damage per stack is doubled."),
     Sentence("R3", "Bulwark", "basic_jg_stem_004",
              "+200 flat HP per point for every 10,000 Maximum HP you have. Requires 10,000 Maximum HP to activate.",
              "+10 flat Maximum HP per point for every 1,000 Maximum HP you have from other sources."),

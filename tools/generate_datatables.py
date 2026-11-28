@@ -8217,6 +8217,10 @@ NEARBY_ACTIONS = (
     # of the row's Event Value in metres, required, and the wearer's retaliation radius. The War trees' engine slice E3
     # (2026-11-27): Wrathful Presence. `SmiteNearbyOfRecentDamageTakenAction` holds the same name.
     "smite_nearby_of_recent_damage_taken",
+    # A DIRECT BLOW OF A SHARE OF WHAT THE EVENT'S HIT TOOK FROM HEALTH on every enemy in a line from the wearer along
+    # the way it faces, the row's Event Value in metres long, required, and 2 metres wide. The War trees' engine slice E2
+    # (2026-11-27): Seismic Slam (Berserker). On the events `smite_nearby_by_hit` takes. `SmiteLineByHitAction`.
+    "smite_line_by_hit",
 )
 
 #: The nova sized by a hit, its events and its radius. The War vow options'
@@ -8238,6 +8242,7 @@ MAX_NEARBY_PERCENT = {
     "smite_nearby_by_hit": 1000.0,
     "smite_nearby_of_max_health": 100.0,
     "smite_nearby_of_recent_damage_taken": 100.0,
+    "smite_line_by_hit": 1000.0,
 }
 
 #: The action that PAYS A SHARE OF WHAT A BLOCK REMOVED BACK TO THE ATTACKER, as
@@ -9189,6 +9194,11 @@ MAX_TEMPORARY_ABSORB_PERCENT = 100.0
 #: one blow. `seconds_after_hit_taken` is stamped on the character that was
 #: hit; `hit_dealt` fires on the character that hit.
 ACTION_ONLY_EVENTS = (
+    # A MELEE USE OF A DIFFERENT SKILL FROM THE LAST MELEE USE, OR OF THE SAME ONE AGAIN, raised after `melee_attack_use`
+    # by `UCataclysmAbilitySystemComponent` (the basic attack included; the first melee use raises neither): Weaving's
+    # stacks and their removal (R12, the War trees' engine slice E2, 2026-11-27).
+    "different_melee_skill_used",
+    "same_melee_skill_used",
     # AN ATTACK BEGUN AT A FULL FERVOUR POOL, raised by `UCataclysmSkillTemplate::BeginAttackOn` before anything that
     # attack spends: War Cry and Rapid Fire's "after attacking at maximum Fervour" (the War trees' slice E1, 2026-11-27).
     "attack_at_full_fervour",
@@ -9853,7 +9863,7 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
             f"not fire. Known: {', '.join(sorted(known))}.")
     fraction_of = _sized_by_the_amount(index, who, event, fraction_of)
     # A NOVA SIZED BY A HIT NEEDS AN EVENT CARRYING ONE. V2b, 2026-11-25.
-    if action == SMITE_NEARBY_BY_HIT_ACTION and event not in SMITE_NEARBY_BY_HIT_EVENTS:
+    if action in (SMITE_NEARBY_BY_HIT_ACTION, "smite_line_by_hit") and event not in SMITE_NEARBY_BY_HIT_EVENTS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} deals a share of a hit on "
             f"the event {event!r}, which carries no hit. Only "
@@ -11943,7 +11953,7 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"{event_value:g} metres away. It is 0, the 3 metres every "
                     f"such row reached before, up to {MAX_NEARBY_DEATH_METRES:g}.")
     elif action in (SMITE_NEARBY_BY_HIT_ACTION, "smite_nearby_of_max_health", EXECUTE_NEARBY_BELOW_ACTION,
-                    "smite_nearby_of_recent_damage_taken"):
+                    "smite_nearby_of_recent_damage_taken", "smite_line_by_hit"):
         # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
         # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`. AND OF ONE SIZED BY MAXIMUM HEALTH, the War trees' engine slice
         # E2 (2026-11-27), which reads its radius the same way.

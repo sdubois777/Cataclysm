@@ -5125,6 +5125,14 @@ enum class ECataclysmNearbyAction : uint8
 	 * 5 seconds to all nearby enemies."
 	 */
 	SmiteByRecentDamageTaken UMETA(DisplayName = "Smite nearby enemies by a share of damage taken recently"),
+
+	/**
+	 * A direct blow of `Percent` per cent of what the event's hit took from health on every enemy in a line from the
+	 * wearer along the way it faces, `EventValue` metres long and 2 metres wide. The War trees' engine slice E2
+	 * (2026-11-27), Seismic Slam's "the shockwave from the attack travels along the ground dealing 30% per point of the
+	 * hit's damage to all enemies in a line". The length is the row's; the width is a judgement of that slice.
+	 */
+	SmiteLineByHit UMETA(DisplayName = "Smite enemies in a line by a share of the hit"),
 };
 
 /**

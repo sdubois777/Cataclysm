@@ -1787,6 +1787,12 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.Nearby = ECataclysmNearbyAction::SmiteByMaximumHealth;
 					}
+					// AND THE LINE SIZED BY THE HIT, engine slice E2 (2026-11-27), Seismic Slam (Berserker).
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteLineByHitAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteLineByHit;
+					}
 					// AND THE ONE SIZED BY DAMAGE TAKEN RECENTLY, engine slice E3 (2026-11-27), Wrathful Presence.
 					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteNearbyOfRecentDamageTakenAction,
 											  ESearchCase::IgnoreCase))

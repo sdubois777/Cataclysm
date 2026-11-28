@@ -2096,6 +2096,8 @@ public:
 	static const TCHAR* SmiteNearbyOfMaximumHealthAction;
 	/** `smite_nearby_of_recent_damage_taken`. The War trees' engine slice E3 (2026-11-27), Wrathful Presence. */
 	static const TCHAR* SmiteNearbyOfRecentDamageTakenAction;
+	/** `smite_line_by_hit`. The War trees' engine slice E2 (2026-11-27), Seismic Slam (Berserker). */
+	static const TCHAR* SmiteLineByHitAction;
 
 	/** How far back `DamageTakenRecently` looks, in seconds: Wrathful Presence's "in the last 5 seconds". */
 	static constexpr float RecentDamageTakenSeconds = 5.0f;
@@ -7774,6 +7776,12 @@ protected:
 
 	/** The skill the `skill_use` event in hand is about, and where it was aimed. Set only inside `ActOnSkillUse`. */
 	FName SkillInHandName;
+
+	/**
+	 * The last melee skill this character used, the basic attack included, or none: Weaving (R12), the War trees' engine
+	 * slice E2 (2026-11-27). Written after each melee use raises `different_melee_skill_used` or `same_melee_skill_used`.
+	 */
+	FName LastMeleeSkillName;
 	FVector SkillInHandAim = FVector::ZeroVector;
 
 	/** The repeat a row asked for and nobody has made yet. See `ActOnSkillUse`. */

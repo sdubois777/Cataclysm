@@ -771,7 +771,7 @@
       "data": {
         "kind": "basic",
         "name": "Weaving",
-        "description": "Dual wield only. Alternating main hand and offhand attacks increases damage by 2% per point up to 6 stacks. While in Frenzy, each alternating strike costs 3 Fervour but the damage bonus per stack is doubled.",
+        "description": "Dual wield only. Using a different melee skill from the one you used last increases your damage by 2% per point, stacking up to 6 times. Using the same melee skill twice in a row removes the stacks. While in Frenzy, each stack you gain costs 3 Fervour and the damage per stack is doubled.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8

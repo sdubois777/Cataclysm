@@ -6950,6 +6950,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyOfMaximumHealthAction 
 	TEXT("smite_nearby_of_max_health");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyOfRecentDamageTakenAction =
 	TEXT("smite_nearby_of_recent_damage_taken");
+const TCHAR* UCataclysmAbilitySystemComponent::SmiteLineByHitAction = TEXT("smite_line_by_hit");
 
 void UCataclysmAbilitySystemComponent::NoteDamageTakenAmount(float Amount)
 {
@@ -9285,6 +9286,20 @@ void UCataclysmAbilitySystemComponent::ActOnSkillUse(FName SkillName, const FGam
 	if (SkillTags && SkillTags->HasTag(Melee))
 	{
 		ActOnEvent(FName(TEXT("melee_attack_use")), SkillTags);
+
+		// AND WHETHER IT IS A DIFFERENT MELEE SKILL FROM THE LAST ONE OR THE SAME AGAIN, for Weaving (R12, the War trees'
+		// engine slice E2, 2026-11-27): "Using a different melee skill from the one you used last ... Using the same
+		// melee skill twice in a row removes the stacks." The first melee use raises neither: there was no last one.
+		if (!SkillInHandName.IsNone())
+		{
+			if (!LastMeleeSkillName.IsNone())
+			{
+				ActOnEvent(FName(SkillInHandName == LastMeleeSkillName ? TEXT("same_melee_skill_used")
+																		: TEXT("different_melee_skill_used")),
+						   SkillTags);
+			}
+			LastMeleeSkillName = SkillInHandName;
+		}
 	}
 	SkillInHandName = NAME_None;
 }
@@ -11835,6 +11850,23 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 	const float ByHit = bByHit ? EventAmount * Action.Percent / 100.0f : 0.0f;
 	if (bByHit && (ByHit <= 0.0f || Action.EventValue <= 0.0f))
 	{
+		return;
+	}
+	// AND ONE ALONG A LINE, sized the same way: Seismic Slam (the War trees' engine slice E2, 2026-11-27). Its own search,
+	// from the wearer along the way it faces, 2 metres wide; nothing below is asked of it.
+	if (Action.Nearby == ECataclysmNearbyAction::SmiteLineByHit)
+	{
+		const float AlongLine = EventAmount * Action.Percent / 100.0f;
+		if (AlongLine <= 0.0f || Action.EventValue <= 0.0f)
+		{
+			return;
+		}
+		const FVector Start = Self->GetActorLocation();
+		const FVector End = Start + Self->GetActorForwardVector() * Action.EventValue * 100.0f;
+		for (AActor* Other : UCataclysmTargeting::FindEnemiesInLine(World, Self, Start, End, /*HalfWidthCm=*/100.0f))
+		{
+			UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, AlongLine);
+		}
 		return;
 	}
 	// AND ONE SIZED BY THE WEARER'S MAXIMUM HEALTH, reaching its own Event Value in metres, which the generator requires.

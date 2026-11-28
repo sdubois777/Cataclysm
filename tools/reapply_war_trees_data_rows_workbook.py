@@ -413,6 +413,29 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         cond2="two_hits_taken_within_seconds", cond_value2=1, min_points=6, per_point_from=1),
       R("spell_damage", "increased", 4, cond="seconds_after_hit_taken", cond_value=3,
         cond2="two_hits_taken_within_seconds", cond_value2=1, min_points=6, per_point_from=1))),
+    # SEISMIC SLAM (Berserker): "Two-handed weapons only. When you attack at maximum Fervour, the shockwave from the
+    # attack travels along the ground dealing 30% per point of the hit's damage to all enemies in a line." Once per
+    # attack (`first_hit_dealt`); the line 8 metres long, a judgement.
+    ("Berserker_twoh_012", "Seismic Slam",
+     (R(None, "", 30, action="smite_line_by_hit", action_event="first_hit_dealt", event_value=8,
+        cond="wielding_two_handed_weapon", cond2="attack_at_full_fervour"),)),
+    # WEAVING (R12): "Dual wield only. Using a different melee skill from the one you used last increases your damage
+    # by 2% per point, stacking up to 6 times. Using the same melee skill twice in a row removes the stacks. While in
+    # Frenzy, each stack you gain costs 3 Fervour and the damage per stack is doubled." The doubled half is a second
+    # stack of the same events, read only in Frenzy; the stacks have no stated window, so 10 seconds, the judgement
+    # Killing Rhythm's took.
+    ("Berserker_dw_003", "Weaving",
+     (R("attack_damage", "increased", 2, scale="own_stacks", step=1, cap=6, action_event="different_melee_skill_used",
+        stack_seconds=10, cond="dual_wielding"),
+      R("spell_damage", "increased", 2, scale="own_stacks", step=1, cap=6, action_event="different_melee_skill_used",
+        stack_seconds=10, cond="dual_wielding"),
+      R("attack_damage", "increased", 2, scale="own_stacks", step=1, cap=6, action_event="different_melee_skill_used",
+        stack_seconds=10, cond="dual_wielding", cond2="in_frenzy"),
+      R("spell_damage", "increased", 2, scale="own_stacks", step=1, cap=6, action_event="different_melee_skill_used",
+        stack_seconds=10, cond="dual_wielding", cond2="in_frenzy"),
+      R(None, "", 100, action="own_stacks_removed", action_event="same_melee_skill_used"),
+      R(None, "", -3, action="class_resource", action_event="different_melee_skill_used", fraction_of="points",
+        cond="in_frenzy"))),
 )
 
 #: Every node this script writes.
