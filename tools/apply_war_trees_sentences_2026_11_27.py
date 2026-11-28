@@ -169,6 +169,63 @@ SENTENCES: tuple[Sentence, ...] = (
              "After 10 seconds in continuous combat, you emit an aura that deals flat damage per second to all enemies "
              "within 4 metres equal to 1% of your Maximum HP. This damage increases by 0.5% of your Maximum HP for "
              "every additional 10 seconds in combat, up to a maximum of 3% of your Maximum HP per second."),
+    # WINDOW 2, THE SABOTEUR (the coordinating session's rulings of 2026-11-27 and 2026-11-28), with its rows in
+    # `tools/reapply_war_trees_data_rows_workbook.py`'s `E4_NODES`.
+    Sentence("R19", "Saboteur", "keystone_gadget_sus",
+             "After remaining stationary for 3 seconds your gadgets gain +5% damage and +3% range per second stationary "
+             "up to a maximum of 10 seconds. Moving more than 10 meters from any active gadget resets the bonus.",
+             "Once you have stood still for 3 seconds, your gadgets gain +5% damage and +3% range for each second you "
+             "have stood still, up to 10 seconds. Moving ends the bonus."),
+    Sentence("R20", "Saboteur", "basic_trap_mid_003",
+             "Your traps do not reveal your position when triggered. Additionally, the first enemy to enter each "
+             "trap's trigger radius is rooted for 0.5 seconds per point before the trap fires.",
+             "The first enemy to trigger each of your traps is stunned for 1 second."),
+    Sentence("Efficient Design (coordinator, 2026-11-28)", "Saboteur", "basic_gadget_stem_003",
+             "Each active gadget on the battlefield extends the active duration of all your other gadgets by 2 seconds "
+             "per point.",
+             "A gadget you place reserves 1% reduced Fervour per point for each other gadget you have active."),
+    Sentence("Scrap and Rebuild (coordinator, 2026-11-28)", "Saboteur", "basic_gadget_deep_003",
+             "When a gadget is destroyed gain +5 Fervour per point and reduce the deployment cooldown of your next "
+             "gadget by 2 seconds per point.",
+             "When a gadget is destroyed gain 5 Fervour per point and your next gadget move is ready 2 seconds sooner "
+             "per point."),
+    Sentence("Hair Wire Expertise (coordinator, 2026-11-28)", "Saboteur", "basic_trap_mid_004",
+             "+8% trap attack speed and trigger rate per point for each unique trap type currently active on the "
+             "battlefield.",
+             "+8% trap arming speed per point for each unique trap type you have active."),
+    Sentence("Persistent Systems (coordinator, 2026-11-28)", "Saboteur", "basic_gadget_sus_002",
+             "+15% gadget HP regeneration per point per second while above 50% HP. At 4 points: Gadgets that survive "
+             "for 20 seconds gain a permanent +10% damage stack.",
+             "Gadgets above 50% HP regenerate 1.5% of their maximum HP per second per point. At 4 points: Gadgets "
+             "that survive for 20 seconds gain a permanent +10% damage stack."),
+    Sentence("Reinforced Housing (coordinator, 2026-11-27)", "Saboteur", "basic_trap_ql_002",
+             "Traps are not consumed when triggered. Instead each subsequent trigger costs 15 Fervour, reduced by 1 "
+             "Fervour per point. At 5 points: Each subsequent trigger deals 20% more damage than the last.",
+             "Traps are not consumed when triggered. Instead each subsequent trigger costs 15 Fervour, reduced by 1 "
+             "Fervour per point; with too little Fervour, the trap is used up. At 5 points: Each subsequent trigger "
+             "deals 20% more damage than the last."),
+    Sentence("Steady Power (coordinator, 2026-11-27)", "Saboteur", "basic_gadget_sus_001",
+             "Gadgets passively drain 1 Fervour per second while active. Your gadgets gain +4% damage per point for "
+             "each point of Fervour above 50% of your maximum that you currently have.",
+             "Each active gadget drains 1 Fervour per second. Your gadgets gain +4% damage per point for each point of "
+             "Fervour above 50% of your maximum that you currently have."),
+    Sentence("Scattershot (coordinator, 2026-11-27)", "Saboteur", "basic_trap_qty_004",
+             "When you deploy a trap, there is a 10% chance per point to spend 20 Fervour to deploy an additional "
+             "trap at a random nearby location.",
+             "When you deploy a trap, there is a 10% chance per point to deploy an additional trap at a random nearby "
+             "location, which reserves Fervour as normal."),
+    Sentence("Volatile Construction (coordinator, 2026-11-28: 4 metres)", "Saboteur", "basic_gadget_dep_003",
+             "When a gadget is destroyed, it explodes dealing damage equal to +15% of its maximum HP per point to all "
+             "nearby enemies.",
+             "When a gadget is destroyed, it explodes dealing damage equal to +15% of its maximum HP per point to all "
+             "enemies within 4 metres."),
+    Sentence("Power Surge (coordinator, 2026-11-28: the gadget's own reach)", "Saboteur", "basic_gadget_sus_003",
+             "Your gadgets build a charge over time, gaining one stack every 5 seconds up to a maximum of 5 stacks. At "
+             "maximum stacks the gadget discharges, dealing 40% of its attack damage to all nearby enemies and "
+             "resetting to 0 stacks.",
+             "Your gadgets build a charge over time, gaining one stack every 5 seconds up to a maximum of 5 stacks. At "
+             "maximum stacks the gadget discharges, dealing 40% of its attack damage to all enemies within its attack "
+             "range and resetting to 0 stacks."),
 )
 
 

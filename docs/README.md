@@ -86,7 +86,7 @@ heading row describe their layout instead. Issue #1884.
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Gold Drops, Gem Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
 | Gold | 8 | Difficulty Tier, Gold Per Pile, More Per Floor, Note |
-| Passive Effects | 1181 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points, Scale Max Steps, Per Point From, Condition 2, Condition Value 2, Action Event, Stack Seconds, Action, Max Points, Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment, Damage Share, Chance Percent |
+| Passive Effects | 1231 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres, Min Points, Scale Max Steps, Per Point From, Condition 2, Condition Value 2, Action Event, Stack Seconds, Action, Max Points, Fraction Of, Scale Offset, Every Seconds, Every Nth, Trigger Cooldown, Event Value, Ailment, Damage Share, Chance Percent |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale, Grip X, Grip Y, Grip Z, Grip Pitch, Grip Yaw, Grip Roll |
 | Enchantment Effects | 712 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth, Scale Step High, Stack Seconds High, Condition 2, Condition Value 2, Condition Value High, Trigger Cooldown, Event Value, Ailment, Damage Share |
 

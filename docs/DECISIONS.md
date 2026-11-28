@@ -2,6 +2,185 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-28 — The War passive trees, window 2: the Saboteur's last 27 nodes act (engine slice E4 and the Saboteur rows)
+
+**Affects:**
+- `tools/reapply_war_trees_data_rows_workbook.py`: a new group, `E4_NODES`, of 50 rows on 27 Saboteur nodes in
+  `docs/All_Things_Cataclysm.xlsx`, Passive Effects. It was run once from development's workbook (`54892742d`; the
+  branch had not changed it). `game/Data/PassiveEffects.csv` (1,231 rows) and `game/Data/PassiveNodes.csv`. **The
+  editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/apply_war_trees_sentences_2026_11_27.py`: the eleven reworded Saboteur sentences, by node id, written into
+  `docs/Saboteur_Class_Tree_Final.json`.
+- Engine slice E4:
+  - `CataclysmStatPipeline.h` and `.cpp`: three conditions and nine scales, the gadget's readings and seven pool action
+    flags.
+  - `CataclysmAbilitySystemComponent.h` and `.cpp`: the readings, six actions, Rapid Deployment's free empowerment,
+    the move-cooldown cut, a public gadget shot queue, The Last Surprise, and Reinforced Housing's "more".
+  - `CataclysmMinion.h` and `.cpp`: a gadget's own readings and step, Overcharge, Overclock, Jury Rigged, Redundant
+    Systems, Power Surge, Forward Operating Base's pull, and the five trap behaviours.
+  - Also `CataclysmVitalAttributeSet.cpp` (Jury Rigged's save; Redundant Systems' ignored hit),
+    `CataclysmSkillEffects.cpp` (trap damage noted; The Last Surprise dealt), `CataclysmItem.cpp` (the action mapping),
+    `CataclysmPlayerClassStats.cpp` (15 stats with no attribute), `CataclysmPassiveTreeTests.cpp` (the condition that
+    compares nothing), `CataclysmStatExemptionTests.cpp` (five probes; the conditioned-probe pin goes from 48 to 50),
+    and `tools/generate_datatables.py`.
+- Tests: `test_every_conditioned_stat_has_an_asker.py` (the pin, 50), `test_passive_effects_match_the_node_text.py`
+  and `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (the words of these nodes).
+
+### SAID FIRST
+
+- **WINDOW 2 (war-w2) HAS RUN**, on 2026-11-28, in two parts. "WINDOW 2" at the end of this entry has every figure. Its
+  first whole suite failed one test: the 15 stats this window added with no attribute had no probe. With the probes
+  written, the second whole suite performed the 6,156 tests predicted, all passing, and the three C++ guard proofs proved.
+- **ALL 27 SABOTEUR NODES WITHOUT A ROW NOW HAVE ROWS.** One part is left as an exception. Combat Engineer's "At 5
+  points: Gadgets can attack enemies through terrain within their range" has no row, because gadgets already ignore
+  terrain: nothing in the code checks line of sight. The coordinating session accepted that note.
+- **SIX JUDGEMENTS OF THE WRITING SESSION, ALL ACCEPTED BY THE COORDINATING SESSION ON 2026-11-28** (Rapid Deployment's
+  with the plan's progress, the other five with the window 2 registration), each labelled again where it is built:
+  - Rapid Deployment cuts only what the player pays (ACCEPTED by the coordinating session on 2026-11-28). Overcharge and Overclock still count the full 2 Fervour per point,
+    so buying the cost cut does not shrink their bonuses. A pool too short to pay empowers with the share actually paid.
+  - Coordinated Strike's "+8% bonus damage per point" makes the gadget's shot 1 + 8% per point of its normal shot. It
+    answers the player's own hits only, never a device's or a minion's hit.
+  - Power Surge's discharge is one shot by the gadget, at 40%, at each enemy within the gadget's reach.
+  - Scrap and Rebuild's cut shortens a move cooldown that is running. With none running, it is held for the next one.
+  - Precision Placement's one-trap limit removes the oldest standing trap, so a press always places a trap, as trap
+    limits usually do in the genre. Scattershot places no extra trap while that limit is held.
+  - The Last Surprise lands as a separate hit of its own, unscaled, so the total is not multiplied again. It applies
+    to each enemy the trap's blows reach within 3 seconds of the trigger.
+
+### THE RULINGS
+
+**The coordinating session, 2026-11-28, on the window 2 plan (seven readings):**
+1. **Efficient Design** (`Saboteur_basic_gadget_stem_003`): "Each other active gadget reduces the Fervour your gadgets
+   reserve by 1% per point." It counts toward the 75% reservation cap.
+   **How the code counts "other":** a gadget's reserve is read once, when it is placed, before the new gadget
+   exists (`ACataclysmMinion::PlaceSkillGadget` calls `SkillGadgetReserveFor` before `Spawn`). So `gadgets_active` then
+   counts only the gadgets already standing, and a first gadget gets no reduction. A gadget placed later does not
+   lower the reserve of one already standing, because nothing re-reads a reserve that is already held.
+   **ACCEPTED by the coordinating session on 2026-11-28** (re-reading held reserves is more machinery than the node
+   is worth), with the sentence reworded to say so, and "less" then corrected to "reduced" by the same session, since the project's "less"
+   means a multiplier: "A gadget you place reserves 1% reduced Fervour per point for each
+   other gadget you have active." `Cataclysm.WarTreesE4` measures it: the first gadget reserves in full, the second
+   1% per point less.
+2. **Scrap and Rebuild** (`Saboteur_basic_gadget_deep_003`), the gadget MOVE cooldown, since placing has no cooldown:
+   "When a gadget is destroyed gain 5 Fervour per point and your next gadget move is ready 2 seconds sooner per point."
+3. **Hair Wire Expertise** (`Saboteur_basic_trap_mid_004`): "+8% trap arming speed per point for each unique trap type
+   you have active."
+4. **Persistent Systems** (`Saboteur_basic_gadget_sus_002`): above 50% health, gadgets regenerate 1.5% of their maximum
+   health per second per point. The 4-point stack is unchanged.
+5. **Precision Placement** (`Saboteur_keystone_trap_ql`): the count is maximum Fervour divided by the reserve of the trap
+   being placed, in whole fours, read at placement.
+6. **The Last Surprise** (`Saboteur_keystone_trap_deep_001`): the last trap's own blow deals each enemy it hits the
+   total every trap dealt in the last 10 seconds, not counting its own trigger, at most once every 30 seconds.
+7. **Radii:** Volatile Construction's blast is 4 metres. Power Surge uses the gadget's own attack reach.
+- Notes accepted: Calculated Risk against Callous Setup is a choice between two nodes, not a conflict. Combat Engineer's
+  terrain half is the exception above.
+
+**Earlier rulings this window builds:** R19, Siege Mode: "Once you have stood still for 3 seconds, your gadgets gain +5%
+damage and +3% range for each second you have stood still, up to 10 seconds. Moving ends the bonus." R20, Concealed:
+"The first enemy to trigger each of your traps is stunned for 1 second." And the coordinating session's readings of
+2026-11-27:
+- Reinforced Housing: each trigger after the first spends 15 Fervour, less 1 per point; with too little, the trap is used up.
+- Steady Power: each active gadget drains 1 Fervour a second.
+- Jury Rigged: the bonus lasts while the gadget is below full health.
+- Scattershot: the extra trap reserves as normal.
+
+### THE ELEVEN SENTENCES WRITTEN INTO THE TREE FILE, word for word
+
+- R19, `Saboteur_keystone_gadget_sus`: "Once you have stood still for 3 seconds, your gadgets gain +5% damage and +3% range for each second you have stood still, up to 10 seconds. Moving ends the bonus."
+- R20, `Saboteur_basic_trap_mid_003`: "The first enemy to trigger each of your traps is stunned for 1 second."
+- Efficient Design (coordinator, 2026-11-28), `Saboteur_basic_gadget_stem_003`: "A gadget you place reserves 1% reduced Fervour per point for each other gadget you have active."
+- Scrap and Rebuild (coordinator, 2026-11-28), `Saboteur_basic_gadget_deep_003`: "When a gadget is destroyed gain 5 Fervour per point and your next gadget move is ready 2 seconds sooner per point."
+- Hair Wire Expertise (coordinator, 2026-11-28), `Saboteur_basic_trap_mid_004`: "+8% trap arming speed per point for each unique trap type you have active."
+- Persistent Systems (coordinator, 2026-11-28), `Saboteur_basic_gadget_sus_002`: "Gadgets above 50% HP regenerate 1.5% of their maximum HP per second per point. At 4 points: Gadgets that survive for 20 seconds gain a permanent +10% damage stack."
+- Reinforced Housing (coordinator, 2026-11-27), `Saboteur_basic_trap_ql_002`: "Traps are not consumed when triggered. Instead each subsequent trigger costs 15 Fervour, reduced by 1 Fervour per point; with too little Fervour, the trap is used up. At 5 points: Each subsequent trigger deals 20% more damage than the last."
+- Steady Power (coordinator, 2026-11-27), `Saboteur_basic_gadget_sus_001`: "Each active gadget drains 1 Fervour per second. Your gadgets gain +4% damage per point for each point of Fervour above 50% of your maximum that you currently have."
+- Scattershot (coordinator, 2026-11-27), `Saboteur_basic_trap_qty_004`: "When you deploy a trap, there is a 10% chance per point to deploy an additional trap at a random nearby location, which reserves Fervour as normal."
+- Volatile Construction (coordinator, 2026-11-28: 4 metres), `Saboteur_basic_gadget_dep_003`: "When a gadget is destroyed, it explodes dealing damage equal to +15% of its maximum HP per point to all enemies within 4 metres."
+- Power Surge (coordinator, 2026-11-28: the gadget's own reach), `Saboteur_basic_gadget_sus_003`: "Your gadgets build a charge over time, gaining one stack every 5 seconds up to a maximum of 5 stacks. At maximum stacks the gadget discharges, dealing 40% of its attack damage to all enemies within its attack range and resetting to 0 stacks."
+
+### THE ROWS AND THE ENGINE, BY NODE
+
+| Node | What it is now |
+|---|---|
+| Marked Territory | `enemy_damage_taken` 5 per point for 5 s on the enemy that set the trap off (the action now hangs on `trap_triggered`) |
+| Forward Operating Base | `gadgets_pulled_to_placed` on `gadget_placed`: every other gadget moves to a ring around the new one |
+| Steady Power | `fervour_drain_per_second` 1 for each active gadget; gadget damage 4% per point per Fervour above half (`class_resource_above_half`) |
+| Persistent Systems | `gadget_regen_percent_above_half` 1.5 per point, regenerated in the gadget's step; the 20 s stack from 4 points |
+| Scrap and Rebuild | `class_resource` 5 per point and `gadget_move_cooldown_cut` 2 s per point, on `gadget_destroyed` |
+| Hot Deploy | gadget attack speed 2% per point per 10 Fervour spent in the last 5 s (`class_resource_spent_recently`) |
+| Callous Setup | trap damage 5% per point per 10% evasion, capped at 6 steps (`evasion`) |
+| Calculated Risk | evasion removed; gadget damage 3% per point of evasion lost (`evasion_before_removal`) |
+| Hair Wire Expertise | `trap_arming_speed` 8% per point per kind of trap standing (`trap_kinds_active`) |
+| Siege Mode (R19) | gadget damage 5% and range 3% per second still, from 3 s, up to 10 (`player_seconds_stationary`, `player_stationary_for_seconds`) |
+| Combat Engineer | gadget range 8% per point per active gadget |
+| Overcharge | `gadget_empowered` 2 Fervour per point at placing, health +5% per Fervour; damage 5% per Fervour empowered (`gadget_empowered_fervour`) |
+| Overclock | `gadget_overclocked` 2 Fervour per point drained over 10 s; attack speed 5% per Fervour drained (`gadget_overclock_fervour`) |
+| Rapid Deployment | `gadget_empower_cost_less` 1 per point; from 6 points one free empowerment every 15 s |
+| Last Stand Protocol | gadget attack speed and damage 8% per point for 5 s after it falls below 25% (`gadget_fell_below_quarter_within_seconds`) |
+| Jury Rigged | `gadget_survives_lethal_once`: one save to 1 HP per placing, before Undying Will; +100% damage and attack speed while below full health (`gadget_reprieved_below_full_health`) |
+| Efficient Design | `minion_reserve_percent_less` 1 per point per active gadget, inside the 75% cap |
+| Volatile Construction | `gadget_explodes_for_share_of_maximum_health` 15% per point within 4 m, through the Ferryman's burst |
+| Redundant Systems | `gadget_ignore_hit_chance` 5% per point; from 6 points `class_resource` 5 on the new event `gadget_ignored_hit` |
+| Coordinated Strike | `gadgets_attack_hit_enemy` on `hit_dealt`, once a second; every gadget from 4 points (`coordinated_strike_all_gadgets`) |
+| Power Surge | `gadget_power_surge`: a charge every 5 s, at 5 a 40% shot at each enemy within the gadget's reach |
+| Scattershot | `trap_copy_on_place_chance` 10% per point: a copy 1.5 to 3 m away, reserving as normal |
+| Reinforced Housing | `trap_reuse_fervour_cost` 15 less `trap_reuse_fervour_cost_less` 1 per point; from 5 points `trap_reuse_more_percent` 20, compounded per triggering |
+| Precision Placement | `trap_most_active` 1; trap damage +10% and area +25% per 4 traps the maximum could hold (`traps_maximum_fervour_could_hold`) |
+| The Last Surprise | `trap_last_surprise` |
+| Calculated Chaos | `trap_unreserved_drain_per_second` 5: a trap placed with no room reserves nothing, drains, and every such trap goes off at 0 Fervour |
+| Concealed (R20) | `trap_first_trigger_stun_seconds` 1 |
+
+**Two readings that keep a figure from multiplying by points**:
+- Overcharge's and Overclock's per-Fervour bonuses apply from the first point and are paid once. Their "per point" is
+  in the Fervour, which the action already multiplies.
+- `seconds_after_gadget_fell_below_quarter` was renamed `gadget_fell_below_quarter_within_seconds`, because the prefix
+  `seconds_after_` names an event clock (`test_pool_action_names_match_the_engine.py`).
+
+**The condition count:** 64 of the 128 named conditions compare nothing (`CataclysmStatPipeline.h`).
+
+### WINDOW 2 (war-w2), 2026-11-28
+
+**First part, on b70c8e939** (development a2d9257b3 merged in):
+- Build: `Build: Succeeded - 61 actions, 58 files compiled`, no warnings or errors.
+- Table assets rebuilt in the editor: DT_PassiveEffects (1,231 rows) and DT_PassiveNodes, nothing else (dbf0c3592).
+- `Cataclysm.WarTreesE4.` alone: 5 performed, 5 succeeded, 0 failed; 0 saves.
+- Whole suite: 6,156 performed, 6,155 succeeded, **1 failed:
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`**. The 15 stats this window added to
+  `UCataclysmPlayerClassStats::StatsWithNoAttribute` had no probe. 63 skipped halves; 898 saves, 0 left behind.
+
+**The probes** (448db8ffd, 44b781eaf): one for each of the 15 stats, each against a character without it.
+- Seven drive the behaviour itself: Empower paying 1 instead of 4; the first empowerment free; one Jury Rigged save;
+  60% to 70% health in a second; a hit ignored with the roll pinned; a second triggering 1.2 times; the surprise arming.
+- Eight are read deep inside trap placing, trap triggering or a landed hit. They are read through named readers
+  the game code now calls (`ACataclysmMinion::TrapsMostActiveFor`, `ScattershotChanceFor`, `ConcealedStunSecondsFor`,
+  `UnreservedTrapDrainPerSecondFor`, `ReinforcedHousingCostFor`, `CoordinatedStrikeReachesEveryGadgetFor`,
+  `PowerSurgeFor`), and the probes measure those readers.
+- The Python suite caught one fault in the Redundant Systems probe: it pinned its roll below console priority
+  (issue #1470). Corrected in 44b781eaf.
+
+**Second part, on 44b781eaf:**
+- `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` alone: 1 performed, 1 succeeded.
+- Whole suite: `Tests: 6156 tests performed, 6156 succeeded, 0 failed. 63 skipped part of what they check`;
+  `Test saves: 898 written and deleted, 0 left behind`. As predicted.
+- Python, beside it: 9,763 passed, 10 skipped, 0 failed; the JUnit file agrees (9,773 tests, 0 failures, 0 errors).
+- Guard proofs (`prove_cpp_guard`, prefix `Cataclysm.WarTreesE4.`). Each failed exactly the one test registered with
+  the break in, and passed 5 of 5 restored:
+
+| Proof | Break | Named failure |
+|---|---|---|
+| A | `TakeLastSurpriseFor` without `\|\| LastSurpriseStruck.Contains(Target)` | TheLastSurpriseDealsTheTotalOnceToEachEnemyAndWaitsThirtySeconds |
+| B | `TrapDamageNamingTrap` raising to `BlowsTriggering` instead of `BlowsTriggering - 1` | ReinforcedHousingCompoundsEachTriggeringAndScrapAndRebuildCutsTheMoveCooldown |
+| C | `PerGadgetActive` reading `GadgetsActive + 1` | EfficientDesignLeavesTheFirstGadgetsReserveWholeAndLowersTheSecondsByOnePercent |
+
+**Not covered:**
+- Proof C guards the stat read, not the order inside `ACataclysmMinion::PlaceSkillGadget`: no test checks that the
+  reserve is read before the new gadget is made.
+- Trap placing and triggering themselves (Scattershot's copy, Precision Placement's limit, Reinforced Housing's
+  payment, Calculated Chaos's drain and its mass trigger, Concealed's stun) have no test of their own; their probes
+  measure the readers those paths call.
+
+---
+
 ## 2026-11-28 — A walk resumed from a save loads paused, through the game's own pause, until the player presses a key or button (#2970)
 
 **Affects:**

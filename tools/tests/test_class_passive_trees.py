@@ -286,7 +286,9 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: more bleed stacks" was ordinary English, not a magnitude.
 # 104 SINCE THE WAR TREES' RULED SENTENCES OF 2026-11-27: Flurry's (R11) and Spiteful's each say "more damage",
 # and both rows are More multipliers (nth_attack_more_damage, next_retaliation_more).
-STRINGS_CONTAINING_THE_WORD = 104
+# 103 SINCE THE WAR TREES' WINDOW 2 (2026-11-28): Siege Mode's ruled sentence (R19) drops "Moving more than 10
+# meters", which used the word as ordinary English, so the magnitude count below is unchanged.
+STRINGS_CONTAINING_THE_WORD = 103
 # 52 SINCE 2026-11-27: Flurry's and Spiteful's ruled sentences, as STRINGS_CONTAINING_THE_WORD says.
 STRINGS_USING_IT_AS_A_MAGNITUDE = 52
 

@@ -1083,6 +1083,11 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 	// AND HOW LONG IT HAS STOOD AND WHETHER IT IS THE COMMANDER'S BIGGEST PERMANENT MINION, for Old Bones and First Among
 	// the Dead (the Death line's finishing slice B, 2026-11-26).
 	UCataclysmNecromancerArmy::FillAskingMinionState(State, Self, AskingMinion);
+	// AND A GADGET ASKING, ITS OWN READINGS (the War trees' window 2, 2026-11-28).
+	if (const ACataclysmMinion* Gadget = Cast<ACataclysmMinion>(AskingMinion))
+	{
+		Gadget->FillGadgetReadings(State);
+	}
 	// AND, FOR A MINION SLICE B'S FILL GAVE NO AGE, ITS TIME SINCE IT WAS MADE: slice C's figure for Swollen, AFTER the
 	// fill, which writes the age from when the minion came under command only while the age is still unset. Before the
 	// bundle (window dfb-w1) slice C's line ran first and always won, so Old Bones never read a back-dated command time.
@@ -1254,6 +1259,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		if (const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>())
 		{
 			State.Armor = Combat->GetArmor();
+			// AND THE EVASION ATTRIBUTE, for Callous Setup (the War trees' window 2, 2026-11-28).
+			State.Evasion = Combat->GetEvasion();
 			// AND THE BLOCK CHANCE ATTRIBUTE, for Bastion's "for every 1% Block Chance you have". The War vow options'
 			// second slice, 2026-11-25. The attribute, as ruled that day; `FCataclysmStatConditions::BlockChance` says why.
 			State.BlockChance = Combat->GetBlockChance();
@@ -1773,6 +1780,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// above follow.
 	State.bIsMoving = IsMoving();
 	State.SecondsSinceMoved = SecondsSinceMoved();
+	// AND THE CHARACTER'S OWN, WHICH NOTHING BELOW REPLACES: Siege Mode (the War trees' window 2, 2026-11-28).
+	State.PlayerSecondsSinceMoved = State.SecondsSinceMoved;
 	State.SecondsSinceOwnAttack = SecondsSinceOwnAttack();
 
 	// AND THE TWO FACTS OF THE ATTACK AND THE HIT IN HAND, for `attack_at_full_fervour`, `blow_was_critical` and
@@ -1816,6 +1825,40 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND THE MAXIMUM HEALTH FROM OTHER SOURCES, only when some row asks, for `max_health_from_other_sources` (Colossus,
 	// R3). The War trees' slice E3 (2026-11-27). The line evaluated with an empty state, so no scaled row -- this scale's
 	// own included -- is in it.
+	// AND THE SABOTEUR'S READINGS, the War trees' window 2 (2026-11-28). Evasion before removal: the line with its
+	// removal rows left out, evaluated with an empty state, only when some row asks. The trap kinds: distinct slots among
+	// the traps standing, only when some row asks.
+	State.FervourSpentRecently = FervourSpentRecently();
+	if (bSomeRowAsksEvasionBeforeRemoval)
+	{
+		const FCataclysmStatInputs* Line = StatInputs.Find(FName(TEXT("evasion")));
+		TArray<FCataclysmStatModifier> Kept;
+		if (Line)
+		{
+			for (const FCataclysmStatModifier& Row : Line->Modifiers)
+			{
+				if (Row.Bucket != ECataclysmStatBucket::Removed)
+				{
+					Kept.Add(Row);
+				}
+			}
+		}
+		const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>();
+		State.EvasionBeforeRemoval = Line
+			? FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(Line->Base, Kept, FGameplayTagContainer(),
+																FCataclysmStatConditions())
+								   .Final)
+			: (Combat ? Combat->GetEvasion() : 0.0f);
+	}
+	if (bSomeRowAsksTrapKindsActive)
+	{
+		TSet<ECataclysmAbilitySlot> Kinds;
+		for (const ACataclysmMinion* Trap : ACataclysmMinion::SkillTrapsOf(GetAvatarActor()))
+		{
+			Kinds.Add(Trap->SkillTrapSlot);
+		}
+		State.TrapKindsActive = Kinds.Num();
+	}
 	if (bSomeRowAsksMaximumHealthFromOtherSources)
 	{
 		const FCataclysmStatInputs* Health = StatInputs.Find(FName(TEXT("max_health")));
@@ -1922,7 +1965,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		State.MinionSecondsActive = PricedFor->GetGameTimeSinceCreation();
 		State.bIsMoving = false;
 		State.SecondsSinceMoved = PricedFor->SecondsSinceSkillGadgetPlaced();
+		// AND ITS OWN READINGS (the War trees' window 2, 2026-11-28).
+		PricedFor->FillGadgetReadings(State);
 	}
+	// AND PRECISION PLACEMENT'S READING, taken at the last trap's placing (window 2, 2026-11-28).
+	State.TrapsMaximumFervourCouldHold = TrapsMaximumFervourCouldHoldAtPlacing;
 
 	// THE CLASS RESOURCE'S MAXIMUM WITH ITS ROWS THAT HOLD NOW, IN ONE PASS, LAST BUT ONE. The War vow options' second
 	// slice, V2b, 2026-11-25, ruled in by the coordinating session: with Ragnarok's "Your maximum Fervour is doubled"
@@ -5387,6 +5434,8 @@ void UCataclysmAbilitySystemComponent::NoteWhatTheRowsAsk()
 {
 	bSomeRowAsksIncreasedMaximumHealth = false;
 	bSomeRowAsksMaximumHealthFromOtherSources = false;
+	bSomeRowAsksEvasionBeforeRemoval = false;
+	bSomeRowAsksTrapKindsActive = false;
 	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
 	{
 		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
@@ -5394,6 +5443,8 @@ void UCataclysmAbilitySystemComponent::NoteWhatTheRowsAsk()
 			bSomeRowAsksIncreasedMaximumHealth |= Row.Scale == ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth;
 			bSomeRowAsksMaximumHealthFromOtherSources |=
 				Row.Scale == ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources;
+			bSomeRowAsksEvasionBeforeRemoval |= Row.Scale == ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval;
+			bSomeRowAsksTrapKindsActive |= Row.Scale == ECataclysmStatScale::PerTrapKindActive;
 		}
 	}
 }
@@ -5447,6 +5498,10 @@ void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGam
 	if (const UWorld* World = GetWorld())
 	{
 		LastFervourSpentAtSeconds = World->GetTimeSeconds();
+		// AND THE AMOUNT, FOR HOT DEPLOY'S "Fervour spent in the last 5 seconds" (the War trees' window 2).
+		const float SpentAt = LastFervourSpentAtSeconds;
+		RecentFervourSpent.RemoveAll([SpentAt](const TPair<float, float>& Spent) { return SpentAt - Spent.Key > 5.0f; });
+		RecentFervourSpent.Emplace(SpentAt, Amount);
 
 		// CINDERS KEPT: a share of every spend TAKEN FROM THE POOL comes back later, Phylactery's included. Not of
 		// Bound Offering's share of a reserve, which is only counted as spent: nothing was taken, so there is nothing
@@ -6953,6 +7008,25 @@ const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyOfRecentDamageTakenAct
 	TEXT("smite_nearby_of_recent_damage_taken");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteLineByHitAction = TEXT("smite_line_by_hit");
 
+float UCataclysmAbilitySystemComponent::FervourSpentRecently() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return -1.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	float Sum = 0.0f;
+	for (const TPair<float, float>& Spent : RecentFervourSpent)
+	{
+		if (Now - Spent.Key <= 5.0f)
+		{
+			Sum += Spent.Value;
+		}
+	}
+	return Sum;
+}
+
 void UCataclysmAbilitySystemComponent::NoteDamageTakenAmount(float Amount)
 {
 	const UWorld* World = GetWorld();
@@ -7007,6 +7081,152 @@ const TCHAR* UCataclysmAbilitySystemComponent::FervourPerPercentOfMaxHealthLeech
 const TCHAR* UCataclysmAbilitySystemComponent::FervourOfFrenzyDrainSecondsAction = TEXT("fervour_of_frenzy_drain_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationBurstOnKillAction = TEXT("retaliation_burst_on_kill");
 const TCHAR* UCataclysmAbilitySystemComponent::EchoStrikeLaterAction = TEXT("echo_strike_later");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetsPulledToPlacedAction = TEXT("gadgets_pulled_to_placed");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetEmpoweredAction = TEXT("gadget_empowered");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetOverclockedAction = TEXT("gadget_overclocked");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetExplodesAction = TEXT("gadget_explodes_for_share_of_maximum_health");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetsAttackHitEnemyAction = TEXT("gadgets_attack_hit_enemy");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetMoveCooldownCutAction = TEXT("gadget_move_cooldown_cut");
+
+const TCHAR* UCataclysmAbilitySystemComponent::TrapLastSurpriseStat = TEXT("trap_last_surprise");
+
+void UCataclysmAbilitySystemComponent::NoteTrapDamageDealt(float Amount)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Amount <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	RecentTrapDamage.RemoveAll([Now](const TPair<float, float>& Each)
+	{
+		return Now - Each.Key > LastSurpriseWindowSeconds;
+	});
+	RecentTrapDamage.Emplace(Now, Amount);
+}
+
+float UCataclysmAbilitySystemComponent::TrapDamageDealtWithin(float Seconds) const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	float Total = 0.0f;
+	for (const TPair<float, float>& Each : RecentTrapDamage)
+	{
+		if (Now - Each.Key <= Seconds)
+		{
+			Total += Each.Value;
+		}
+	}
+	return Total;
+}
+
+bool UCataclysmAbilitySystemComponent::ArmLastSurprise(const AActor* Trap)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Trap || StatForSkill(FName(TrapLastSurpriseStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return false;
+	}
+	const float Now = World->GetTimeSeconds();
+	if (LastSurpriseReadyAtSeconds >= 0.0f && Now < LastSurpriseReadyAtSeconds)
+	{
+		return false;
+	}
+	const float Total = TrapDamageDealtWithin(LastSurpriseWindowSeconds);
+	if (Total <= 0.0f)
+	{
+		return false;
+	}
+	LastSurpriseTrap = Trap;
+	LastSurpriseTotal = Total;
+	LastSurpriseEndsAtSeconds = Now + LastSurpriseBlowSeconds;
+	LastSurpriseReadyBefore = LastSurpriseReadyAtSeconds;
+	LastSurpriseReadyAtSeconds = Now + LastSurpriseEverySeconds;
+	LastSurpriseStruck.Reset();
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::DisarmLastSurprise()
+{
+	LastSurpriseTrap.Reset();
+	LastSurpriseTotal = 0.0f;
+	LastSurpriseReadyAtSeconds = LastSurpriseReadyBefore;
+}
+
+float UCataclysmAbilitySystemComponent::TakeLastSurpriseFor(TWeakObjectPtr<const AActor> Trap, const AActor* Target)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Target || LastSurpriseTotal <= 0.0f || LastSurpriseTrap.IsExplicitlyNull() || Trap != LastSurpriseTrap
+		|| World->GetTimeSeconds() > LastSurpriseEndsAtSeconds || LastSurpriseStruck.Contains(Target))
+	{
+		return 0.0f;
+	}
+	LastSurpriseStruck.Add(Target);
+	return LastSurpriseTotal;
+}
+
+void UCataclysmAbilitySystemComponent::CutNextGadgetMoveCooldown(float Seconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	bool bCut = false;
+	for (TPair<ECataclysmAbilitySlot, float>& Ready : SkillGadgetMoveReadyAtSeconds)
+	{
+		if (Ready.Value > Now)
+		{
+			Ready.Value = FMath::Max(Now, Ready.Value - Seconds);
+			bCut = true;
+		}
+	}
+	// NONE RUNS: THE NEXT MOVE'S IS CUT, as "your next gadget move" reads (a judgement of window 2).
+	if (!bCut)
+	{
+		PendingGadgetMoveCooldownCut += Seconds;
+	}
+}
+
+void UCataclysmAbilitySystemComponent::QueueGadgetShot(ACataclysmMinion* Gadget, AActor* Enemy, float DamageMultiplier)
+{
+	if (!IsValid(Gadget) || !IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy) || DamageMultiplier <= 0.0f)
+	{
+		return;
+	}
+	FQueuedGadgetShotAtTrapEnemy& Queued = QueuedGadgetShotsAtTrapEnemies.AddDefaulted_GetRef();
+	Queued.Gadget = Gadget;
+	Queued.Enemy = Enemy;
+	Queued.DamageMultiplier = DamageMultiplier;
+}
+
+bool UCataclysmAbilitySystemComponent::IsEmpowermentFree(const AActor* Gadget)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Gadget)
+	{
+		return false;
+	}
+	if (FreeEmpowerGadget.Get() == Gadget)
+	{
+		return true;
+	}
+	const float Every = StatForSkill(FName(ACataclysmMinion::GadgetEmpowerFreeEverySecondsStat),
+									 FGameplayTagContainer(), 0.0f);
+	const float Now = World->GetTimeSeconds();
+	if (Every <= 0.0f || (NextFreeEmpowerAtSeconds >= 0.0f && Now < NextFreeEmpowerAtSeconds))
+	{
+		return false;
+	}
+	NextFreeEmpowerAtSeconds = Now + Every;
+	FreeEmpowerGadget = Gadget;
+	return true;
+}
 const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfBlockedDamageAction =
 	TEXT("next_attack_bonus_of_blocked_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::BloodForBloodReflectPercentStat = TEXT("blood_for_blood_reflect_percent");
@@ -10054,6 +10274,117 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			}
 			continue;
 		}
+		// THE GADGET DESTROYED BURSTS: Volatile Construction (the War trees' window 2, 2026-11-28), its maximum health at
+		// the row's share to the enemies within 4 m, through the Ferryman's burst.
+		if (Action.bGadgetExplodes)
+		{
+			const ACataclysmMinion* Gone = Cast<ACataclysmMinion>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			const UAbilitySystemComponent* Its = Gone ? UCataclysmTargeting::AbilitySystemOf(Gone) : nullptr;
+			const float Maximum = Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()) : 0.0f;
+			if (bLanded && Gone && Gone->IsGadget() && Self && Maximum > 0.0f && Action.Percent > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				UCataclysmFervour::BurstTheSlain(Self, Gone, Gone->GetActorLocation(), Maximum, Action.Percent);
+			}
+			continue;
+		}
+		// THE WEARER'S GADGETS ATTACK WHAT THE WEARER HIT: Coordinated Strike (window 2). The wearer's own blow only.
+		if (Action.bGadgetsAttackHitEnemy)
+		{
+			AActor* Self = GetAvatarActor();
+			AActor* Enemy = const_cast<AActor*>(EventTarget);
+			static const FGameplayTag ByAGadget =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false);
+			static const FGameplayTag ByATrap =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
+			static const FGameplayTag ByADeployable =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Deployable")), /*ErrorIfNotFound=*/false);
+			static const FGameplayTag ByAMinion =
+				FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Minion")), /*ErrorIfNotFound=*/false);
+			const bool bNotTheWearersOwn = EventTags
+				&& ((ByAGadget.IsValid() && EventTags->HasTag(ByAGadget)) || (ByATrap.IsValid() && EventTags->HasTag(ByATrap))
+					|| (ByADeployable.IsValid() && EventTags->HasTag(ByADeployable))
+					|| (ByAMinion.IsValid() && EventTags->HasTag(ByAMinion)));
+			if (bLanded && Self && IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !bNotTheWearersOwn
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				const float Multiplier = 1.0f + FMath::Max(0.0f, Action.Percent) / 100.0f;
+				bool bAny = false;
+				if (ACataclysmMinion::CoordinatedStrikeReachesEveryGadgetFor(Self))
+				{
+					for (ACataclysmMinion* Each : ACataclysmMinion::DevicesOf(Self))
+					{
+						if (Each && Each->IsSkillGadget())
+						{
+							QueueGadgetShot(Each, Enemy, Multiplier);
+							bAny = true;
+						}
+					}
+				}
+				else if (ACataclysmMinion* Nearest =
+							 ACataclysmMinion::SkillGadgetNearestTo(Self, Self->GetActorLocation(), 0.0f))
+				{
+					QueueGadgetShot(Nearest, Enemy, Multiplier);
+					bAny = true;
+				}
+				if (bAny)
+				{
+					NoteTriggerFired(Action);
+				}
+			}
+			continue;
+		}
+		// THE GADGET MOVE COOLDOWN CUT FOR A GADGET DESTROYED: Scrap and Rebuild (ruled 2026-11-28), window 2.
+		if (Action.bGadgetMoveCooldownCut)
+		{
+			const ACataclysmMinion* Gone = Cast<ACataclysmMinion>(EventTarget);
+			if (bLanded && Gone && Gone->IsGadget() && Action.Percent > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				CutNextGadgetMoveCooldown(Action.Percent);
+			}
+			continue;
+		}
+		// THE GADGET JUST PLACED, EMPOWERED OR OVERCLOCKED: Overcharge and Overclock (the War trees' window 2, 2026-11-28).
+		if (Action.bGadgetEmpowered || Action.bGadgetOverclocked)
+		{
+			ACataclysmMinion* Placed = Cast<ACataclysmMinion>(const_cast<AActor*>(EventTarget));
+			if (bLanded && Placed && Placed->IsGadget() && Action.Percent > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				const bool bFree = IsEmpowermentFree(Placed);
+				if (Action.bGadgetEmpowered)
+				{
+					Placed->Empower(Action.Percent, Action.EventValue, bFree);
+				}
+				else
+				{
+					Placed->BeginOverclock(Action.Percent, Action.EventValue, bFree);
+				}
+			}
+			continue;
+		}
+		// EVERY OTHER GADGET PULLED TO THE ONE JUST PLACED: Forward Operating Base (the War trees' window 2, 2026-11-28).
+		if (Action.bGadgetsPulledToPlaced)
+		{
+			ACataclysmMinion* Placed = Cast<ACataclysmMinion>(const_cast<AActor*>(EventTarget));
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Placed && Self && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				ACataclysmMinion::PullOtherGadgetsTo(Self, Placed);
+			}
+			continue;
+		}
 		// THE HIT STRUCK AGAIN LATER: Phantom Blades (2026-11-27). Never for an echo's own hit.
 		if (Action.bEchoStrikeLater)
 		{
@@ -12505,7 +12836,9 @@ bool UCataclysmAbilitySystemComponent::PressOfASkillGadgetSlot(const FGameplayTa
 			Cooldown = Newest->SkillGadgetSecondsBetweenCasts(Skill);
 		}
 	}
-	SkillGadgetMoveReadyAtSeconds.Add(Slot, Now + FMath::Max(0.0f, Cooldown));
+	// LESS WHAT SCRAP AND REBUILD HELD FOR THE NEXT MOVE (window 2, 2026-11-28), taken by this one.
+	SkillGadgetMoveReadyAtSeconds.Add(Slot, Now + FMath::Max(0.0f, Cooldown - PendingGadgetMoveCooldownCut));
+	PendingGadgetMoveCooldownCut = 0.0f;
 	return true;
 }
 
@@ -12764,6 +13097,13 @@ void UCataclysmAbilitySystemComponent::TrapDamageNamingTrap(const FGameplayTagCo
 	// Ambush's `TargetNotYetTriggeredYourTrap` (the Saboteur's device conditions, 2026-11-25).
 	TGuardValue<TWeakObjectPtr<const AActor>> PricingItsBlow(TrapWhoseBlowIsPriced, BlowsTrap);
 	TGuardValue<int32> PricingItsTriggering(TrapTriggeringWhoseBlowIsPriced, BlowsTriggering);
+	// AND REINFORCED HOUSING'S "Each subsequent trigger deals 20% more damage than the last" (window 2, 2026-11-28): a
+	// "more" for each triggering of this trap after its first, compounded, on every blow of the trap whatever rows name it.
+	const float MorePerTrigger = StatForSkill(FName(ACataclysmMinion::TrapReuseMorePercentStat), FGameplayTagContainer(), 0.0f);
+	const float Escalation = (MorePerTrigger > 0.0f && BlowsTriggering > 1)
+		? FMath::Pow(1.0f + MorePerTrigger / 100.0f, static_cast<float>(BlowsTriggering - 1))
+		: 1.0f;
+	OutMore = Escalation;
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(FName(TEXT("minion_damage")));
 	const FGameplayTag Trap = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
 	if (!Inputs || !Trap.IsValid())
@@ -12789,7 +13129,7 @@ void UCataclysmAbilitySystemComponent::TrapDamageNamingTrap(const FGameplayTagCo
 		WithEnemiesInReach(Naming, WithTargetState(Naming, Target, CurrentConditions()));
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(0.0f, Naming, Tags, State);
 	OutIncreases = Result.SumOfIncreases / 100.0f;
-	OutMore = FMath::Max(0.0f, Result.MoreMultiplier);
+	OutMore = FMath::Max(0.0f, Result.MoreMultiplier) * Escalation;
 }
 
 // ==========================================================================

@@ -2132,6 +2132,57 @@ public:
 	static const TCHAR* FervourOfFrenzyDrainSecondsAction;
 	static const TCHAR* RetaliationBurstOnKillAction;
 	static const TCHAR* EchoStrikeLaterAction;
+	/** `gadgets_pulled_to_placed`. Forward Operating Base, the War trees' window 2 (2026-11-28). */
+	static const TCHAR* GadgetsPulledToPlacedAction;
+	/** `gadget_empowered` and `gadget_overclocked`. Overcharge and Overclock, window 2 (2026-11-28). */
+	static const TCHAR* GadgetEmpoweredAction;
+	static const TCHAR* GadgetOverclockedAction;
+	/** Volatile Construction, Coordinated Strike and Scrap and Rebuild's cooldown, window 2 (2026-11-28). */
+	static const TCHAR* GadgetExplodesAction;
+	static const TCHAR* GadgetsAttackHitEnemyAction;
+	static const TCHAR* GadgetMoveCooldownCutAction;
+
+	/**
+	 * Cut the gadget move cooldown that runs by `Seconds`, or, with none running, the next one the same amount. Scrap and
+	 * Rebuild's "your next gadget move is ready 2 seconds sooner per point" (ruled 2026-11-28).
+	 */
+	void CutNextGadgetMoveCooldown(float Seconds);
+
+	/** What `CutNextGadgetMoveCooldown` holds for the next move's cooldown, taken by that move. */
+	float PendingGadgetMoveCooldownCut = 0.0f;
+
+	/**
+	 * Whether this placing's empowerment of `Gadget` is free (Rapid Deployment, window 2), deciding it on the first ask
+	 * for that gadget. Public for its probe.
+	 */
+	bool IsEmpowermentFree(const AActor* Gadget);
+
+	/**
+	 * THE LAST SURPRISE (ruled 2026-11-28), window 2: "the last trap's own blow deals, to each enemy it hits, the total
+	 * every trap dealt in the last 10 s (its own trigger not counted), at most once every 30 s". Every trap blow's damage
+	 * is noted (`NoteTrapDamageDealt`); the trigger of the only trap standing arms the surprise (`ArmLastSurprise`) with
+	 * that total before its cast starts; each enemy a blow of that trigger reaches within `LastSurpriseBlowSeconds` takes
+	 * it once (`TakeLastSurpriseFor`), as a hit of its own, unscaled.
+	 */
+	static const TCHAR* TrapLastSurpriseStat;
+	static constexpr float LastSurpriseWindowSeconds = 10.0f;
+	static constexpr float LastSurpriseEverySeconds = 30.0f;
+	static constexpr float LastSurpriseBlowSeconds = 3.0f;
+	void NoteTrapDamageDealt(float Amount);
+	float TrapDamageDealtWithin(float Seconds) const;
+	bool ArmLastSurprise(const AActor* Trap);
+	void DisarmLastSurprise();
+	float TakeLastSurpriseFor(TWeakObjectPtr<const AActor> Trap, const AActor* Target);
+	TArray<TPair<float, float>> RecentTrapDamage;
+	TWeakObjectPtr<const AActor> LastSurpriseTrap;
+	float LastSurpriseTotal = 0.0f;
+	float LastSurpriseEndsAtSeconds = -1.0f;
+	float LastSurpriseReadyAtSeconds = -1.0f;
+	float LastSurpriseReadyBefore = -1.0f;
+	TSet<TWeakObjectPtr<const AActor>> LastSurpriseStruck;
+
+	/** Precision Placement's reading, taken at each skill trap's placing. -1 before any. */
+	float TrapsMaximumFervourCouldHoldAtPlacing = -1.0f;
 	static const TCHAR* NextAttackBonusOfBlockedDamageAction;
 
 	/**
@@ -6705,6 +6756,12 @@ public:
 	void DrainQueuedGadgetShotsAtTrapEnemies();
 
 	/**
+	 * Record a shot of `Gadget` at `Enemy` at `DamageMultiplier` of its blow, fired by the drain above: Coordinated
+	 * Strike's and Power Surge's, window 2 (2026-11-28). Nothing for a gadget or an enemy missing or dead.
+	 */
+	void QueueGadgetShot(ACataclysmMinion* Gadget, AActor* Enemy, float DamageMultiplier);
+
+	/**
 	 * #2472, A PLAYER'S DEATH INSIDE ONE OF ITS OWN ABILITY ACTIVATIONS. Ruled 2026-10-22 by the coordinating session: the
 	 * two death drains (the gadget half's death casts, #15, and traps layer 5's set-offs) also wait while the ability list
 	 * is locked, and run again when the player's own activation ends. The engine holds `ABILITYLIST_SCOPE_LOCK` across an
@@ -7169,6 +7226,24 @@ protected:
 
 	/** The same for `max_health_from_other_sources` (Colossus, R3). The War trees' slice E3 (2026-11-27). */
 	bool bSomeRowAsksMaximumHealthFromOtherSources = false;
+
+	/** The same for `evasion_before_removal` (Calculated Risk) and `trap_kinds_active` (Hair Wire Expertise). Window 2. */
+	bool bSomeRowAsksEvasionBeforeRemoval = false;
+	bool bSomeRowAsksTrapKindsActive = false;
+
+	/** When and how much of the class resource was spent, pruned past 5 seconds. Hot Deploy (window 2). */
+	TArray<TPair<float, float>> RecentFervourSpent;
+
+	/**
+	 * Rapid Deployment's free empowerment: when the next may be free, and the gadget the last free one went to, so its
+	 * Overcharge and its Overclock are both free. Window 2 (2026-11-28).
+	 */
+	float NextFreeEmpowerAtSeconds = -1.0f;
+	TWeakObjectPtr<const AActor> FreeEmpowerGadget;
+
+
+	/** The class resource spent in the last 5 seconds. */
+	float FervourSpentRecently() const;
 
 	/** Sets `bSomeRowAsksIncreasedMaximumHealth` and `bSomeRowAsksMaximumHealthFromOtherSources` from `StatInputs`. */
 	void NoteWhatTheRowsAsk();

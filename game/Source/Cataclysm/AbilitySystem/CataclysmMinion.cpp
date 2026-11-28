@@ -33,6 +33,8 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For the Fervour Overcharge and Overclock take from the summoner. The War trees' window 2, 2026-11-28.
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For the basic attack gadget's clock, the player's swing interval. Ruled 2026-10-16, stack 2.
 #include "AbilitySystem/CataclysmBasicAttack.h"
 // For a Warhound's blow, its taunt and where it appears. Warlord's Will's six-piece, ruled 2026-10-17 and 2026-10-18.
@@ -555,6 +557,332 @@ bool ACataclysmMinion::IsGadget() const
 
 const TCHAR* ACataclysmMinion::GadgetsTargetMostHealthStat = TEXT("gadgets_target_most_health");
 
+const TCHAR* ACataclysmMinion::GadgetEmpowerCostLessStat = TEXT("gadget_empower_cost_less");
+const TCHAR* ACataclysmMinion::GadgetEmpowerFreeEverySecondsStat = TEXT("gadget_empower_free_every_seconds");
+const TCHAR* ACataclysmMinion::GadgetSurvivesLethalOnceStat = TEXT("gadget_survives_lethal_once");
+const TCHAR* ACataclysmMinion::GadgetRegenPercentAboveHalfStat = TEXT("gadget_regen_percent_above_half");
+const TCHAR* ACataclysmMinion::GadgetIgnoreHitChanceStat = TEXT("gadget_ignore_hit_chance");
+const TCHAR* ACataclysmMinion::CoordinatedStrikeAllGadgetsStat = TEXT("coordinated_strike_all_gadgets");
+const TCHAR* ACataclysmMinion::GadgetPowerSurgeStat = TEXT("gadget_power_surge");
+const TCHAR* ACataclysmMinion::TrapCopyOnPlaceChanceStat = TEXT("trap_copy_on_place_chance");
+const TCHAR* ACataclysmMinion::TrapReuseFervourCostStat = TEXT("trap_reuse_fervour_cost");
+const TCHAR* ACataclysmMinion::TrapReuseFervourCostLessStat = TEXT("trap_reuse_fervour_cost_less");
+const TCHAR* ACataclysmMinion::TrapReuseMorePercentStat = TEXT("trap_reuse_more_percent");
+const TCHAR* ACataclysmMinion::TrapMostActiveStat = TEXT("trap_most_active");
+const TCHAR* ACataclysmMinion::TrapFirstTriggerStunSecondsStat = TEXT("trap_first_trigger_stun_seconds");
+const TCHAR* ACataclysmMinion::TrapUnreservedDrainPerSecondStat = TEXT("trap_unreserved_drain_per_second");
+
+static TAutoConsoleVariable<float> CVarScattershotRoll(
+	TEXT("Cataclysm.ScattershotRoll"),
+	-1.0f,
+	TEXT("Pins Scattershot's roll, 0-100. -1 rolls normally. 0 places a second trap whenever there is any chance to."),
+	ECVF_Default);
+
+namespace CataclysmWarTreesW2
+{
+	/** A player's trap figure, never below nought. */
+	float TrapStat(const UAbilitySystemComponent* Theirs, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Theirs);
+		return Cataclysm ? FMath::Max(0.0f, Cataclysm->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f)) : 0.0f;
+	}
+
+	/** Take exactly `Cost` from the pool, or nothing when it holds less: whether it was taken. */
+	bool TakeFervourExactly(UAbilitySystemComponent* Theirs, float Cost)
+	{
+		if (!Theirs || !Theirs->GetSet<UCataclysmClassResourceAttributeSet>())
+		{
+			return false;
+		}
+		if (Cost <= 0.0f)
+		{
+			return true;
+		}
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		const float Before = Theirs->GetNumericAttribute(Pool);
+		if (Before < Cost)
+		{
+			return false;
+		}
+		Theirs->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Cost);
+		const float Spent = Before - Theirs->GetNumericAttribute(Pool);
+		FCataclysmWarFervour::NoteFervourSpentOrDrained(Theirs, Spent);
+		if (UCataclysmAbilitySystemComponent* Spending = Cast<UCataclysmAbilitySystemComponent>(Theirs))
+		{
+			Spending->NoteFervourSpent(Spent);
+		}
+		return true;
+	}
+}
+
+float ACataclysmMinion::TrapsMostActiveFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), TrapMostActiveStat);
+}
+
+float ACataclysmMinion::ScattershotChanceFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), TrapCopyOnPlaceChanceStat);
+}
+
+float ACataclysmMinion::ConcealedStunSecondsFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), TrapFirstTriggerStunSecondsStat);
+}
+
+float ACataclysmMinion::UnreservedTrapDrainPerSecondFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), TrapUnreservedDrainPerSecondStat);
+}
+
+float ACataclysmMinion::ReinforcedHousingCostFor(const AActor* Player)
+{
+	const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Player);
+	const float Cost = CataclysmWarTreesW2::TrapStat(Theirs, TrapReuseFervourCostStat);
+	return Cost > 0.0f
+		? FMath::Max(0.0f, Cost - CataclysmWarTreesW2::TrapStat(Theirs, TrapReuseFervourCostLessStat))
+		: -1.0f;
+}
+
+bool ACataclysmMinion::CoordinatedStrikeReachesEveryGadgetFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), CoordinatedStrikeAllGadgetsStat)
+		> 0.0f;
+}
+
+bool ACataclysmMinion::PowerSurgeFor(const AActor* Player)
+{
+	return CataclysmWarTreesW2::TrapStat(UCataclysmTargeting::AbilitySystemOf(Player), GadgetPowerSurgeStat) > 0.0f;
+}
+
+void ACataclysmMinion::StepUnreservedSkillTrap(float StepSeconds)
+{
+	AActor* const Player = Summoner.Get();
+	UAbilitySystemComponent* Theirs = IsValid(Player) ? UCataclysmTargeting::AbilitySystemOf(Player) : nullptr;
+	if (!bSkillTrapUnreserved || !IsSkillTrap() || IsActorBeingDestroyed() || !Theirs
+		|| !Theirs->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		return;
+	}
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Drain = UnreservedTrapDrainPerSecondFor(Player) * StepSeconds;
+	const float Before = Theirs->GetNumericAttribute(Pool);
+	if (Drain > 0.0f && Before > 0.0f)
+	{
+		Theirs->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -FMath::Min(Drain, Before));
+		FCataclysmWarFervour::NoteFervourSpentOrDrained(Theirs, Before - Theirs->GetNumericAttribute(Pool));
+	}
+	// AT 0 FERVOUR, EVERY TRAP PLACED THAT WAY GOES OFF AT ONCE, "simultaneously": gathered first, then each set off.
+	if (Theirs->GetNumericAttribute(Pool) > 0.0f)
+	{
+		return;
+	}
+	TArray<TWeakObjectPtr<ACataclysmMinion>> Unreserved;
+	for (ACataclysmMinion* Each : SkillTrapsOf(Player))
+	{
+		if (Each && Each->bSkillTrapUnreserved)
+		{
+			Unreserved.Add(Each);
+		}
+	}
+	for (const TWeakObjectPtr<ACataclysmMinion>& Each : Unreserved)
+	{
+		if (Each.IsValid())
+		{
+			Each->TriggerSkillTrap(nullptr);
+		}
+	}
+}
+
+static TAutoConsoleVariable<float> CVarGadgetIgnoreRoll(
+	TEXT("Cataclysm.GadgetIgnoreRoll"),
+	-1.0f,
+	TEXT("Pins Redundant Systems' roll, 0-100. -1 rolls normally. 0 ignores whenever there is any chance to."),
+	ECVF_Default);
+
+bool ACataclysmMinion::RollToIgnoreAHit()
+{
+	if (!IsGadget() || !IsValid(Summoner))
+	{
+		return false;
+	}
+	const float Chance = SummonersGadgetStat(GadgetIgnoreHitChanceStat);
+	if (Chance <= 0.0f)
+	{
+		return false;
+	}
+	const float Pinned = CVarGadgetIgnoreRoll.GetValueOnAnyThread();
+	if ((Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) >= Chance)
+	{
+		return false;
+	}
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)))
+	{
+		Theirs->ActOnEvent(FName(TEXT("gadget_ignored_hit")), &TypeTags, /*EventAmount=*/0.0f, /*bLanded=*/true, this);
+	}
+	return true;
+}
+
+void ACataclysmMinion::FillGadgetReadings(FCataclysmStatConditions& State) const
+{
+	const UWorld* World = GetWorld();
+	if (!IsGadget() || !AbilitySystemComponent)
+	{
+		return;
+	}
+	const float Health = AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+	const float Maximum = AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	State.GadgetHealthPercent = Maximum > 0.0f ? Health / Maximum * 100.0f : -1.0f;
+	State.GadgetEmpoweredFervour = EmpoweredFervour;
+	State.GadgetOverclockFervour = OverclockFervourDrained;
+	State.SecondsSinceGadgetFellBelowQuarter =
+		(World && FellBelowQuarterAtSeconds >= 0.0f) ? World->GetTimeSeconds() - FellBelowQuarterAtSeconds : -1.0f;
+	State.bGadgetReprieved = bJuryRigged;
+}
+
+float ACataclysmMinion::Empower(float NominalFervour, float HealthPercentPerFervour, bool bFree)
+{
+	if (NominalFervour <= 0.0f || !IsValid(Summoner))
+	{
+		return 0.0f;
+	}
+	UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Summoner);
+	const float Cost = bFree ? 0.0f : FMath::Max(0.0f, NominalFervour - SummonersGadgetStat(GadgetEmpowerCostLessStat));
+	float Paid = 0.0f;
+	if (Cost > 0.0f && Theirs && Theirs->GetSet<UCataclysmClassResourceAttributeSet>())
+	{
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		const float Before = Theirs->GetNumericAttribute(Pool);
+		const float Taken = FMath::Min(Cost, FMath::Max(0.0f, Before));
+		if (Taken > 0.0f)
+		{
+			Theirs->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
+			Paid = Before - Theirs->GetNumericAttribute(Pool);
+			FCataclysmWarFervour::NoteFervourSpentOrDrained(Theirs, Paid);
+			if (UCataclysmAbilitySystemComponent* Spending = Cast<UCataclysmAbilitySystemComponent>(Theirs))
+			{
+				Spending->NoteFervourSpent(Paid);
+			}
+		}
+	}
+	// A SHORT POOL EMPOWERS WITH WHAT IT PAID, AS "consumes" READS; A REDUCED OR FREE COST STILL COUNTS THE WHOLE FIGURE.
+	const float Counted = (Cost > 0.0f && Paid < Cost) ? NominalFervour * Paid / Cost : NominalFervour;
+	EmpoweredFervour += Counted;
+	if (AbilitySystemComponent && HealthPercentPerFervour > 0.0f && Counted > 0.0f)
+	{
+		const float Raise = 1.0f + HealthPercentPerFervour / 100.0f * Counted;
+		const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute HealthNow = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Maximum = AbilitySystemComponent->GetNumericAttribute(MaxHealth) * Raise;
+		AbilitySystemComponent->SetNumericAttributeBase(MaxHealth, Maximum);
+		AbilitySystemComponent->SetNumericAttributeBase(HealthNow,
+			AbilitySystemComponent->GetNumericAttribute(HealthNow) * Raise);
+		SpawnedMaxHealth = Maximum;
+	}
+	return Paid;
+}
+
+void ACataclysmMinion::BeginOverclock(float NominalFervour, float Seconds, bool bFree)
+{
+	if (NominalFervour <= 0.0f || Seconds <= 0.0f)
+	{
+		return;
+	}
+	const float Cost = bFree ? 0.0f : FMath::Max(0.0f, NominalFervour - SummonersGadgetStat(GadgetEmpowerCostLessStat));
+	OverclockFervourLeft = NominalFervour;
+	OverclockSecondsLeft = Seconds;
+	OverclockPaidShare = NominalFervour > 0.0f ? Cost / NominalFervour : 0.0f;
+}
+
+bool ACataclysmMinion::TryJuryRig()
+{
+	if (bJuryRigged || !IsGadget() || SummonersGadgetStat(GadgetSurvivesLethalOnceStat) <= 0.0f)
+	{
+		return false;
+	}
+	bJuryRigged = true;
+	return true;
+}
+
+void ACataclysmMinion::StepGadgetReadings(float StepSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !AbilitySystemComponent || StepSeconds <= 0.0f)
+	{
+		return;
+	}
+	const FGameplayAttribute HealthNow = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Maximum = AbilitySystemComponent->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Health = AbilitySystemComponent->GetNumericAttribute(HealthNow);
+
+	// OVERCLOCK: this step's share of what is left, paid by the summoner at its paid share, counted whole.
+	if (OverclockSecondsLeft > 0.0f && OverclockFervourLeft > 0.0f)
+	{
+		const float Share = FMath::Min(1.0f, StepSeconds / OverclockSecondsLeft);
+		const float ThisStep = OverclockFervourLeft * Share;
+		OverclockFervourLeft -= ThisStep;
+		OverclockSecondsLeft = FMath::Max(0.0f, OverclockSecondsLeft - StepSeconds);
+		float Counted = ThisStep;
+		UAbilitySystemComponent* Theirs = IsValid(Summoner) ? UCataclysmTargeting::AbilitySystemOf(Summoner) : nullptr;
+		const float Cost = ThisStep * OverclockPaidShare;
+		if (Cost > 0.0f && Theirs && Theirs->GetSet<UCataclysmClassResourceAttributeSet>())
+		{
+			const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+			const float Before = Theirs->GetNumericAttribute(Pool);
+			const float Taken = FMath::Min(Cost, FMath::Max(0.0f, Before));
+			if (Taken > 0.0f)
+			{
+				Theirs->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Taken);
+				FCataclysmWarFervour::NoteFervourSpentOrDrained(Theirs, Before - Theirs->GetNumericAttribute(Pool));
+			}
+			Counted = ThisStep * (Taken / Cost);
+		}
+		OverclockFervourDrained += Counted;
+	}
+
+	// THE FALL BELOW A QUARTER, stamped on the step that first finds it there, again after a rise above (Last Stand).
+	const bool bBelowQuarter = Maximum > 0.0f && Health < Maximum * 0.25f;
+	if (bBelowQuarter && !bWasBelowQuarter)
+	{
+		FellBelowQuarterAtSeconds = World->GetTimeSeconds();
+	}
+	bWasBelowQuarter = bBelowQuarter;
+
+	// POWER SURGE: a charge every 5 s, and at 5 a discharge, a shot at 40% at each enemy within the gadget's own reach
+	// (ruled 2026-11-28), and the charges begin again. A skill gadget only: what it fires is its skill.
+	if (IsSkillGadget() && PowerSurgeFor(Summoner))
+	{
+		PowerSurgeSeconds += StepSeconds;
+		while (PowerSurgeSeconds >= PowerSurgeStackSeconds)
+		{
+			PowerSurgeSeconds -= PowerSurgeStackSeconds;
+			PowerSurgeStacks = FMath::Min(PowerSurgeStacks + 1, PowerSurgeMostStacks);
+		}
+		FCataclysmWeaponSkill Skill;
+		UCataclysmAbilitySystemComponent* Theirs = IsValid(Summoner)
+			? Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Summoner)) : nullptr;
+		if (PowerSurgeStacks >= PowerSurgeMostStacks && Theirs && SkillGadgetsSkill(Skill))
+		{
+			PowerSurgeStacks = 0;
+			for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(World, Summoner, GetActorLocation(),
+																		   SkillGadgetReachCm(Skill)))
+			{
+				Theirs->QueueGadgetShot(this, Enemy, PowerSurgeDischargeShare);
+			}
+			Theirs->DrainQueuedGadgetShotsAtTrapEnemies();
+		}
+	}
+
+	// PERSISTENT SYSTEMS: above half and below full, a share of the maximum each second (ruled 2026-11-28).
+	const float Regen = SummonersGadgetStat(GadgetRegenPercentAboveHalfStat);
+	if (Regen > 0.0f && Maximum > 0.0f && Health > Maximum * 0.5f && Health < Maximum)
+	{
+		AbilitySystemComponent->ApplyModToAttribute(HealthNow, EGameplayModOp::Additive,
+			FMath::Min(Maximum - Health, Maximum * Regen / 100.0f * StepSeconds));
+	}
+}
+
 float ACataclysmMinion::SummonersGadgetStat(const TCHAR* Stat) const
 {
 	// THE GADGET TEST FIRST, so an imp, a mote and a trap ask their summoner nothing and are answered nought.
@@ -702,7 +1030,12 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 	// takes nothing of a gadget's step. Ruled 2026-10-19 (M4). Nothing for any other minion, a Spike Trap included.
 	if (Gadget && Gadget->IsSkillTrap())
 	{
-		Gadget->StepSkillTrap();
+		// AND CALCULATED CHAOS'S DRAIN, FIRST, so a trap that drains the pool to nought goes off on this step (window 2).
+		Gadget->StepUnreservedSkillTrap(DeviceStepSeconds);
+		if (IsValid(Gadget) && !Gadget->IsActorBeingDestroyed())
+		{
+			Gadget->StepSkillTrap();
+		}
 		return;
 	}
 
@@ -718,6 +1051,9 @@ void ACataclysmMinion::GadgetStep(AActor* Character)
 	{
 		return;
 	}
+
+	// AND ITS OWN READINGS: Overclock, the fall below a quarter, regeneration (the War trees' window 2, 2026-11-28).
+	Gadget->StepGadgetReadings(DeviceStepSeconds);
 
 	// WALKING ARSENAL (V5b3), BEFORE ANYTHING THE GADGET FIRES ON THIS STEP, so what it fires is fired from where it has
 	// walked to. Nothing for a gadget whose summoner holds no reach.
@@ -1084,6 +1420,27 @@ int32 ACataclysmMinion::MoveEveryGadgetOf(AActor* Player, const FVector& Point)
 	return Count;
 }
 
+int32 ACataclysmMinion::PullOtherGadgetsTo(AActor* Player, ACataclysmMinion* Placed)
+{
+	if (!IsValid(Placed))
+	{
+		return 0;
+	}
+	TArray<ACataclysmMinion*> Gadgets = DevicesOf(Player);
+	Gadgets.RemoveAll([Placed](const ACataclysmMinion* Each) { return !Each->IsGadget() || Each == Placed; });
+	Gadgets.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B) { return A.SpawnOrder < B.SpawnOrder; });
+	const FVector Point = Placed->GetActorLocation();
+	const int32 Count = Gadgets.Num();
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const float Radians = 2.0f * UE_PI * static_cast<float>(Index) / static_cast<float>(FMath::Max(1, Count));
+		Gadgets[Index]->MoveGadgetTo(Point + FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f) * GadgetMoveRingRadiusCm);
+	}
+	// AND WITH BOLTED TOGETHER HELD, WHAT LANDED WITHIN REACH BOLTS, as after every move.
+	BoltAfterMove(Player, Gadgets);
+	return Count;
+}
+
 bool ACataclysmMinion::TypeIsAGadget(const FString& InTypeName)
 {
 	const FGameplayTagContainer Tags = TagsOfType(InTypeName);
@@ -1131,9 +1488,14 @@ float ACataclysmMinion::SkillGadgetSecondsBetweenCasts(const FCataclysmWeaponSki
 	// AND SHORTENED BY "Gadgets fire 20%-40% faster" (S3), as a minion's interval is shortened by attack speed: one
 	// over one plus the increases, with this gadget's type tags, the reading `UCataclysmCommand` makes for a swing.
 	const UCataclysmAbilitySystemComponent* Cataclysm = Cast<const UCataclysmAbilitySystemComponent>(Theirs);
+	// WITH THIS GADGET NAMED, so its own readings (Overclock, Last Stand, Jury Rigged) reach the rows on its attack speed
+	// (the War trees' window 2, 2026-11-28), as the pricing of its blow names it.
+	UCataclysmAbilitySystemComponent::FPricingASkillGadgetsBlow Naming(
+		const_cast<UCataclysmAbilitySystemComponent*>(Cataclysm), this);
 	const float Faster = Cataclysm
 		? FMath::Max(0.0f, Cataclysm->IncreasesForStat(FName(TEXT("minion_attack_speed")), TypeTags))
 		: 0.0f;
+	Naming.End();
 
 	// THE BASIC ATTACK'S CLOCK IS THE PLAYER'S SWING INTERVAL, "once per basic attack cooldown" (stack 2, item 1;
 	// S2): `SecondsBetweenSwingsFor` of the player, shortened by the fire-rate row as the keyed clock is. Its slot
@@ -3669,13 +4031,35 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 	// THE POOL MUST HOLD ITS RESERVE, issue #2787, AND THAT IS THE ONLY LIMIT ON HOW MANY STAND: the owner's ruling of
 	// 2026-11-20 removed every count cap on what reserves the class resource, which replaced T6's five. When the pool
 	// cannot hold it, nothing is placed, and the press pays nothing: `PressOfASkillTrapSlot` pays only for a trap placed.
+	UAbilitySystemComponent* const PlayersOwn = UCataclysmTargeting::AbilitySystemOf(Player);
+
+	// PRECISION PLACEMENT'S "You may only have one active trap at a time" (window 2, 2026-11-28): the oldest standing
+	// trap goes to make room, as a trap limit does in the genre (a judgement), so the press always places one.
+	const int32 MostActive = FMath::FloorToInt(TrapsMostActiveFor(Player));
+	if (MostActive > 0)
+	{
+		TArray<ACataclysmMinion*> Standing = SkillTrapsOf(Player);
+		Standing.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B) { return A.SpawnOrder < B.SpawnOrder; });
+		for (int32 Index = 0; Index <= Standing.Num() - MostActive; ++Index)
+		{
+			Standing[Index]->Destroy();
+		}
+	}
+
 	const float Reserve = SkillTrapReserveFor(Player, Slot);
+	bool bUnreserved = false;
 	if (!UCataclysmCommand::HasRoomToReserve(Player, Reserve))
 	{
-		UE_LOG(LogCataclysm, Verbose,
-			TEXT("%s has no room in its pool for a skill trap reserving %.0f Fervour, so none was placed."),
-			*Player->GetName(), Reserve);
-		return nullptr;
+		// OR CALCULATED CHAOS: "Your traps can be placed even when your Fervour has no room to reserve them. Each trap
+		// placed that way reserves nothing and drains 5 Fervour per second instead" (window 2, 2026-11-28).
+		if (UnreservedTrapDrainPerSecondFor(Player) <= 0.0f)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("%s has no room in its pool for a skill trap reserving %.0f Fervour, so none was placed."),
+				*Player->GetName(), Reserve);
+			return nullptr;
+		}
+		bUnreserved = true;
 	}
 
 	// ITS 20 S (T4), lengthened by `Spawn` with the summoner's `minion_duration` rows naming its tags: "Traps last
@@ -3705,8 +4089,23 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 	// ARMED AT ITS EXACT TIME, by a timer (the C1 plan, ruled 2026-11-25). The slot is set above, so `SkillTrapsOf` counts
 	// this trap and Volatile Casing passes over it as `Self`.
 	Placed->BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, Placed->TypeTags, Placed));
-	// ITS RESERVE, and the spendable Fervour cut to what is left.
-	UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
+	// ITS RESERVE, and the spendable Fervour cut to what is left. NONE FOR A TRAP CALCULATED CHAOS PLACED.
+	Placed->bSkillTrapUnreserved = bUnreserved;
+	if (!bUnreserved)
+	{
+		UCataclysmCommand::HoldReserve(Player, Placed, Reserve);
+	}
+
+	// AND PRECISION PLACEMENT'S READING, "for every 4 traps your maximum Fervour could hold", read at placing (ruled
+	// 2026-11-28): the maximum over this trap's reserve, whole traps, after every reduction of the reserve.
+	if (UCataclysmAbilitySystemComponent* Reading = Cast<UCataclysmAbilitySystemComponent>(PlayersOwn))
+	{
+		const float Maximum = Reading->GetSet<UCataclysmClassResourceAttributeSet>()
+			? Reading->GetNumericAttribute(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute())
+			: 0.0f;
+		Reading->TrapsMaximumFervourCouldHoldAtPlacing =
+			Reserve > 0.0f ? FMath::FloorToFloat(Maximum / Reserve) : -1.0f;
+	}
 
 	// AND THE PLAYER IS TOLD, with the trap's tags, for a row on placing a trap (M2).
 	if (UCataclysmAbilitySystemComponent* Theirs =
@@ -3724,6 +4123,29 @@ ACataclysmMinion* ACataclysmMinion::PlaceSkillTrap(AActor* Player, ECataclysmAbi
 		// AND THE SABOTEUR'S FERVOUR FOR IT, after the reserve above is held. Nought for every character without
 		// `fervour_per_trap_placed`. Slice C, 2026-11-24.
 		FCataclysmWarFervour::GainOnTrapPlaced(Theirs, TrapTags);
+
+		// AND SCATTERSHOT: "a 10% chance per point ... to deploy an additional trap at a random nearby location",
+		// reserving as normal (ruled 2026-11-27), placed as a copy so it raises no placing of its own and no second
+		// copy. Not while Precision Placement's limit is held: the limit wins (a judgement of window 2).
+		const float Chance = ScattershotChanceFor(Player);
+		const float Pinned = CVarScattershotRoll.GetValueOnAnyThread();
+		if (Chance > 0.0f && MostActive <= 0 && IsValid(Placed)
+			&& (Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) < Chance)
+		{
+			const float Radians = FMath::FRandRange(0.0f, 2.0f * UE_PI);
+			const float Distance = FMath::FRandRange(ScattershotNearestCm, ScattershotFarthestCm);
+			const FVector Near = Placed->GetActorLocation()
+				+ FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f) * Distance;
+			const float Left = Placed->GetLifeSpan();
+			if (ACataclysmMinion* Copy = PlaceSkillTrapCopy(Player, Slot, Near, Reserve,
+															Left > 0.0f ? Left : SkillTrapSeconds))
+			{
+				if (Left <= 0.0f)
+				{
+					Copy->SetLifeSpan(0.0f);
+				}
+			}
+		}
 	}
 	return Placed;
 }
@@ -3835,12 +4257,28 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// nought dealt since).
 	SkillTrapTriggeringEnemy = Enemy;
 	SkillTrapTookFromItsEnemy = 0.0f;
+
+	// CONCEALED (R20, ruled 2026-11-27): "The first enemy to trigger each of your traps is stunned for 1 second", before
+	// the cast, on this trap's first triggering only.
+	const float StunSeconds = ConcealedStunSecondsFor(Player);
+	if (Enemy && StunSeconds > 0.0f && SkillTrapTriggersMade == 0)
+	{
+		UCataclysmSkillEffects::ApplyStun(Player, Enemy, StunSeconds, /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+	}
+
+	// THE LAST SURPRISE: the only trap standing arms it with what every trap dealt in the last 10 s, before its cast
+	// starts, so its own blows are not counted (ruled 2026-11-28). Put back if the cast does not start.
+	const bool bLastSurprise = SkillTrapsOf(Player).Num() == 1 && Theirs->ArmLastSurprise(this);
 	// AND THIS TRIGGER'S SHARE OF THAT ENEMY'S MAXIMUM HEALTH NOT YET ADDED: once per trigger (traps layer 4, F6).
 	bSkillTrapGaveItsEnemysHealthShare = false;
 	// NO REACH IS ASKED: a target or a place is always given, so the search by reach is never made.
 	if (!StartPlayersSkillFromHere(Player, AsTheTraps, /*SkillReachCm=*/0.0f, AimedAtEnemy,
 								   bFromThePlace ? &Place : nullptr))
 	{
+		if (bLastSurprise)
+		{
+			Theirs->DisarmLastSurprise();
+		}
 		return false;
 	}
 	++SkillTrapTriggersMade;
@@ -3884,6 +4322,17 @@ bool ACataclysmMinion::TriggerSkillTrap(AActor* TriggeringEnemy, bool bEvenForAD
 	// STAYS where it is and is ARMED AGAIN after the ordinary arming time, so it cannot trigger twice on one step; it
 	// keeps the life span it was placed with and still counts among its player's traps; and, not used up, it is not
 	// kept among the used-up traps, so a later blow of its cast finds it standing.
+	// OR REINFORCED HOUSING (window 2, ruled 2026-11-27): "Traps are not consumed when triggered. Instead each
+	// subsequent trigger costs 15 Fervour, reduced by 1 Fervour per point"; with too little, the trap is used up. The
+	// first triggering is free; each later one pays here, after it, and only a whole payment keeps the trap.
+	const float ReuseCost = ReinforcedHousingCostFor(Player);
+	if (!IsActorBeingDestroyed() && ReuseCost >= 0.0f
+		&& (SkillTrapTriggersMade <= 1 || CataclysmWarTreesW2::TakeFervourExactly(Theirs, ReuseCost)))
+	{
+		BeginSkillTrapArming(SkillTrapArmingSecondsFor(Player, TypeTags, this));
+		return true;
+	}
+
 	if (!IsActorBeingDestroyed() && SkillTrapRollsToRearm(Player))
 	{
 		// AND ARMED AGAIN AT ITS EXACT TIME, as at placing (the C1 plan, ruled 2026-11-25). An arming time of nought arms

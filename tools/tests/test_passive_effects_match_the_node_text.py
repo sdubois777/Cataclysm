@@ -869,7 +869,9 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 #: rows on 23 War nodes that had none.
 #: AND TO 1082 THE SAME DAY, ENGINE SLICE E1's ROWS on the same script: 36 rows on 20 War nodes that had none.
 # 1,181 SINCE THE WAR TREES' ENGINE SLICES E2, E3 AND THE RIDERS (2026-11-27): 99 more rows.
-AUTHORED_ROWS = 1181
+#: AND TO 1231 ON 2026-11-28, THE WAR TREES' WINDOW 2 (`E4_NODES` in `tools/reapply_war_trees_data_rows_workbook.py`),
+#: on 1181: 50 rows on 27 Saboteur nodes that had none, the data rows and engine slice E4's.
+AUTHORED_ROWS = 1231
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1408,7 +1410,8 @@ AUTHORED_ROWS = 1181
 #: AND TO 566 ON 2026-11-27, THE WAR TREES' DATA ROWS: 23 War nodes that had no row, on 543.
 #: AND TO 586 THE SAME DAY, ENGINE SLICE E1's ROWS: 20 more War nodes.
 # 633 SINCE THE WAR TREES' ENGINE SLICES E2, E3 AND THE RIDERS (2026-11-27): 47 more nodes.
-AUTHORED_NODES = 633
+#: AND TO 660 ON 2026-11-28, THE WAR TREES' WINDOW 2: the 27 Saboteur nodes of `E4_NODES` that had no row, on 633.
+AUTHORED_NODES = 660
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1960,6 +1963,13 @@ CONDITION_WORDS = {
     "target_not_yet_triggered_your_trap": ("have not yet triggered one of your traps", None),
     "seconds_after_gadget_struck": ("gadgets are under attack", {2.0: "under attack"}),
     "no_room_for_a_trap": ("no room to reserve another trap", None),
+    # AND THE SABOTEUR'S GADGET CONDITIONS OF THE WAR TREES' WINDOW 2 (2026-11-28). Siege Mode's "Once you have stood
+    # still for 3 seconds", the player's own stillness before the bonus begins; Last Stand Protocol's "When a gadget is
+    # reduced below 25% HP ... for 5 seconds", the window after the gadget fell; and Jury Rigged's "until repaired to
+    # full HP", which compares nothing.
+    "player_stationary_for_seconds": ("stood still for", "{value:g} second"),
+    "gadget_fell_below_quarter_within_seconds": ("reduced below 25% hp", "for {value:g} second"),
+    "gadget_reprieved_below_full_health": ("until repaired to full hp", None),
 
     # THE CONDITIONS THE DEMONIC TREE REWORK OF 2026-11-24 PUT ON A PASSIVE ROW
     # FOR THE FIRST TIME. Each was already known to the generator and the game;
@@ -2699,7 +2709,11 @@ SCALE_WORDS = {
     # and failed Old Bones. A step of 30 is stated in digits, a step of 1 in words.
     # AND SYMBIOSIS' "for each second a gadget has been continuously active" (the War trees' data rows, 2026-11-27), a
     # second word set with its own step of one in words (`STEP_OF_ONE_ON_ONE_NODE`).
-    "minion_seconds_active": ([(("seconds it has stood", "second it has stood"),), ("continuously active",)],
+    # AND PERSISTENT SYSTEMS' "Gadgets that survive for 20 seconds gain a permanent +10% damage stack" (the War trees'
+    # window 2, 2026-11-28), a third word set: one step of 20 seconds capped at one, its step in
+    # `STEP_STATED_ON_ONE_NODE`.
+    "minion_seconds_active": ([(("seconds it has stood", "second it has stood"),), ("continuously active",),
+                               ("gadgets that survive for",)],
                               "every full {value:g} seconds", "for each full second"),
     "minions_held": (("minion", ("you have", "alive")),
                      ("for every {value:g} minions", "{value:g} or more minions"),
@@ -2840,7 +2854,10 @@ SCALE_WORDS = {
     # AND FLESH FORTRESS'S "for every 50 Armor you would have had" (R16, the War trees' engine slice E3, 2026-11-27).
     "armor": ([("of your armor",), ("armor you have",), ("armor you would have had",)],
               ("{value:g}%", "every {value:g} armor"), None),
-    "gadgets_active": (("active gadget",), None, "each active gadget"),
+    # AND EFFICIENT DESIGN'S "for each other gadget you have active" (the War trees' window 2, 2026-11-28, as the
+    # coordinator reworded it that day), a second word set: the reserve is read as a gadget is placed, so the gadgets
+    # then active are the others.
+    "gadgets_active": ([("active gadget",), ("other gadget you have active",)], None, "each active gadget"),
     # AND SNAP BACK'S "while you have at least one active trap" (2026-11-25), the
     # trap count capped at one step, which is exactly "at least one"; and SUPPORT
     # NETWORK'S "for each active trap on the battlefield" the same day.
@@ -2891,6 +2908,23 @@ SCALE_WORDS = {
     # `minion_seconds_active` above. Each says "for each", so the step is 1; each
     # cap is the row's Scale Max Steps ("up to 5").
     "minions_near_the_minion": (("for each other minion of yours within",), None, None),
+
+    # THE SABOTEUR'S SCALES OF THE WAR TREES' WINDOW 2 (2026-11-28), each the clause of its node that counts it. Steady
+    # Power's "for each point of Fervour above 50% of your maximum"; Hot Deploy's "for every 10 Fervour spent in the last
+    # 5 seconds"; Callous Setup's "for every 10% of your evasion chance" and Calculated Risk's "for every 1% of evasion
+    # chance you would have had", the evasion before its own removal; Hair Wire Expertise's "for each unique trap type
+    # you have active"; Siege Mode's "for each second you have stood still"; Overcharge's "per Fervour consumed" and
+    # Overclock's "for each Fervour drained"; and Precision Placement's "for every 4 traps your maximum Fervour could
+    # hold". A step of one with no number in the words is `None`, so the step is held to 1.
+    "class_resource_above_half": (("fervour above 50% of your maximum",), None, None),
+    "class_resource_spent_recently": (("fervour spent in the last",), "for every {value:g} fervour", None),
+    "evasion": (("of your evasion chance",), "for every {value:g}% of your evasion", None),
+    "evasion_before_removal": (("you would have had",), "for every {value:g}% of evasion", None),
+    "trap_kinds_active": (("unique trap type",), None, None),
+    "player_seconds_stationary": (("second you have stood still",), None, None),
+    "gadget_empowered_fervour": (("per fervour consumed",), None, None),
+    "gadget_overclock_fervour": (("fervour drained",), None, None),
+    "traps_maximum_fervour_could_hold": (("your maximum fervour could hold",), "for every {value:g} traps", None),
 }
 
 
@@ -2915,6 +2949,9 @@ SCALES_STATED_AS_A_SHARE = {
 STEP_STATED_ON_ONE_NODE = {
     ("SoulCollector_basic_b_c1", "own_stacks"): "for every {value:g} kills",
     ("SoulCollector_keystone_b_kC", "own_stacks"): "{value:g} or more kills",
+    # Persistent Systems' "Gadgets that survive for 20 seconds gain a permanent +10% damage stack" (the War trees'
+    # window 2, 2026-11-28): a step of 20 seconds capped at one step.
+    ("Saboteur_basic_gadget_sus_002", "minion_seconds_active"): "survive for {value:g} seconds",
 }
 
 
@@ -3633,6 +3670,15 @@ VALUE_FORMS = {
     "retaliation_pulse_drain_per_second": "drains {value:g} Fervour per second",
     "retaliation_pulse_radius_metres": "within {value:g} metres",
     "health_percent_per_ten_fervour_spent": "heal equal to {value:g}% of your maximum HP",
+    # THE SABOTEUR'S FLAT FIGURES OF THE WAR TREES' WINDOW 2 (2026-11-28), as their sentences write them: Rapid
+    # Deployment's "by 1 per point" and "Once every 15 seconds"; Reinforced Housing's "costs 15 Fervour, reduced by 1
+    # Fervour per point"; Calculated Chaos's "drains 5 Fervour per second"; and Concealed's "stunned for 1 second".
+    "gadget_empower_cost_less": "by {value:g} per point",
+    "gadget_empower_free_every_seconds": "every {value:g} seconds",
+    "trap_reuse_fervour_cost": "costs {value:g} Fervour",
+    "trap_reuse_fervour_cost_less": "reduced by {value:g} Fervour per point",
+    "trap_unreserved_drain_per_second": "drains {value:g} Fervour per second",
+    "trap_first_trigger_stun_seconds": "stunned for {value:g} second",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -3652,6 +3698,17 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # THE SABOTEUR'S SWITCHES OF THE WAR TREES' WINDOW 2 (2026-11-28), flags at 1, each a clause that switches a rule on:
+    # Calculated Risk's evasion "permanently set to 0%" (removed, 1); Jury Rigged's "cannot be destroyed"; Coordinated
+    # Strike's 4-point "triggers for all active gadgets"; Power Surge's charge; Precision Placement's one trap; and The
+    # Last Surprise's blow.
+    ("Saboteur_basic_gadget_mid_005", "evasion"): ("your evasion chance is permanently set to 0%", 1.0),
+    ("Saboteur_basic_gadget_mid_007", "gadget_survives_lethal_once"): ("your gadgets cannot be destroyed", 1.0),
+    ("Saboteur_basic_gadget_deep_002", "coordinated_strike_all_gadgets"):
+        ("this effect triggers for all active gadgets simultaneously", 1.0),
+    ("Saboteur_basic_gadget_sus_003", "gadget_power_surge"): ("your gadgets build a charge over time", 1.0),
+    ("Saboteur_keystone_trap_ql", "trap_most_active"): ("you may only have one active trap at a time", 1.0),
+    ("Saboteur_keystone_trap_deep_001", "trap_last_surprise"): ("when your last active trap is triggered", 1.0),
     # THE WAR TREES' ENGINE SLICES E1 TO E3 (2026-11-27): flags at 1, each a clause that switches a rule on, and
     # Bloodied's "tripled", a More of 200.
     ("Bulwark_keystone_jg_t1", "immune_to_crowd_control"): ("you are immune to crowd control", 1.0),
@@ -4422,6 +4479,15 @@ ACTION_VALUE_FORMS = {
     # BLADE ECHO'S "for 100% weapon damage" (the Death trees' slice C6e).
     # AND GLEANING'S AND UNQUIET SOULS' "for 50% of your weapon damage" (the Soul Collector keystone rework).
     "strike_strongest_near": ("{value:g}% weapon damage", "{value:g}% of your weapon damage"),
+    # THE SABOTEUR'S GADGET ACTIONS OF THE WAR TREES' WINDOW 2 (2026-11-28), as their sentences write them: Scrap and
+    # Rebuild's "ready 2 seconds sooner per point", Overcharge's "consumes 2 Fervour per point", Overclock's "drains 2
+    # Fervour per point", Volatile Construction's "+15% of its maximum HP per point" and Coordinated Strike's "+8% bonus
+    # damage per point".
+    "gadget_move_cooldown_cut": ("ready {value:g} seconds sooner",),
+    "gadget_empowered": ("consumes {value:g} Fervour",),
+    "gadget_overclocked": ("drains {value:g} Fervour",),
+    "gadget_explodes_for_share_of_maximum_health": ("+{value:g}% of its maximum HP",),
+    "gadgets_attack_hit_enemy": ("+{value:g}% bonus damage",),
 }
 
 #: THE WORDS A ROW SIZED BY ITS EVENT'S AMOUNT MUST SIT ON, by its Fraction Of.
@@ -4464,6 +4530,9 @@ ACTION_VALUE_IN_WORDS = {
     # trap within 30 metres triggers. The 30 is a judgement; the sentence names no distance.
     ("Saboteur_basic_gadget_mid_003", "gadget_fires_at_trap_enemy"): ("immediately fires at the triggering enemy", 100.0),
     ("Saboteur_basic_gadget_mid_003", "trigger_traps_nearby"): ("the nearest active trap triggers instantly", 30.0),
+    # FORWARD OPERATING BASE (the War trees' window 2, 2026-11-28): "all other active gadgets are pulled to the most recent
+    # gadget", the whole rule (100), as `GADGETS_PULLED_TO_PLACED_ACTION` in the generator describes it.
+    ("Saboteur_keystone_gadget_dep", "gadgets_pulled_to_placed"): ("all other active gadgets are pulled", 100.0),
     # THE WAR LINE'S ACTIONS WHOSE NUMBER IS WORDS, since the bundle 3 merge (2026-11-25): Frenzy's reset of the
     # movement skill (100, the whole cooldown), the Saboteur's trap placed again and Counterfire's answer (100, always),
     # and Scrap Mines' "at double damage" (200).
@@ -4827,7 +4896,11 @@ def test_a_node_that_takes_something_away_is_actually_tested(effects):
 #: AND `bolted_more_percent_per_gadget` SINCE V5c (2026-11-25): Bolted Together's "10% more damage for each gadget in
 #: it", which `ACataclysmMinion::BoltedMoreMultiplier` applies to a bolted gadget's every attack as a multiplier of its
 #: own (one plus the percent times the gadgets in it), for the same reason.
-FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent", "bolted_more_percent_per_gadget"})
+#: AND `trap_reuse_more_percent` SINCE THE WAR TREES' WINDOW 2 (2026-11-28): Reinforced Housing's "At 5 points: Each
+#: subsequent trigger deals 20% more damage than the last", which the engine compounds onto each later triggering of a
+#: reused trap as a multiplier of its own, for the same reason.
+FLAT_STATS_THAT_MULTIPLY = frozenset({"debuffed_enemies_deal_less_percent", "bolted_more_percent_per_gadget",
+                                      "trap_reuse_more_percent"})
 
 
 #: See `test_the_bucket_matches_the_nodes_own_wording`.
@@ -5490,6 +5563,15 @@ FIXED_FROM_THE_FIRST_POINT = frozenset({
     ("Berserker_dw_007", "fervour_drain_per_second"),
     ("Bulwark_basic_jg_t1_002", ""),
     ("Bulwark_basic_tw_stem_004", "retaliation_radius_metres"),
+    # AND THE WAR TREES' WINDOW 2 (2026-11-28), each one figure whatever the points: Steady Power's "Each active gadget
+    # drains 1 Fervour per second" (the 4% beside it is the per-point one); Overcharge's and Overclock's "+5% ... per
+    # Fervour consumed" and "+5% attack speed for each Fervour drained", whose "per point" is in the Fervour the action
+    # already multiplies; and Reinforced Housing's cost of 15, from which its own stat takes 1 a point.
+    ("Saboteur_basic_gadget_sus_001", "fervour_drain_per_second"),
+    ("Saboteur_basic_gadget_stem_004", "attack_damage"),
+    ("Saboteur_basic_gadget_stem_004", "spell_damage"),
+    ("Saboteur_basic_gadget_dep_002", "minion_attack_speed"),
+    ("Saboteur_basic_trap_ql_002", "trap_reuse_fervour_cost"),
 })
 
 

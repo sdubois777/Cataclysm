@@ -1377,6 +1377,22 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("critical_penetration"),
 		// And Blood for Blood's share, read by UCataclysmAbilitySystemComponent::ReflectBloodForBlood. 2026-11-27.
 		TEXT("blood_for_blood_reflect_percent"),
+		// And the window 2 gadget stats, read off the summoner by ACataclysmMinion (2026-11-28).
+		TEXT("gadget_empower_cost_less"),
+		TEXT("gadget_empower_free_every_seconds"),
+		TEXT("gadget_survives_lethal_once"),
+		TEXT("gadget_regen_percent_above_half"),
+		TEXT("gadget_ignore_hit_chance"),
+		TEXT("coordinated_strike_all_gadgets"),
+		TEXT("gadget_power_surge"),
+		TEXT("trap_copy_on_place_chance"),
+		TEXT("trap_reuse_fervour_cost"),
+		TEXT("trap_reuse_fervour_cost_less"),
+		TEXT("trap_reuse_more_percent"),
+		TEXT("trap_most_active"),
+		TEXT("trap_first_trigger_stun_seconds"),
+		TEXT("trap_last_surprise"),
+		TEXT("trap_unreserved_drain_per_second"),
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),

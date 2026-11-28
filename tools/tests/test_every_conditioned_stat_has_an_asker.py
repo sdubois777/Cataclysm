@@ -133,7 +133,9 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     # 45 THE SAME DAY, engine slice E2: `melee_arc_full_circle` and `fervour_per_enemy_hit` (Whirlwind).
     # 48 THE SAME DAY, engine slice E3: `berserking_on_every_melee_hit` (Bloodied), `berserking_spends_half`
     # (Berserker's Rage) and `block_chance_floor` (Eye of the Storm).
-    assert sizes["ConditionedProbes"] == 48, sizes
+    # 49 SINCE THE WAR TREES' WINDOW 2 (2026-11-28): `minion_range` (Siege Mode). 50 THE SAME DAY:
+    # `minion_attack_speed` (Last Stand Protocol, Jury Rigged).
+    assert sizes["ConditionedProbes"] == 50, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes
