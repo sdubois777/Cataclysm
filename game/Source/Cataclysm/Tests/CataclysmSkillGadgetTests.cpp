@@ -24,7 +24,9 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Data/CataclysmDataRows.h"
 #include "Dungeon/CataclysmFloorContents.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
@@ -32,6 +34,7 @@
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "UObject/Package.h"
 
 /**
  * Skill gadgets, stack 1: the four keyed slots and the skill bar. Ruled 2026-10-16 by the coordinating session
@@ -41,7 +44,8 @@
  * THE PLAYER IS A POSSESSED PLAYER CHARACTER HOLDING A DEMONIC WHIP, given a weapon damage of 100 by hand: Heavy
  * Searing Lash, a 5 m cone; Special Tether, a projectile; Support Coil of Embers, a self buff; Ultimate The Gathering,
  * a 14 m point-blank strike. Two cases hold another weapon: a Demonic Wand, whose Ultimate Anathema is a 12 m
- * point-blank spell, and a War Crossbow, whose Heavy skill Armor Piercing Bolt has no shape.
+ * point-blank spell, and a War Axe, whose Heavy skill Cleaving Blow is given no shape in a copy of the table its
+ * weapon slots read (issue #2928, 2026-11-28).
  *
  * NO ROW IS AUTHORED, SO EVERY STAT IS GRANTED BY HAND, one stat line per call, replacing the last. The slot's flag is
  * a flat 1 on `skill_slot_is_a_gadget` requiring the slot's tag, which is the row the enchantment session is to write.
@@ -306,6 +310,42 @@ namespace CataclysmSkillGadgetTest
 		UCataclysmAbilitySystemComponent* System = nullptr;
 		UCataclysmWeaponSlotsComponent* Slots = nullptr;
 	};
+
+	/**
+	 * A COPY OF THE LOADED WEAPON SKILL TABLE in which every named row whose key begins `RowPrefix` states no shape and
+	 * no shape numbers, for a rig's weapon slots (`UCataclysmWeaponSlotsComponent::SetWeaponSkillTable`)
+	 * to read: a skill with no shape made in the test, so the test does not depend on a live row staying unshaped.
+	 * Null, with the reason reported, when the table does not load or no named row begins so. Issue #2928, the War
+	 * weapon skills' window 1, 2026-11-28.
+	 */
+	UDataTable* GadgetTableWithNoShapeFor(FAutomationTestBase& Test, const TCHAR* RowPrefix)
+	{
+		const UDataTable* Loaded = UCataclysmWeaponSkills::LoadGeneratedTable();
+		UDataTable* Copy = Loaded ? DuplicateObject<UDataTable>(Loaded, GetTransientPackage()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a copy of the weapon skill table"), Copy))
+		{
+			return nullptr;
+		}
+		int32 Emptied = 0;
+		for (const TPair<FName, uint8*>& Each : Copy->GetRowMap())
+		{
+			FCataclysmWeaponSkillRow* Row = reinterpret_cast<FCataclysmWeaponSkillRow*>(Each.Value);
+			if (Row && !Row->SkillName.IsEmpty() && Each.Key.ToString().StartsWith(RowPrefix, ESearchCase::CaseSensitive))
+			{
+				Row->Shape.Reset();
+				Row->ShapeParams.Reset();
+				++Emptied;
+			}
+		}
+		// THE CONTROL: the prefix names at least one named skill, so the copy is not the table as loaded.
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: the copy empties the shape of %d named row(s) beginning %s"),
+										   Emptied, RowPrefix),
+						   Emptied > 0))
+		{
+			return nullptr;
+		}
+		return Copy;
+	}
 
 	/** A skill gadget for this rig's `Slot` at `Where`, or null with the reason reported. */
 	ACataclysmMinion* GadgetTestPlace(FAutomationTestBase& Test, const FGadgetTestRig& Rig, ECataclysmAbilitySlot Slot,
@@ -1325,9 +1365,12 @@ CATACLYSM_TEST(FCataclysmSkillGadgetShapelessTest,
 {
 	using namespace CataclysmSkillGadgetTest;
 
-	// A PLAYER HOLDING A WAR CROSSBOW (a War Axe until the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave the row it used before a shape, Cleaving Blow), whose Heavy skill Armor
-	// Piercing Bolt is named and states no shape, and a whip player 60 m
-	// away for the control. NOT A CELESTIAL SWORD, as the first build had it: its Heavy row has no SkillName, and
+	// A PLAYER HOLDING A WAR AXE whose Heavy skill Cleaving Blow is named and states no shape IN A COPY OF THE TABLE its
+	// weapon slots read, and a whip player 60 m away for the control. THE SHAPELESS SKILL IS MADE IN THE TEST since issue
+	// #2928 (the War weapon skills' window 1, 2026-11-28): until then the test named a live War row, and each War slice
+	// that shaped one broke it (Cleaving Blow in WS1, then Armor Piercing Bolt). The copy is handed to the slots and the
+	// Axe equipped again, so the slots refill from it (`EquipWeaponType` refills even for the type already held).
+	// NOT A CELESTIAL SWORD, as the first build had it: its Heavy row has no SkillName, and
 	// `UCataclysmWeaponSkills::SkillsFor` skips a row with none, so that slot holds no skill at all and the rig refuses
 	// it. Ruled 2026-10-16 after window g1 stopped on it.
 	FGadgetTestWorld Scope;
@@ -1336,8 +1379,18 @@ CATACLYSM_TEST(FCataclysmSkillGadgetShapelessTest,
 		return false;
 	}
 	UWorld* World = Scope.World;
-	FGadgetTestRig Rig(World, FVector::ZeroVector, TEXT("War"), TEXT("Crossbow"));
+	FGadgetTestRig Rig(World, FVector::ZeroVector, TEXT("War"), TEXT("Axe"));
 	FGadgetTestRig Whip(World, FVector(60.0f * M, 0.0f, 0.0f));
+	UDataTable* ShapelessTable = GadgetTableWithNoShapeFor(*this, TEXT("War_Axe_Heavy"));
+	if (!ShapelessTable || !TestNotNull(TEXT("set-up: the War Axe player's weapon slots"), Rig.Slots))
+	{
+		return false;
+	}
+	Rig.Slots->SetWeaponSkillTable(ShapelessTable);
+	if (!TestTrue(TEXT("set-up: the War Axe's slots refill from the copy"), Rig.Slots->EquipWeaponType(TEXT("Axe")) > 0))
+	{
+		return false;
+	}
 	FCataclysmWeaponSkill Shapeless;
 	FCataclysmWeaponSkill Lash;
 	if (!Rig.IsUsable(*this) || !Whip.IsUsable(*this) || !Rig.HeldRow(ECataclysmAbilitySlot::Heavy, Shapeless)
@@ -1348,7 +1401,8 @@ CATACLYSM_TEST(FCataclysmSkillGadgetShapelessTest,
 
 	// THE CONTROL: a skill with a shape may be cast by a gadget; this one has none.
 	TestTrue(TEXT("control: a gadget may cast Searing Lash"), ACataclysmMinion::SkillGadgetMayCast(Lash));
-	TestTrue(TEXT("set-up: the War Crossbow's Heavy row, Armor Piercing Bolt, states no shape"),
+	TestEqual(TEXT("set-up: the War Axe's Heavy row"), Shapeless.RowName, FName(TEXT("War_Axe_Heavy")));
+	TestTrue(TEXT("set-up: the War Axe's Heavy row, Cleaving Blow, states no shape in the copy"),
 		Shapeless.Shape == ECataclysmSkillShape::None);
 	TestFalse(TEXT("and a gadget may not cast it"), ACataclysmMinion::SkillGadgetMayCast(Shapeless));
 

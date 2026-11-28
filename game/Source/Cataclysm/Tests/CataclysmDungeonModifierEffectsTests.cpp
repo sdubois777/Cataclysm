@@ -49283,6 +49283,54 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 
 	/**
+	 * A COPY OF THE LOADED WEAPON SKILL TABLE WITH ONE WAR SKILL IN WILD MAGIC'S POOL: every War row taken out but the
+	 * first the rule lets through, every other type's rows kept. For a game mode to read
+	 * (`ACataclysmDungeonGameMode::SetWildMagicSkillTableForTests`). Null, with the reason reported, when the real War
+	 * pool is empty or the copy cannot be made.
+	 *
+	 * FOR THE TWO TESTS BUILT ON A POOL OF ONE, which War's was from 2026-10-04 until the War weapon skills' window 1 gave
+	 * it thirteen; no real damage type has a pool of one any more. Issue #2928, 2026-11-28.
+	 */
+	UDataTable* AWildMagicTableWithOneWarSkill(FAutomationTestBase& Test)
+	{
+		const UDataTable* Loaded = UCataclysmWeaponSkills::LoadGeneratedTable();
+		const TArray<FCataclysmWeaponSkill> RealWar = UCataclysmDungeonModifierEffects::WildMagicPool(Loaded, TEXT("War"));
+		// THE CONTROL: War's real pool holds a skill, so the copy keeps a real row and invents none.
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: War's real pool holds a skill (it holds %d)"), RealWar.Num()),
+						   RealWar.Num() >= 1))
+		{
+			return nullptr;
+		}
+		UDataTable* Copy = DuplicateObject<UDataTable>(Loaded, GetTransientPackage());
+		if (!Test.TestNotNull(TEXT("set-up: a copy of the weapon skill table"), Copy))
+		{
+			return nullptr;
+		}
+		const FName Kept = RealWar[0].RowName;
+		TArray<FName> Removing;
+		for (const TPair<FName, uint8*>& Each : Copy->GetRowMap())
+		{
+			const FCataclysmWeaponSkillRow* Row = reinterpret_cast<const FCataclysmWeaponSkillRow*>(Each.Value);
+			if (Row && Each.Key != Kept && Row->DamageType.Equals(TEXT("War"), ESearchCase::IgnoreCase))
+			{
+				Removing.Add(Each.Key);
+			}
+		}
+		for (const FName& Name : Removing)
+		{
+			Copy->RemoveRow(Name);
+		}
+		// AND ONLY WAR'S ROWS WENT: Demonic's pool in the copy is Demonic's real one.
+		if (!Test.TestEqual(TEXT("set-up: the copy keeps Demonic's pool"),
+							UCataclysmDungeonModifierEffects::WildMagicPool(Copy, TEXT("Demonic")).Num(),
+							UCataclysmDungeonModifierEffects::WildMagicPool(Loaded, TEXT("Demonic")).Num()))
+		{
+			return nullptr;
+		}
+		return Copy;
+	}
+
+	/**
 	 * Wild Magic's roll and pick pinned, and put back to "not pinned" afterwards.
 	 *
 	 * NOT `FScopedConsoleString`, which writes an empty string when it goes: for a number that reads as 0, and a roll
@@ -49477,19 +49525,64 @@ bool FCataclysmWildMagicPoolTest::RunTest(const FString& Parameters)
 		Names.Add(Skill.Name);
 	}
 
-	// WAR TODAY: 53 of its 61 named skills have no shape, so its pool is one skill. The state of the War skills. 54
-	// until 2026-11-25, when Blood and Iron was built as an Aura (the damage-type auras), which leaves it out.
+	// WAR'S FIGURES ARE DERIVED FROM THE LOADED TABLE AND NOT PINNED, since issue #2928 (the War weapon skills' window
+	// 1, 2026-11-28): War's rows are being shaped slice by slice, and every slice moved the pins (no shape 53 to 33,
+	// movement 3 to 9, the pool 1 to 13 in that window alone). Each reason is counted here from the rows' own fields,
+	// apart from the rule's sort, and the sort must agree with it. docs/DECISIONS.md's table keeps War's column as a
+	// record of 2026-11-28 (the paragraph under it says so); Demonic's column above is still pinned.
 	TMap<EWhy, TArray<FString>> War;
-	Pin(TEXT("War: named skills"), Sorted(TEXT("War"), War), 61);
-	// 33, 9, 13 AND 2 SINCE THE WAR WEAPON SKILLS' WINDOW 1 (issue #2972, 2026-11-28): twenty War rows gained a shape.
-	Pin(TEXT("War: no shape"), CountOf(War, EWhy::NoShape), 33);
-	Pin(TEXT("War: aura"), CountOf(War, EWhy::Aura), 1);
-	Pin(TEXT("War: movement"), CountOf(War, EWhy::Movement), 9);
-	Pin(TEXT("War: channelled or held"), CountOf(War, EWhy::ChannelledOrHeld), 2);
-	Pin(TEXT("War: summon or deployable"), CountOf(War, EWhy::SummonOrDeployable), 3);
-	Pin(TEXT("War: in the pool"), CountOf(War, EWhy::InThePool), 13);
+	const int32 WarNamed = Sorted(TEXT("War"), War);
+	const FGameplayTag ChannelTag = FGameplayTag::RequestGameplayTag(TEXT("Type.Channel"), /*ErrorIfNotFound=*/false);
+	int32 WarNoShape = 0;
+	int32 WarMovement = 0;
+	int32 WarAura = 0;
+	int32 WarSummonOrDeployable = 0;
+	int32 WarChannelledOrHeld = 0;
+	for (const FCataclysmWeaponSkill& Skill : UCataclysmWeaponSkills::SkillsOfDamageType(Table, TEXT("War")))
+	{
+		// "NO SHAPE" IS NO TEMPLATE RUNS IT (`IsBuilt`), as the rule asks; a shape named but not built is counted here too.
+		const bool bBuilt = UCataclysmWeaponSkills::IsBuilt(Skill);
+		const bool bSummonOrDeployable =
+			Skill.Shape == ECataclysmSkillShape::Summon || Skill.Shape == ECataclysmSkillShape::Deployable;
+		const bool bEndsByItself = Skill.Shape != ECataclysmSkillShape::Movement
+			&& Skill.Shape != ECataclysmSkillShape::Aura && !bSummonOrDeployable;
+		WarNoShape += !bBuilt ? 1 : 0;
+		WarMovement += bBuilt && Skill.Shape == ECataclysmSkillShape::Movement ? 1 : 0;
+		WarAura += bBuilt && Skill.Shape == ECataclysmSkillShape::Aura ? 1 : 0;
+		WarSummonOrDeployable += bBuilt && bSummonOrDeployable ? 1 : 0;
+		WarChannelledOrHeld += bBuilt && bEndsByItself
+				&& ((ChannelTag.IsValid() && Skill.Tags.HasTag(ChannelTag)) || Skill.Params.ChargeTime > 0.0f)
+			? 1 : 0;
+	}
+	AddInfo(FString::Printf(TEXT("WAR ON THE LOADED TABLE: named %d, no shape %d, movement %d, aura %d, summon or "
+								 "deployable %d, channelled or held %d, in the pool %d"),
+							WarNamed, WarNoShape, WarMovement, WarAura, WarSummonOrDeployable, WarChannelledOrHeld,
+							CountOf(War, EWhy::InThePool)));
+
+	// THE CONTROLS: the derivation counts something, and every named War skill is sorted under exactly one reason.
+	TestTrue(TEXT("control: War has named skills"), WarNamed > 0);
+	int32 WarSortedSomewhere = 0;
+	for (const TPair<EWhy, TArray<FString>>& Reason : War)
+	{
+		WarSortedSomewhere += Reason.Value.Num();
+	}
+	TestEqual(TEXT("control: every named War skill is sorted under one reason"), WarSortedSomewhere, WarNamed);
+
+	// THE RULE'S SORT AGREES WITH THE ROWS' OWN FIELDS.
+	TestEqual(TEXT("War: no shape, as sorted and as the rows state it"), CountOf(War, EWhy::NoShape), WarNoShape);
+	TestEqual(TEXT("War: movement, as sorted and as the rows state it"), CountOf(War, EWhy::Movement), WarMovement);
+	TestEqual(TEXT("War: aura, as sorted and as the rows state it"), CountOf(War, EWhy::Aura), WarAura);
+	TestEqual(TEXT("War: summon or deployable, as sorted and as the rows state it"),
+			  CountOf(War, EWhy::SummonOrDeployable), WarSummonOrDeployable);
+	TestEqual(TEXT("War: channelled or held, as sorted and as the rows state it"),
+			  CountOf(War, EWhy::ChannelledOrHeld), WarChannelledOrHeld);
+
+	// WAR'S POOL HOLDS A SKILL, AND THE POOL FUNCTION AGREES WITH THE SORT.
+	TestTrue(TEXT("control: War's pool holds at least one skill"), CountOf(War, EWhy::InThePool) >= 1);
+	TestEqual(TEXT("War: the pool function agrees with the count"), TheWildMagicPool(TEXT("War")).Num(),
+			  CountOf(War, EWhy::InThePool));
 	TestTrue(TEXT("Blood and Iron is an aura"), Holds(War, EWhy::Aura, TEXT("Blood and Iron")));
-	TestTrue(TEXT("and that one is Shield Bash"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
+	TestTrue(TEXT("Shield Bash is in the pool"), Holds(War, EWhy::InThePool, TEXT("Shield Bash")));
 	// A TYPE NO ROW CARRIES, AND NO LONGER CELESTIAL: issue #2580 gave Celestial a Warhammer kit and every damage type
 	// but War and Demonic one kit each, so no damage type is without a shaped skill any more.
 	TestEqual(TEXT("a damage type with no skills has an empty pool"), TheWildMagicPool(TEXT("NoSuchType")).Num(), 0);
@@ -49793,10 +49886,19 @@ bool FCataclysmWildMagicSmallPoolTest::RunTest(const FString& Parameters)
 	ThePlayerUses(Player, TEXT("Some Other Skill"), ECataclysmAbilitySlot::Heavy, Aim);
 	TestTrue(TEXT("with an empty pool a use draws nothing"), Mode->WildMagicPendingSkill().IsNone());
 
-	// A WAR WEAPON: one skill in the pool on 2026-10-04. The panel says how many, which is what the row can do here.
+	// A WAR WEAPON WITH ONE SKILL IN THE POOL. The panel says how many, which is what the row can do here. THE POOL OF
+	// ONE IS MADE IN THE TEST since issue #2928 (the War weapon skills' window 1, 2026-11-28): the game mode reads a copy
+	// of the table holding one War skill the rule lets through (`SetWildMagicSkillTableForTests`). War's own pool was
+	// that one skill from 2026-10-04 until that window gave it thirteen.
+	UDataTable* OneWarSkill = AWildMagicTableWithOneWarSkill(*this);
+	if (!OneWarSkill)
+	{
+		return false;
+	}
+	Mode->SetWildMagicSkillTableForTests(OneWarSkill);
 	Weapon->SetDamageType(TEXT("War"));
-	const TArray<FCataclysmWeaponSkill> War = TheWildMagicPool(TEXT("War"));
-	if (!TestEqual(TEXT("set-up: War's pool is one skill"), War.Num(), 1))
+	const TArray<FCataclysmWeaponSkill> War = UCataclysmDungeonModifierEffects::WildMagicPool(OneWarSkill, TEXT("War"));
+	if (!TestEqual(TEXT("set-up: War's pool in the copy is one skill"), War.Num(), 1))
 	{
 		return false;
 	}
@@ -64584,16 +64686,22 @@ bool FCataclysmSkillPoolWildMagicPoolTest::RunTest(const FString& Parameters)
 	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
 	UCataclysmWeaponSlotsComponent* Slots =
 		Player.Character ? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
-	const TArray<FCataclysmWeaponSkill> War = TheWildMagicPool(TEXT("War"));
-	const TArray<FCataclysmWeaponSkill> Demonic = TheWildMagicPool(TEXT("Demonic"));
+	// A POOL OF ONE WAR SKILL, MADE IN THE TEST since issue #2928 (the War weapon skills' window 1, 2026-11-28): the game
+	// mode reads a copy of the table holding one War skill the rule lets through (`SetWildMagicSkillTableForTests`).
+	// War's own pool was that one skill until that window gave it thirteen. Demonic's is its real one.
+	UDataTable* OneWarSkill = AWildMagicTableWithOneWarSkill(*this);
+	const TArray<FCataclysmWeaponSkill> War = UCataclysmDungeonModifierEffects::WildMagicPool(OneWarSkill, TEXT("War"));
+	const TArray<FCataclysmWeaponSkill> Demonic =
+		UCataclysmDungeonModifierEffects::WildMagicPool(OneWarSkill, TEXT("Demonic"));
 	FWildMagicPinned Pinned(TEXT("0"), 0);
-	if (!Mode || !TestNotNull(TEXT("set-up: the player's weapon slots"), Slots)
-		|| !TestEqual(TEXT("set-up: War's pool is one skill"), War.Num(), 1)
+	if (!Mode || !TestNotNull(TEXT("set-up: the player's weapon slots"), Slots) || !OneWarSkill
+		|| !TestEqual(TEXT("set-up: War's pool in the copy is one skill"), War.Num(), 1)
 		|| !TestTrue(TEXT("set-up: Demonic's pool holds skills"), Demonic.Num() > 0)
 		|| !TestTrue(TEXT("set-up: the roll and the pick can be pinned"), Pinned.IsUsable()))
 	{
 		return false;
 	}
+	Mode->SetWildMagicSkillTableForTests(OneWarSkill);
 	const FVector Aim(100.0f, 0.0f, 0.0f);
 
 	// THE CONTROL: CARRYING WAR ALONE, using War's one skill leaves no different one to draw.
@@ -64629,17 +64737,21 @@ bool FCataclysmSkillPoolWildMagicPanelTest::RunTest(const FString& Parameters)
 	ACataclysmDungeonGameMode* Mode = AnObstacleFloor(*this, World, Player, {WildMagicRow});
 	UCataclysmWeaponSlotsComponent* Slots =
 		Player.Character ? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>() : nullptr;
-	const int32 Both = TheWildMagicPool(TEXT("War")).Num() + TheWildMagicPool(TEXT("Demonic")).Num();
-	if (!Mode || !TestNotNull(TEXT("set-up: the player's weapon slots"), Slots))
+	// WAR'S POOL IS COUNTED FROM THE LOADED TABLE AND NOT WRITTEN AS A LITERAL, since issue #2928 (the War weapon
+	// skills' window 1, 2026-11-28): the literal moved with every War slice (1, then 13).
+	const int32 WarPool = TheWildMagicPool(TEXT("War")).Num();
+	const int32 Both = WarPool + TheWildMagicPool(TEXT("Demonic")).Num();
+	if (!Mode || !TestNotNull(TEXT("set-up: the player's weapon slots"), Slots)
+		|| !TestTrue(FString::Printf(TEXT("set-up: War's pool holds a skill (it holds %d)"), WarPool), WarPool >= 1))
 	{
 		return false;
 	}
 
-	// THE CONTROL: CARRYING WAR ALONE, the line the War weapon test reads.
+	// THE CONTROL: CARRYING WAR ALONE, the line the War weapon test reads; "skill" for a pool of one.
 	Slots->UseDamageTypes({TEXT("War")});
-	// 13 SINCE THE WAR WEAPON SKILLS' WINDOW 1 (issue #2972, 2026-11-28).
 	TestEqual(TEXT("control: carrying War alone"), Mode->LiveCountsForTheFloor().FindRef(WildMagicRow),
-			  FString(TEXT("wild magic: 0 triggered; pool of 13 War skills")));
+			  FString::Printf(TEXT("wild magic: 0 triggered; pool of %d War skill%s"), WarPool,
+							  WarPool == 1 ? TEXT("") : TEXT("s")));
 
 	// CARRYING WAR THEN DEMONIC: both named, and both pools counted.
 	Slots->UseDamageTypes({TEXT("War"), TEXT("Demonic")});

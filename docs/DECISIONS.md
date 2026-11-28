@@ -139297,6 +139297,15 @@ floor panel says how many skills the pool holds, so a War player is told.
 **On 2026-11-25 War's "No shape" went from 54 to 53 and its "Aura" from 0 to 1**, when Blood and Iron was built as an
 Aura (the damage-type auras, bundle 1). The pool is unchanged, Shield Bash alone. The test and this table moved together.
 
+**Since 2026-11-28 the test derives War's counts from the loaded table, and the War column above is a record of
+2026-11-28** (issue #2928, the War weapon skills' window 1). That window shaped twenty War rows: no shape 33, movement
+9, channelled or held 2, in the pool 13, which is what the table now holds. War's rows are being shaped slice by slice
+and every slice moved the pins, so `WildMagicPoolIsCountedFromTheRealTableAndEachExclusionNamesWhatItRemoved` now counts
+each War reason from the rows' own fields and checks that the rule sorts them the same way, with a control that War's
+pool holds at least one skill. This column is not kept current; Demonic's is still pinned and still moves with the test.
+The two tests that were built on War's pool of one now make a pool of one from a copy of the table
+(`ACataclysmDungeonGameMode::SetWildMagicSkillTableForTests`).
+
 ### Rulings, each a labelled judgement of 2026-10-04
 
 - **5% on each skill use the player pays for.** The basic attack does not roll, the line the worn "on skill use" rows

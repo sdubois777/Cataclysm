@@ -12,6 +12,7 @@
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
+#include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
@@ -19,6 +20,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Misc/ScopeExit.h"
+#include "UObject/Package.h"
 
 /**
  * The skill-choice screen, `UCataclysmSkillAssignmentWidget`. Issue #837 layer 4, ruled 2026-10-25.
@@ -87,6 +89,42 @@ namespace CataclysmSkillChoiceScreenTest
 			return FSkillChoiceScreenCarrier();
 		}
 		return Made;
+	}
+
+	/**
+	 * A COPY OF THE LOADED WEAPON SKILL TABLE in which every named row whose key begins `RowPrefix` states no shape and
+	 * no shape numbers, for the player's weapon slots (`UCataclysmWeaponSlotsComponent::SetWeaponSkillTable`)
+	 * to read: a skill with no shape made in the test, so the test does not depend on a live row staying unshaped.
+	 * Null, with the reason reported, when the table does not load or no named row begins so. Issue #2928, the War
+	 * weapon skills' window 1, 2026-11-28.
+	 */
+	UDataTable* ScreenTableWithNoShapeFor(FAutomationTestBase& Test, const TCHAR* RowPrefix)
+	{
+		const UDataTable* Loaded = UCataclysmWeaponSkills::LoadGeneratedTable();
+		UDataTable* Copy = Loaded ? DuplicateObject<UDataTable>(Loaded, GetTransientPackage()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a copy of the weapon skill table"), Copy))
+		{
+			return nullptr;
+		}
+		int32 Emptied = 0;
+		for (const TPair<FName, uint8*>& Each : Copy->GetRowMap())
+		{
+			FCataclysmWeaponSkillRow* Row = reinterpret_cast<FCataclysmWeaponSkillRow*>(Each.Value);
+			if (Row && !Row->SkillName.IsEmpty() && Each.Key.ToString().StartsWith(RowPrefix, ESearchCase::CaseSensitive))
+			{
+				Row->Shape.Reset();
+				Row->ShapeParams.Reset();
+				++Emptied;
+			}
+		}
+		// THE CONTROL: the prefix names at least one named skill, so the copy is not the table as loaded.
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: the copy empties the shape of %d named row(s) beginning %s"),
+										   Emptied, RowPrefix),
+						   Emptied > 0))
+		{
+			return nullptr;
+		}
+		return Copy;
 	}
 
 	/** A weapon of this base carrying these types and nothing else. */
@@ -504,9 +542,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillChoiceScreenNotBuiltTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Issue #837 slice 2, the owner's Q2 of 2026-11-24: an Axe carrying War and Demonic pools the War Axe's skills, which
- * do nothing when pressed, beside the Demonic Axe's. A War Axe skill's pool button reads ", not built yet" at its end.
- * CONTROL: a Demonic Axe skill's does not.
+ * Issue #837 slice 2, the owner's Q2 of 2026-11-24: an Axe carrying War and Demonic pools the War Axe's skills beside
+ * the Demonic Axe's. A pool button of a skill that does nothing when pressed reads ", not built yet" at its end.
+ * CONTROL: a Demonic Axe skill's does not. THE SKILL THAT DOES NOTHING IS MADE IN THE TEST since issue #2928 (the War
+ * weapon skills' window 1, 2026-11-28): the War Axe's Heavy, Cleaving Blow, with its shape emptied in a copy of the
+ * table the player's weapon slots read. Until then it named a live War row, and each War slice that shaped one broke
+ * it.
  */
 bool FCataclysmSkillChoiceScreenNotBuiltTest::RunTest(const FString&)
 {
@@ -519,6 +560,13 @@ bool FCataclysmSkillChoiceScreenNotBuiltTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	// THE COPY, HANDED TO THE SLOTS BEFORE THE AXE GOES ON, so the fill the Axe makes reads it. Issue #2928.
+	UDataTable* Shapeless = ScreenTableWithNoShapeFor(*this, TEXT("War_Axe_Heavy"));
+	if (!Shapeless)
+	{
+		return false;
+	}
+	Carrier.Slots->SetWeaponSkillTable(Shapeless);
 	FCataclysmItem Removed;
 	FCataclysmItem AlsoRemoved;
 	const ECataclysmEquipResult Worn = Carrier.Equipment->EquipInto(
@@ -532,13 +580,13 @@ bool FCataclysmSkillChoiceScreenNotBuiltTest::RunTest(const FString&)
 	Carrier.Screen->Refresh();
 	UCataclysmChoiceButton* NotBuilt = NewObject<UCataclysmChoiceButton>();
 	UCataclysmChoiceButton* Built = NewObject<UCataclysmChoiceButton>();
-	// THE ULTIMATE SINCE the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave the row it used before a shape (its Heavy, Cleaving Blow).
-	Carrier.Screen->DescribeButtonForTests(*NotBuilt, FName(TEXT("War_Axe_Ultimate")), /*bIsSlot=*/false);
+	Carrier.Screen->DescribeButtonForTests(*NotBuilt, FName(TEXT("War_Axe_Heavy")), /*bIsSlot=*/false);
 	Carrier.Screen->DescribeButtonForTests(*Built, FName(TEXT("Demonic_Axe_Heavy")), /*bIsSlot=*/false);
 	const FString NotBuiltLabel = NotBuilt->GetLabel().ToString();
 	const FString BuiltLabel = Built->GetLabel().ToString();
 	AddInfo(FString::Printf(TEXT("NOT BUILT LABELS: '%s', '%s'"), *NotBuiltLabel, *BuiltLabel));
-	TestTrue(TEXT("**the War Axe's Ultimate is marked not built yet**"),
+	TestFalse(TEXT("set-up: the War Axe's Heavy button has a label"), NotBuiltLabel.IsEmpty());
+	TestTrue(TEXT("**the War Axe's Heavy, shapeless in the copy, is marked not built yet**"),
 			 NotBuiltLabel.EndsWith(UCataclysmSkillAssignmentWidget::NotBuiltYetMark));
 	TestFalse(TEXT("CONTROL: the Demonic Axe's is not"), BuiltLabel.Contains(UCataclysmSkillAssignmentWidget::NotBuiltYetMark));
 	TestFalse(TEXT("set-up: the Demonic Axe's button has a label"), BuiltLabel.IsEmpty());

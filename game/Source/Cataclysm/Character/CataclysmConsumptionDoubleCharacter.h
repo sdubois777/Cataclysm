@@ -7,6 +7,8 @@
 #include "Character/CataclysmPlayerBuild.h"
 #include "CataclysmConsumptionDoubleCharacter.generated.h"
 
+class UDataTable;
+
 /**
  * The corrupted double: the creature that hunts a character marked by crossing the Consumption Threshold, wearing that
  * character's own build. Issue #2688, slice 2a, the build. `docs/Cataclysm_GDD_v2.md`, "What crossing it does".
@@ -47,10 +49,23 @@ public:
 	/** The build it wears, or an empty one before `WearThePlayersBuild`. */
 	const FCataclysmPlayerBuild& WornBuild() const { return HeldBuild; }
 
+	/**
+	 * FOR TESTS, AND NOTHING IN PLAY CALLS IT: the weapon skill table `WearThePlayersBuild` reads the skills from,
+	 * instead of the generated one (`UCataclysmWeaponSkills::LoadGeneratedTable`). Null, the default and always in play,
+	 * reads the generated one. Call it before `WearThePlayersBuild`. A test hands it a copy of the table with a row's
+	 * shape emptied, so "a held skill with no shape" does not depend on a live row staying unshaped. Issue #2928, the
+	 * War weapon skills' window 1, 2026-11-28.
+	 */
+	void UseWeaponSkillTableForTests(const UDataTable* Table) { WeaponSkillTableForTests = Table; }
+
 	/** Nothing: none of its gear drops (O2). Its materials and experience come from the Boss rung it pays as. */
 	virtual void DropWhatItWore(UWorld* World, const FVector& At, FRandomStream& Stream) override;
 
 private:
 	UPROPERTY()
 	FCataclysmPlayerBuild HeldBuild;
+
+	/** See `UseWeaponSkillTableForTests`. Null in a running game, always. */
+	UPROPERTY(Transient)
+	TObjectPtr<const UDataTable> WeaponSkillTableForTests;
 };

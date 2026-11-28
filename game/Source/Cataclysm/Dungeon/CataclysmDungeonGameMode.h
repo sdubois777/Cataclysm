@@ -20,6 +20,7 @@ class ACataclysmDungeonStairs;
 class ACataclysmEnemyCharacter;
 class ACataclysmConsumptionDoubleCharacter;
 class ACataclysmCorruptedStalkerCharacter;
+class UDataTable;
 
 /**
  * The corrupted double's hunt across a dungeon's floors: the Corrupted Stalker's seven fields, bundled. Issue #2688,
@@ -2536,6 +2537,15 @@ public:
 
 	/** Seconds until Wild Magic may trigger again; zero or less when it may. */
 	float WildMagicSecondsUntilNext() const;
+
+	/**
+	 * FOR TESTS, AND NOTHING IN PLAY CALLS IT: the weapon skill table Wild Magic's pool is read from -- its draw, its
+	 * trigger and the floor panel's count -- instead of the generated one (`UCataclysmWeaponSkills::LoadGeneratedTable`).
+	 * Null, the default and always in play, reads the generated one; null again puts it back. A test hands a copy of the
+	 * table with rows taken out, so a pool of a size no real damage type has any more (a pool of one) can still be
+	 * tested. Issue #2928, the War weapon skills' window 1, 2026-11-28.
+	 */
+	void SetWildMagicSkillTableForTests(const UDataTable* Table) { WildMagicSkillTableForTests = Table; }
 
 	/** The skill Echo Chamber will copy on the next tick, or none. */
 	FName EchoChamberPendingSkill() const { return EchoChamberPending; }
@@ -7080,4 +7090,8 @@ private:
 	/** See `SetEmpireRunForTests`. Null in a running game, always. */
 	UPROPERTY(Transient)
 	TObjectPtr<class UCataclysmEmpireRun> EmpireRunForTests;
+
+	/** See `SetWildMagicSkillTableForTests`. Null in a running game, always. */
+	UPROPERTY(Transient)
+	TObjectPtr<const UDataTable> WildMagicSkillTableForTests;
 };

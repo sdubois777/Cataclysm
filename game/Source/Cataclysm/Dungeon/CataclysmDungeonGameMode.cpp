@@ -92,6 +92,7 @@
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Empire/CataclysmSeedMix.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Player/CataclysmGameInstance.h"
@@ -1146,9 +1147,12 @@ namespace
 	 * in fill order, since issue #837 layer 2 (Q8, Q-P1, ruled 2026-10-25): "your class tree" is the skills of every type
 	 * the character carries.
 	 */
-	TArray<FCataclysmWeaponSkill> DungeonGameModeWildMagicPoolOf(const AActor* Character)
+	TArray<FCataclysmWeaponSkill> DungeonGameModeWildMagicPoolOf(const AActor* Character,
+																  const UDataTable* TableForTests = nullptr)
 	{
-		const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+		// THE GENERATED TABLE, OR THE COPY A TEST HANDED THE GAME MODE (`SetWildMagicSkillTableForTests`, issue #2928,
+		// 2026-11-28). Always the generated one in play, where nothing hands one.
+		const UDataTable* Table = TableForTests ? TableForTests : UCataclysmWeaponSkills::LoadGeneratedTable();
 		TArray<FCataclysmWeaponSkill> Pool;
 		for (const FString& Carried : UCataclysmWeaponSlotsComponent::DamageTypesOf(Character))
 		{
@@ -15527,7 +15531,7 @@ void ACataclysmDungeonGameMode::OnSkillWasUsed(const FCataclysmSkillUsedNotice& 
 	}
 
 	// "A RANDOM DIFFERENT SKILL": the pool with the skill just used taken out.
-	TArray<FCataclysmWeaponSkill> Pool = DungeonGameModeWildMagicPoolOf(Player);
+	TArray<FCataclysmWeaponSkill> Pool = DungeonGameModeWildMagicPoolOf(Player, WildMagicSkillTableForTests.Get());
 	Pool.RemoveAll([&Notice](const FCataclysmWeaponSkill& Skill) { return FName(*Skill.Name) == Notice.SkillName; });
 	if (Pool.IsEmpty())
 	{
@@ -15553,7 +15557,7 @@ bool ACataclysmDungeonGameMode::MakeTheWildMagicTrigger()
 	{
 		return false;
 	}
-	for (const FCataclysmWeaponSkill& Skill : DungeonGameModeWildMagicPoolOf(Player))
+	for (const FCataclysmWeaponSkill& Skill : DungeonGameModeWildMagicPoolOf(Player, WildMagicSkillTableForTests.Get()))
 	{
 		if (FName(*Skill.Name) != Drawn)
 		{
@@ -23645,7 +23649,8 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		const FString DamageType = PanelPlayer
 			? FString::Join(UCataclysmWeaponSlotsComponent::DamageTypesOf(PanelPlayer), TEXT(" and "))
 			: FString();
-		const int32 InPool = PanelPlayer ? DungeonGameModeWildMagicPoolOf(PanelPlayer).Num() : 0;
+		const int32 InPool =
+			PanelPlayer ? DungeonGameModeWildMagicPoolOf(PanelPlayer, WildMagicSkillTableForTests.Get()).Num() : 0;
 		Counting.Add(Wild, InPool == 0
 			? FString(TEXT("wild magic: no other skill to trigger"))
 			: FString::Printf(TEXT("wild magic: %d triggered%s; pool of %d %s skill%s"), WildMagicTriggered,

@@ -18,12 +18,14 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerBuild.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Data/CataclysmDataRows.h"
 #include "Dom/JsonObject.h"
 #include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
+#include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -44,6 +46,7 @@
 #include "Save/CataclysmSaveWriter.h"
 #include "Tests/CataclysmSaveFixtures.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "UObject/Package.h"
 
 /**
  * Tests for the corrupted double's build, slice 2a of issue #2688.
@@ -379,8 +382,48 @@ bool FCataclysmConsumptionDoubleDropsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+namespace CataclysmConsumptionDoubleTest
+{
+	/**
+	 * A COPY OF THE LOADED WEAPON SKILL TABLE in which every named row whose key begins `RowPrefix` states no shape and
+	 * no shape numbers, for a double (`UseWeaponSkillTableForTests`)
+	 * to read: a skill with no shape made in the test, so the test does not depend on a live row staying unshaped.
+	 * Null, with the reason reported, when the table does not load or no named row begins so. Issue #2928, the War
+	 * weapon skills' window 1, 2026-11-28.
+	 */
+	UDataTable* DoubleTableWithNoShapeFor(FAutomationTestBase& Test, const TCHAR* RowPrefix)
+	{
+		const UDataTable* Loaded = UCataclysmWeaponSkills::LoadGeneratedTable();
+		UDataTable* Copy = Loaded ? DuplicateObject<UDataTable>(Loaded, GetTransientPackage()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a copy of the weapon skill table"), Copy))
+		{
+			return nullptr;
+		}
+		int32 Emptied = 0;
+		for (const TPair<FName, uint8*>& Each : Copy->GetRowMap())
+		{
+			FCataclysmWeaponSkillRow* Row = reinterpret_cast<FCataclysmWeaponSkillRow*>(Each.Value);
+			if (Row && !Row->SkillName.IsEmpty() && Each.Key.ToString().StartsWith(RowPrefix, ESearchCase::CaseSensitive))
+			{
+				Row->Shape.Reset();
+				Row->ShapeParams.Reset();
+				++Emptied;
+			}
+		}
+		// THE CONTROL: the prefix names at least one named skill, so the copy is not the table as loaded.
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: the copy empties the shape of %d named row(s) beginning %s"),
+										   Emptied, RowPrefix),
+						   Emptied > 0))
+		{
+			return nullptr;
+		}
+		return Copy;
+	}
+}
+
 // NO WAR WORK: a held skill whose row has no shape is never offered by the double's brain. A Greataxe carrying Demonic
-// and War, with War's Savage Leap chosen for the movement key: its row has no shape.
+// and War, with War's Savage Leap chosen for the movement key: its row has no shape IN A COPY OF THE TABLE both doubles
+// read (issue #2928, 2026-11-28).
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsumptionDoubleNoShapeTest,
 	"Cataclysm.ConsumptionDouble.ItsBrainSkipsAHeldSkillWithNoShape",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -402,16 +445,29 @@ bool FCataclysmConsumptionDoubleNoShapeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	// A DAGGER SINCE the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave the row it used before a shape (the Greataxe's Savage Leap): every
-	// War Dagger skill still has none, until slice WS3.
-	FCataclysmItem Dagger = DoubleTestGreataxe({FName(TEXT("Demonic")), FName(TEXT("War"))});
-	Dagger.Base = FName(TEXT("Weapon_Dagger"));
-	const TArray<FCataclysmWornItem> Worn = {WornIn(ECataclysmGearSlot::Weapon1, Dagger)};
+	// A SKILL WITH NO SHAPE MADE IN THE TEST, since issue #2928 (the War weapon skills' window 1, 2026-11-28): a copy of
+	// the loaded table in which War's Greataxe movement row, Savage Leap, states no shape, read by both doubles
+	// (`UseWeaponSkillTableForTests`). Until then the test named a live War row as its shapeless example, and each War
+	// slice that shaped one broke it (Savage Leap in WS1, then the Dagger's Vanishing Trap waiting on WS3). The copy's
+	// row has no shape whatever the real table says, so no later slice can move it. Both doubles read the copy, so the
+	// control's key holds Demonic's because a built skill takes a key before one that does nothing, as it did before.
+	const FName WarMovementRow(TEXT("War_Greataxe_Movement"));
+	UDataTable* Shapeless = DoubleTableWithNoShapeFor(*this, TEXT("War_Greataxe_Movement"));
+	if (!Shapeless)
+	{
+		return false;
+	}
+	const TArray<FCataclysmWornItem> Worn = {
+		WornIn(ECataclysmGearSlot::Weapon1, DoubleTestGreataxe({FName(TEXT("Demonic")), FName(TEXT("War"))}))};
 
-	// CONTROL: WITH NO CHOICE, THE MOVEMENT KEY HOLDS DEMONIC'S ASHWALK, WHICH HAS A SHAPE, AND IS OFFERED.
+	// CONTROL: WITH NO CHOICE, THE MOVEMENT KEY HOLDS DEMONIC'S INFERNAL PLUNGE, WHICH HAS A SHAPE, AND IS OFFERED.
 	ACataclysmConsumptionDoubleCharacter* Plain = SpawnDouble(World, FVector(0.0f, 0.0f, 0.0f));
-	if (!TestNotNull(TEXT("set-up: a double was spawned"), Plain)
-		|| !TestTrue(TEXT("set-up: it wears the build"), Plain->WearThePlayersBuild(HandMadeBuild(Worn, {}))))
+	if (!TestNotNull(TEXT("set-up: a double was spawned"), Plain))
+	{
+		return false;
+	}
+	Plain->UseWeaponSkillTableForTests(Shapeless);
+	if (!TestTrue(TEXT("set-up: it wears the build"), Plain->WearThePlayersBuild(HandMadeBuild(Worn, {}))))
 	{
 		return false;
 	}
@@ -420,19 +476,23 @@ bool FCataclysmConsumptionDoubleNoShapeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("CONTROL: Demonic's"), PlainMovement->RowName, FName(TEXT("Demonic_Dagger_Movement")));
+	TestEqual(TEXT("CONTROL: Demonic's"), PlainMovement->RowName, FName(TEXT("Demonic_Greataxe_Movement")));
 	const FCataclysmEnemyAbility PlainChoice = Plain->EnemyAbilities()[MovementIndex];
 	TestTrue(FString::Printf(TEXT("CONTROL: it is offered: %.0f to %.0f cm"), PlainChoice.MinRangeCm,
 							 PlainChoice.MaxRangeCm),
 			 PlainChoice.MaxRangeCm >= PlainChoice.MinRangeCm);
 
-	// WAR'S VANISHING TRAP ON THE MOVEMENT KEY: held, with no shape, and never offered.
+	// WAR'S SAVAGE LEAP, SHAPELESS IN THE COPY, ON THE MOVEMENT KEY: held, with no shape, and never offered.
 	FCataclysmSkillChoice Choice;
 	Choice.Slot = ECataclysmAbilitySlot::Movement;
-	Choice.SkillRow = FName(TEXT("War_Dagger_Movement"));
+	Choice.SkillRow = WarMovementRow;
 	ACataclysmConsumptionDoubleCharacter* Double = SpawnDouble(World, FVector(2000.0f, 0.0f, 0.0f));
-	if (!TestNotNull(TEXT("set-up: a second double was spawned"), Double)
-		|| !TestTrue(TEXT("set-up: it wears the build"), Double->WearThePlayersBuild(HandMadeBuild(Worn, {Choice}))))
+	if (!TestNotNull(TEXT("set-up: a second double was spawned"), Double))
+	{
+		return false;
+	}
+	Double->UseWeaponSkillTableForTests(Shapeless);
+	if (!TestTrue(TEXT("set-up: it wears the build"), Double->WearThePlayersBuild(HandMadeBuild(Worn, {Choice}))))
 	{
 		return false;
 	}
@@ -441,8 +501,8 @@ bool FCataclysmConsumptionDoubleNoShapeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestEqual(TEXT("set-up: the chosen War row"), Held->RowName, FName(TEXT("War_Dagger_Movement")));
-	TestTrue(TEXT("set-up: whose row has no shape"), Held->Shape == ECataclysmSkillShape::None);
+	TestEqual(TEXT("set-up: the chosen War row"), Held->RowName, WarMovementRow);
+	TestTrue(TEXT("set-up: whose row has no shape in the copy"), Held->Shape == ECataclysmSkillShape::None);
 	const FCataclysmEnemyAbility Skipped = Double->EnemyAbilities()[MovementIndex];
 	TestTrue(FString::Printf(TEXT("the skill with no shape is offered nowhere: %.0f to %.0f cm"), Skipped.MinRangeCm,
 							 Skipped.MaxRangeCm),

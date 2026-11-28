@@ -10,6 +10,7 @@
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
+#include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Save/CataclysmSaveApply.h"
@@ -92,6 +93,42 @@ namespace CataclysmSkillDefaultsTest
 			return FDefaultsCarrier();
 		}
 		return Made;
+	}
+
+	/**
+	 * A COPY OF THE LOADED WEAPON SKILL TABLE in which every named row whose key begins `RowPrefix` states no shape and
+	 * no shape numbers, for the player's weapon slots (`UCataclysmWeaponSlotsComponent::SetWeaponSkillTable`)
+	 * to read: a skill with no shape made in the test, so the test does not depend on a live row staying unshaped.
+	 * Null, with the reason reported, when the table does not load or no named row begins so. Issue #2928, the War
+	 * weapon skills' window 1, 2026-11-28.
+	 */
+	UDataTable* DefaultsTableWithNoShapeFor(FAutomationTestBase& Test, const TCHAR* RowPrefix)
+	{
+		const UDataTable* Loaded = UCataclysmWeaponSkills::LoadGeneratedTable();
+		UDataTable* Copy = Loaded ? DuplicateObject<UDataTable>(Loaded, GetTransientPackage()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a copy of the weapon skill table"), Copy))
+		{
+			return nullptr;
+		}
+		int32 Emptied = 0;
+		for (const TPair<FName, uint8*>& Each : Copy->GetRowMap())
+		{
+			FCataclysmWeaponSkillRow* Row = reinterpret_cast<FCataclysmWeaponSkillRow*>(Each.Value);
+			if (Row && !Row->SkillName.IsEmpty() && Each.Key.ToString().StartsWith(RowPrefix, ESearchCase::CaseSensitive))
+			{
+				Row->Shape.Reset();
+				Row->ShapeParams.Reset();
+				++Emptied;
+			}
+		}
+		// THE CONTROL: the prefix names at least one named skill, so the copy is not the table as loaded.
+		if (!Test.TestTrue(FString::Printf(TEXT("set-up: the copy empties the shape of %d named row(s) beginning %s"),
+										   Emptied, RowPrefix),
+						   Emptied > 0))
+		{
+			return nullptr;
+		}
+		return Copy;
 	}
 
 	/** A weapon of this base carrying these types and nothing else. */
@@ -541,6 +578,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsBuiltFirstTest,
  * Death and Chaos in Weapon2, filled with nothing remembered and nothing chosen. Every key for which a BUILT skill is in
  * the pool holds a built one. CONTROL: for at least one such key the first pool entry made for it is not built, so the
  * rule before slice 1 gave it a skill that does nothing. Prints "BUILT FIRST".
+ *
+ * THE SKILLS THAT DO NOTHING ARE MADE IN THE TEST since issue #2928 (the War weapon skills' window 1, 2026-11-28): the
+ * War Axe's five, with their shapes emptied in a copy of the table the player's weapon slots read. Until then the
+ * control leaned on live War rows staying unshaped, which every War slice takes away.
  */
 bool FCataclysmSkillDefaultsBuiltFirstTest::RunTest(const FString&)
 {
@@ -550,8 +591,13 @@ bool FCataclysmSkillDefaultsBuiltFirstTest::RunTest(const FString&)
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 	const FDefaultsCarrier Carrier = SpawnDefaultsCarrier(*this, World);
 	const FName War(TEXT("War"));
-	if (!Carrier.IsComplete()
-		|| !WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Axe"), {FName(TEXT("Famine")), War}),
+	UDataTable* Shapeless = Carrier.IsComplete() ? DefaultsTableWithNoShapeFor(*this, TEXT("War_Axe_")) : nullptr;
+	if (!Shapeless)
+	{
+		return false;
+	}
+	Carrier.Slots->SetWeaponSkillTable(Shapeless);
+	if (!WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Axe"), {FName(TEXT("Famine")), War}),
 				   ECataclysmGearSlot::Weapon1)
 		|| !WearIn(*this, Carrier,
 				   DefaultsWeapon(TEXT("Weapon_Whip"), {War, FName(TEXT("Pestilence")), FName(TEXT("Death")),
@@ -598,8 +644,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillDefaultsPlaceholderKeptTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * SD10's control: a War Dagger alone, whose five weapon skills are not built (a War Axe until the War weapon skills' slice WS1 (issue #2972, 2026-11-28) gave the row it used before a shape). Each of its keys still holds one (a key with
+ * SD10's control: a War Axe alone, whose five weapon skills are not built. Each of its keys still holds one (a key with
  * something made for it stays empty only when nothing is, O4), and the not-built skills are on keys.
+ *
+ * THE FIVE ARE MADE NOT BUILT IN THE TEST since issue #2928 (the War weapon skills' window 1, 2026-11-28): their
+ * shapes are emptied in a copy of the table the player's weapon slots read. Until then the test named a live War
+ * weapon, and each War slice that shaped its rows broke it (the Axe in WS1, the Dagger waiting on WS3).
  */
 bool FCataclysmSkillDefaultsPlaceholderKeptTest::RunTest(const FString&)
 {
@@ -608,8 +658,13 @@ bool FCataclysmSkillDefaultsPlaceholderKeptTest::RunTest(const FString&)
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 	const FDefaultsCarrier Carrier = SpawnDefaultsCarrier(*this, World);
-	if (!Carrier.IsComplete()
-		|| !WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Dagger"), {FName(TEXT("War"))}), ECataclysmGearSlot::Weapon2))
+	UDataTable* Shapeless = Carrier.IsComplete() ? DefaultsTableWithNoShapeFor(*this, TEXT("War_Axe_")) : nullptr;
+	if (!Shapeless)
+	{
+		return false;
+	}
+	Carrier.Slots->SetWeaponSkillTable(Shapeless);
+	if (!WearIn(*this, Carrier, DefaultsWeapon(TEXT("Weapon_Axe"), {FName(TEXT("War"))}), ECataclysmGearSlot::Weapon2))
 	{
 		return false;
 	}
@@ -620,8 +675,8 @@ bool FCataclysmSkillDefaultsPlaceholderKeptTest::RunTest(const FString&)
 	{
 		NotBuiltOnKeys += Skill.Slot != ECataclysmAbilitySlot::BasicAttack && !UCataclysmWeaponSkills::IsBuilt(Skill) ? 1 : 0;
 	}
-	TestTrue(TEXT("every key the War Dagger makes a skill for holds one"),
-			 EveryWeaponKeyIs(Rows, TEXT("War_Dagger_")));
+	TestTrue(TEXT("every key the War Axe makes a skill for holds one"),
+			 EveryWeaponKeyIs(Rows, TEXT("War_Axe_")));
 	TestTrue(TEXT("**and its five not-built skills are on keys**"), NotBuiltOnKeys >= 5);
 	return true;
 }

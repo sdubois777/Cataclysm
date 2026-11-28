@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "AbilitySystemComponent.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
+#include "Engine/DataTable.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -62,8 +63,15 @@ bool ACataclysmConsumptionDoubleCharacter::WearThePlayersBuild(const FCataclysmP
 
 	// AND THE KEYS THE PLAYER'S GAME FILLED BY ITSELF, since issue #837 slice 1 (ruled 2026-11-24: a double holds the
 	// keys the player actually had): the remembered defaults after the choices, as the player's own fill reads them.
+	// FROM THE GENERATED TABLE, or from the copy a test handed it (`UseWeaponSkillTableForTests`, issue #2928); always
+	// the generated one in play.
+	const UDataTable* SkillTable = WeaponSkillTableForTests.Get();
+	if (!SkillTable)
+	{
+		SkillTable = UCataclysmWeaponSkills::LoadGeneratedTable();
+	}
 	Skills = UCataclysmWeaponSkills::FillWithChoices(
-		UCataclysmWeaponSkills::PoolFor(UCataclysmWeaponSkills::LoadGeneratedTable(), WeaponTypes, DamageTypes),
+		UCataclysmWeaponSkills::PoolFor(SkillTable, WeaponTypes, DamageTypes),
 		HeldBuild.SkillAssignment, HeldBuild.RememberedDefaults);
 
 	// ITS FIRST WEAPON'S BASIC ATTACK, the first OCCUPIED weapon slot's, as the player's basic attack is.
