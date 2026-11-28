@@ -3,6 +3,8 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Character/CataclysmCharacterCreation.h"
+#include "Character/CataclysmPassiveTree.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the two damage-taken stat names and their base of 100. Issue #1026.
@@ -102,19 +104,18 @@ namespace
 	 * `tools/tests/test_the_starting_character_survives_a_pack.py` measures the
 	 * fight and fails if this name is changed to a line that cannot win it.
 	 */
-	// StartingClassName IS DEFINED ABOVE THIS BLOCK ON PURPOSE. Non-local
-	// statics in one translation unit are initialised in definition order, so
-	// naming it here rather than repeating the string cannot read an empty
-	// FString, and the console variable's default and ChosenClass's fallback
-	// cannot drift apart.
+	// EMPTY BY DEFAULT SINCE ISSUE #932 (2026-11-27): empty means "decided by the
+	// character", `ClassFor`; `ChosenClass` still answers `StartingClassName`
+	// for empty, so a caller with no character in hand is unchanged.
 	TAutoConsoleVariable<FString> CVarPlayerClass(
 		TEXT("Cataclysm.PlayerClass"),
-		UCataclysmPlayerClassStats::StartingClassName,
-		TEXT("Which row of game/Data/ClassStats.csv the player starts on: "
-			 "Default, Ravager, Ritualist or Masochist. Default is the shared "
-			 "line every class inherits and has no defences of its own. Read "
-			 "when the pawn is possessed, so press Play again after changing "
-			 "it."),
+		TEXT(""),
+		TEXT("Which row of game/Data/ClassStats.csv the player stands on, set by "
+			 "hand: Default, or a class name such as Bulwark or Ravager. Empty, the "
+			 "default, lets the character decide: the class with the most passive "
+			 "points, or with none spent the first class of the damage type chosen "
+			 "at creation. Read when the stat line is applied, so press Play again "
+			 "after changing it."),
 		ECVF_Default);
 
 	/**
@@ -2331,6 +2332,57 @@ FString UCataclysmPlayerClassStats::ChosenClass()
 	// them. Issue #806. Naming `Default` outright still works and is still a
 	// legitimate thing to ask for.
 	return Asked.IsEmpty() ? StartingClassName : Asked;
+}
+
+FString UCataclysmPlayerClassStats::ClassFor(const UDataTable* NodeTable, const FCataclysmPassiveAllocation& Allocation,
+											FName CreationDamageType)
+{
+	const FString Asked = CVarPlayerClass.GetValueOnGameThread();
+	if (!Asked.IsEmpty())
+	{
+		return Asked;
+	}
+
+	// EVERY CLASS TREE THE POINTS ARE IN, WITH ITS POINTS AND WHERE ITS FIRST NODE STANDS. A node no class tree holds
+	// (none today; the empire tree is a table of its own) is left out.
+	TMap<FString, TPair<int32, int32>> Spent;
+	if (NodeTable)
+	{
+		for (int32 Index = 0; Index < Allocation.Nodes.Num(); ++Index)
+		{
+			const FCataclysmSpentNode& Node = Allocation.Nodes[Index];
+			if (Node.Points <= 0)
+			{
+				continue;
+			}
+			const FString Tree = UCataclysmPassiveTree::TreeOf(NodeTable, Node.Node);
+			if (Tree.IsEmpty())
+			{
+				continue;
+			}
+			TPair<int32, int32>& Entry = Spent.FindOrAdd(Tree, TPair<int32, int32>(0, Index));
+			Entry.Key += Node.Points;
+		}
+	}
+	FString Best;
+	int32 BestPoints = 0;
+	int32 BestFirst = MAX_int32;
+	for (const TPair<FString, TPair<int32, int32>>& Each : Spent)
+	{
+		if (Each.Value.Key > BestPoints || (Each.Value.Key == BestPoints && Each.Value.Value < BestFirst))
+		{
+			Best = Each.Key;
+			BestPoints = Each.Value.Key;
+			BestFirst = Each.Value.Value;
+		}
+	}
+	if (!Best.IsEmpty())
+	{
+		return Best;
+	}
+
+	const TArray<FName>& Classes = UCataclysmCharacterCreation::ClassesFor(CreationDamageType);
+	return Classes.Num() > 0 ? Classes[0].ToString() : StartingClassName;
 }
 
 int32 UCataclysmPlayerClassStats::ChosenLevel()
