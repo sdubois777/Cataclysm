@@ -2110,6 +2110,8 @@ public:
 	static const TCHAR* OwnStacksRemovedAction;
 	/** `next_retaliation_more`. The War trees' engine slice E2 (2026-11-27). */
 	static const TCHAR* NextRetaliationMoreAction;
+	/** `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* ExecuteNearbyBelowAction;
 
 	/**
 	 * What the next retaliation payment deals more, in per cent, spent by reading it: nought when none is held. Called

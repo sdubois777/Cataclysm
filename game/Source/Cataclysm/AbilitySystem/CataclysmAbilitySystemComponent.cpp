@@ -6873,6 +6873,8 @@ const TCHAR* UCataclysmAbilitySystemComponent::OwnStacksRemovedAction =
 	TEXT("own_stacks_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::NextRetaliationMoreAction =
 	TEXT("next_retaliation_more");
+const TCHAR* UCataclysmAbilitySystemComponent::ExecuteNearbyBelowAction =
+	TEXT("execute_nearby_below");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
 	TEXT("retaliation_pulse");
 const TCHAR* UCataclysmAbilitySystemComponent::FrenzyChainAction =
@@ -9699,6 +9701,34 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				NoteTriggerFired(Action);
 				UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Amount);
+			}
+			continue;
+		}
+		// EVERY ENEMY THAT NEAR AND THAT LOW, EXECUTED: Killing Blow (the War trees' engine slice E2, 2026-11-27). A direct
+		// loss of the health left, as an execute's is, sent by the wearer; never a Boss. Once per row per event.
+		if (Action.bExecuteNearbyBelow)
+		{
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Self && Action.Percent > 0.0f && Action.EventValue > 0.0f
+				&& !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(
+						 GetWorld(), Self, Self->GetActorLocation(), Action.EventValue * 100.0f))
+				{
+					const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Near);
+					if (!Theirs || !CanBeExecuted(Near))
+					{
+						continue;
+					}
+					const float Health = Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+					const float Maximum = Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+					if (Health > 0.0f && Maximum > 0.0f && Health < Maximum * Action.Percent / 100.0f)
+					{
+						UCataclysmSkillEffects::ReduceHealthDirectly(Self, Near, Health);
+					}
+				}
 			}
 			continue;
 		}

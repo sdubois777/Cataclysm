@@ -99,6 +99,9 @@ SENTENCES: tuple[Sentence, ...] = (
              "Additionally, entering Frenzy instantly triggers three bonus strikes at full damage.",
              "Dual wield only. Killing an enemy while in Frenzy triggers one Frenetic strike. Additionally, entering "
              "Frenzy strikes the nearest enemy three times at full damage."),
+    Sentence("Killing Blow (coordinator, 2026-11-27)", "Berserker", "twoh_015",
+             "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fervour, all enemies below 25% HP are instantly killed.",
+             "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fervour, all enemies within 8 metres below 25% HP are instantly killed."),
     Sentence("Momentum (coordinator, 2026-11-27)", "Berserker", "twoh_002",
              "Two-handed weapons only. Each consecutive melee hit on the same target increases your damage by 3% per "
              "point up to 5 consecutive hits. While in Wrath, this bonus is gained twice as fast. Switching targets "

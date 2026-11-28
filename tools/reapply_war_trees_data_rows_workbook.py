@@ -323,6 +323,12 @@ E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Bulwark_basic_tw_stem_003", "Spiteful", (
         R("fervour_per_hit_taken", "increased", 3),
         R(None, "", 50, action="next_retaliation_more", action_event="resource_full", min_points=5))),
+    # KILLING BLOW, with the coordinating session's 8 metres: "+6% critical strike multiplier per point on melee attacks.
+    # At 10 points: when you attack at maximum Fervour, all enemies within 8 metres below 25% HP are instantly killed."
+    ("Berserker_twoh_015", "Killing Blow", (
+        R("crit_multiplier", "flat", 6, tags=MELEE, **TWO_HANDED),
+        R(None, "", 25, action="execute_nearby_below", action_event="attack_at_full_fervour", event_value=8,
+          min_points=10, cond="wielding_two_handed_weapon"))),
     # SHATTER: "Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times."
     ("Berserker_twoh_009", "Shatter", (
         R(None, "", 5, tags=MELEE, action="enemy_armor_removed", action_event="critical_strike", stack_seconds=5,

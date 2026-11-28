@@ -5597,6 +5597,14 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	bool bNextRetaliationMore = false;
 
+	/**
+	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed
+	 * (`UCataclysmAbilitySystemComponent::CanBeExecuted`: alive, no Boss, damage reaches it), loses the health it has left:
+	 * `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27), Killing Blow's "when you attack at maximum
+	 * Fervour, all enemies within 8 metres below 25% HP are instantly killed" (the coordinating session's 8 metres).
+	 */
+	bool bExecuteNearbyBelow = false;
+
 	/** See `bRemoveOwnStacks`. */
 	FString OwnStacksRemovedOf;
 

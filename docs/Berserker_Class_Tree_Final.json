@@ -617,7 +617,7 @@
       "data": {
         "kind": "basic",
         "name": "Killing Blow",
-        "description": "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fervour, all enemies below 25% HP are instantly killed.",
+        "description": "Two-handed weapons only. +6% critical strike multiplier per point on melee attacks. At 10 points: when you attack at maximum Fervour, all enemies within 8 metres below 25% HP are instantly killed.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 12

@@ -1793,6 +1793,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::StrikeTargetOfTargetMissingHealthAction, ESearchCase::IgnoreCase);
 					Action.bKnockBackTarget = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::KnockBackTargetAction, ESearchCase::IgnoreCase);
+					// AND WHETHER IT EXECUTES EVERY ENEMY NEAR AND LOW, the same slice (Killing Blow).
+					Action.bExecuteNearbyBelow = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::ExecuteNearbyBelowAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT STORES MORE FOR THE NEXT RETALIATION, the same slice (Spiteful).
 					Action.bNextRetaliationMore = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::NextRetaliationMoreAction, ESearchCase::IgnoreCase);
