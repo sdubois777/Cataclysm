@@ -408,4 +408,94 @@ bool FCataclysmResumeHoldCameraTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * What is drawn during the hold is the top-down camera's view, with the world's time at 0, as in a packaged resume.
+ *
+ * THE PACKAGED FAULT, READ FROM THE ENGINE AND THE LOG OF a99c644ab: the hold fills the camera manager's view, stamped at
+ * world time 0, and `APlayerController::GetPlayerViewPoint` ignores a cache stamped 0 and returns the pawn's own location
+ * and rotation, which the renderer draws. The test above checked the camera manager's location, which was right, and not
+ * what is drawn. This one asserts on `GetPlayerViewPoint`.
+ *
+ * THE CONTROL IS THE ENGINE'S OWN ANSWER for the same controller in the same state, `APlayerController::
+ * GetPlayerViewPoint` called directly: the pawn's location, the ground-level view. After the first press the controller
+ * gives the engine's answer again. Prints "HOLD DRAWN VIEW".
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResumeHoldDrawnViewTest,
+	"Cataclysm.ResumeHold.WhatIsDrawnDuringTheHoldIsTheTopDownCameraAtWorldTimeZero",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResumeHoldDrawnViewTest::RunTest(const FString&)
+{
+	using namespace CataclysmResumeHoldTest;
+
+	const FHoldWorld Hold;
+	if (!TestTrue(TEXT("set-up: a world with the engine's game mode and the game's controller holding a player state"),
+				  Hold.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = Hold.World;
+	ACataclysmPlayerController* Controller = Hold.Controller;
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector(2300.0f, 900.0f, 150.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("set-up: the player character"), Character))
+	{
+		return false;
+	}
+	Controller->Possess(Character);
+	const UCameraComponent* TopDown = Character->FindComponentByClass<UCameraComponent>();
+	APlayerCameraManager* CameraManager = Controller->PlayerCameraManager;
+	if (!TestNotNull(TEXT("set-up: the character's top-down camera"), TopDown)
+		|| !TestNotNull(TEXT("set-up: the controller's camera manager"), CameraManager))
+	{
+		return false;
+	}
+	// THE SAME STAND-IN AS THE TESTS ABOVE: a test world has no local player.
+	CameraManager->bUseClientSideCameraUpdates = false;
+
+	const double TimeAtHold = World->GetTimeSeconds();
+	const bool bPaused = Controller->HoldUntilFirstInput();
+	const float CacheTime = CameraManager->GetCameraCacheTime();
+	const FVector Boom = TopDown->GetComponentLocation();
+	const FVector PawnAt = Character->GetActorLocation();
+
+	FVector Drawn;
+	FRotator DrawnRotation;
+	Controller->GetPlayerViewPoint(Drawn, DrawnRotation);
+	FVector EngineDrawn;
+	FRotator EngineRotation;
+	Controller->APlayerController::GetPlayerViewPoint(EngineDrawn, EngineRotation); // The engine's own answer.
+
+	// THE FIRST PRESS: the controller gives the engine's answer again.
+	Controller->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::LeftMouseButton, IE_Pressed, 1.0f));
+	FVector AfterPress;
+	FRotator AfterPressRotation;
+	Controller->GetPlayerViewPoint(AfterPress, AfterPressRotation);
+	FVector EngineAfterPress;
+	FRotator EngineAfterPressRotation;
+	Controller->APlayerController::GetPlayerViewPoint(EngineAfterPress, EngineAfterPressRotation);
+
+	AddInfo(FString::Printf(TEXT("HOLD DRAWN VIEW: world time at the hold %.3f; hold paused %s; the camera manager's cache "
+								 "stamped %.3f; top-down camera at %s, pawn at %s; the controller's view point during the "
+								 "hold %s pitch %.1f, %.1f cm from the top-down camera; the engine's own %s, %.1f cm from "
+								 "the pawn; after the first press the controller's %s and the engine's %s"),
+							TimeAtHold, bPaused ? TEXT("yes") : TEXT("NO"), CacheTime, *Boom.ToCompactString(),
+							*PawnAt.ToCompactString(), *Drawn.ToCompactString(), DrawnRotation.Pitch,
+							FVector::Dist(Drawn, Boom), *EngineDrawn.ToCompactString(), FVector::Dist(EngineDrawn, PawnAt),
+							*AfterPress.ToCompactString(), *EngineAfterPress.ToCompactString()));
+
+	TestEqual(TEXT("set-up: the world's time is 0 at the hold, as in a packaged resume"), TimeAtHold, 0.0, 0.0001);
+	TestTrue(TEXT("set-up: the hold paused the world"), bPaused);
+	TestEqual(TEXT("set-up: the camera manager's cache is stamped 0, which the engine reads as never updated"),
+			  CacheTime, 0.0f, 0.0001f);
+	TestTrue(TEXT("CONTROL: the engine's own view point is the pawn's location, the ground-level view"),
+			 FVector::Dist(EngineDrawn, PawnAt) < 1.0f);
+	TestTrue(TEXT("during the hold the view point drawn is the top-down camera's"), FVector::Dist(Drawn, Boom) < 1.0f);
+	TestTrue(TEXT("looking down, as the boom does"), DrawnRotation.Pitch < -30.0f);
+	TestTrue(TEXT("after the first press the controller gives the engine's own view point"),
+			 FVector::Dist(AfterPress, EngineAfterPress) < 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

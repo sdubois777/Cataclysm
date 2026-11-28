@@ -756,8 +756,10 @@ bool ACataclysmPlayerController::HoldUntilFirstInput()
 	// camera, at the end of its boom; nothing moves while paused, so it stays right.
 	//
 	// THE PACKAGE OF e0a690c97 STILL SHOWED THE GROUND-LEVEL VIEW, so the view is logged before and after this update,
-	// and again at the first frame the heads-up display draws during the hold (`LogTheHeldViewOnce`), to find out from
-	// the real game which of these is wrong.
+	// and again at the first frame the heads-up display draws during the hold (`LogTheHeldViewOnce`). The package of
+	// a99c644ab logged this update putting the camera manager at the top-down camera, with its cache stamped at world
+	// time 0, which the engine's `GetPlayerViewPoint` ignores; this controller's `GetPlayerViewPoint` says why it reads
+	// the cache anyway while held. The lines stay, one each per resume.
 	UE_LOG(LogCataclysm, Log, TEXT("Resume hold, before the camera update: %s"), *DescribeTheView());
 	UpdateCameraManager(0.0f);
 	UE_LOG(LogCataclysm, Log, TEXT("Resume hold, after the camera update: %s"), *DescribeTheView());
@@ -775,16 +777,30 @@ bool ACataclysmPlayerController::HoldUntilFirstInput()
 	return bPaused;
 }
 
+void ACataclysmPlayerController::GetPlayerViewPoint(FVector& OutLocation, FRotator& OutRotation) const
+{
+	// THE HEADER SAYS WHY: during the hold the cache is stamped at world time 0, which the engine reads as "never updated".
+	if (bHeldUntilFirstInput && PlayerCameraManager)
+	{
+		PlayerCameraManager->GetCameraViewPoint(OutLocation, OutRotation);
+		return;
+	}
+	Super::GetPlayerViewPoint(OutLocation, OutRotation);
+}
+
 FString ACataclysmPlayerController::DescribeTheView() const
 {
 	const AActor* Target = GetViewTarget();
 	const APawn* Body = GetPawn();
 	const UCameraComponent* TopDown = Body ? Body->FindComponentByClass<UCameraComponent>() : nullptr;
 	const APlayerCameraManager* Manager = PlayerCameraManager;
+	FVector ViewAt;
+	FRotator ViewRotation;
+	GetPlayerViewPoint(ViewAt, ViewRotation); // What the renderer is given.
 	return FString::Printf(
 		TEXT("view target %s (the pawn: %s); camera manager %s at %s rotation %s, its cache from game time %.3f; top-down "
 			 "camera %s at %s (active %s); pawn at %s; local player %s, local controller %s, client-side camera updates "
-			 "%s; world paused %s, game time %.3f"),
+			 "%s; world paused %s, game time %.3f; the player view point (what is drawn) at %s rotation %s"),
 		Target ? *Target->GetName() : TEXT("none"), Body ? *Body->GetName() : TEXT("none"),
 		Manager ? *Manager->GetName() : TEXT("none"),
 		Manager ? *Manager->GetCameraLocation().ToCompactString() : TEXT("-"),
@@ -795,7 +811,7 @@ FString ACataclysmPlayerController::DescribeTheView() const
 		Body ? *Body->GetActorLocation().ToCompactString() : TEXT("-"), Player ? TEXT("yes") : TEXT("no"),
 		IsLocalPlayerController() ? TEXT("yes") : TEXT("no"),
 		Manager && Manager->bUseClientSideCameraUpdates ? TEXT("on") : TEXT("off"), IsPaused() ? TEXT("yes") : TEXT("no"),
-		GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0);
+		GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0, *ViewAt.ToCompactString(), *ViewRotation.ToCompactString());
 }
 
 void ACataclysmPlayerController::LogTheHeldViewOnce()

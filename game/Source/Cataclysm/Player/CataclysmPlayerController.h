@@ -230,6 +230,20 @@ public:
 	virtual bool InputKey(const FInputKeyEventArgs& Params) override;
 
 	/**
+	 * While a resumed walk is held, the view is the camera manager's, whatever its timestamp. Issue #2970's follow-up.
+	 *
+	 * WHY. `APlayerController::GetPlayerViewPoint` uses the camera manager's view only when its cache's time is above 0
+	 * (UE 5.8 PlayerController.cpp lines 1009-1013), and otherwise returns the view target's own location and rotation
+	 * (lines 1016-1021): the pawn's centre, facing along the floor. The renderer takes the view's location and rotation
+	 * from it (`ULocalPlayer::GetViewPoint`, LocalPlayer.cpp line 716). A resume holds before the level's first frame, so
+	 * the world's time is 0, the cache `HoldUntilFirstInput` fills is stamped 0, and the engine ignored it for the whole
+	 * hold. The package of a99c644ab logged the camera manager at the top-down camera while the screen showed ground level.
+	 *
+	 * Otherwise, and always once the hold ends, the engine's own answer.
+	 */
+	virtual void GetPlayerViewPoint(FVector& OutLocation, FRotator& OutRotation) const override;
+
+	/**
 	 * What a press of Esc does, as `InputKey` runs it: what `EscapeDoes` decides from whether a screen is open and
 	 * whether the game is paused, done. Public so a test can press it; a test world has no viewport to press from.
 	 */
