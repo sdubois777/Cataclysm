@@ -463,7 +463,27 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
 )
 
 #: Every node this script writes.
-NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES
+#: WINDOW 2, THE SABOTEUR (2026-11-28), its data rows and engine slice E4's.
+E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
+    # MARKED TERRITORY: "Enemies that trigger a trap are marked for 5 seconds. Marked enemies take +5% increased damage per
+    # point from all sources." The enemy that set the trap off; one mark, its window refreshed.
+    ("Saboteur_basic_trap_ql_004", "Marked Territory",
+     (R(None, "", 5, action="enemy_damage_taken", action_event="trap_triggered", stack_seconds=5, cap=1),)),
+    # PERSISTENT SYSTEMS, THE 4-POINT HALF: "Gadgets that survive for 20 seconds gain a permanent +10% damage stack."
+    ("Saboteur_basic_gadget_sus_002", "Persistent Systems",
+     (R("minion_damage", "increased", 10, tags=GADGET, scale="minion_seconds_active", step=20, cap=1, min_points=4),)),
+    # SCRAP AND REBUILD, THE FERVOUR HALF: "When a gadget is destroyed gain +5 Fervour per point".
+    ("Saboteur_basic_gadget_deep_003", "Scrap and Rebuild",
+     (R(None, "", 5, action="class_resource", action_event="gadget_destroyed", fraction_of="points"),)),
+    # FORWARD OPERATING BASE: "When you deploy a gadget, all other active gadgets are pulled to the most recent gadget."
+    ("Saboteur_keystone_gadget_dep", "Forward Operating Base",
+     (R(None, "", 100, action="gadgets_pulled_to_placed", action_event="gadget_placed"),)),
+    # STEADY POWER, THE DRAIN (ruled 2026-11-27): each active gadget drains 1 Fervour a second.
+    ("Saboteur_basic_gadget_sus_001", "Steady Power",
+     (R("fervour_drain_per_second", "flat", 1, scale="gadgets_active", step=1, min_points=1),)),
+)
+
+NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES + E4_NODES
 
 
 def apply(path: pathlib.Path = base.WORKBOOK, check_only: bool = False) -> list[str]:

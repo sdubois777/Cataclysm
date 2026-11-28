@@ -1084,6 +1084,27 @@ int32 ACataclysmMinion::MoveEveryGadgetOf(AActor* Player, const FVector& Point)
 	return Count;
 }
 
+int32 ACataclysmMinion::PullOtherGadgetsTo(AActor* Player, ACataclysmMinion* Placed)
+{
+	if (!IsValid(Placed))
+	{
+		return 0;
+	}
+	TArray<ACataclysmMinion*> Gadgets = DevicesOf(Player);
+	Gadgets.RemoveAll([Placed](const ACataclysmMinion* Each) { return !Each->IsGadget() || Each == Placed; });
+	Gadgets.Sort([](const ACataclysmMinion& A, const ACataclysmMinion& B) { return A.SpawnOrder < B.SpawnOrder; });
+	const FVector Point = Placed->GetActorLocation();
+	const int32 Count = Gadgets.Num();
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const float Radians = 2.0f * UE_PI * static_cast<float>(Index) / static_cast<float>(FMath::Max(1, Count));
+		Gadgets[Index]->MoveGadgetTo(Point + FVector(FMath::Cos(Radians), FMath::Sin(Radians), 0.0f) * GadgetMoveRingRadiusCm);
+	}
+	// AND WITH BOLTED TOGETHER HELD, WHAT LANDED WITHIN REACH BOLTS, as after every move.
+	BoltAfterMove(Player, Gadgets);
+	return Count;
+}
+
 bool ACataclysmMinion::TypeIsAGadget(const FString& InTypeName)
 {
 	const FGameplayTagContainer Tags = TagsOfType(InTypeName);

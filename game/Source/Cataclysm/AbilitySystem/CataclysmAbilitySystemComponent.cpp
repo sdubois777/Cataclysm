@@ -7007,6 +7007,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::FervourPerPercentOfMaxHealthLeech
 const TCHAR* UCataclysmAbilitySystemComponent::FervourOfFrenzyDrainSecondsAction = TEXT("fervour_of_frenzy_drain_seconds");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationBurstOnKillAction = TEXT("retaliation_burst_on_kill");
 const TCHAR* UCataclysmAbilitySystemComponent::EchoStrikeLaterAction = TEXT("echo_strike_later");
+const TCHAR* UCataclysmAbilitySystemComponent::GadgetsPulledToPlacedAction = TEXT("gadgets_pulled_to_placed");
 const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfBlockedDamageAction =
 	TEXT("next_attack_bonus_of_blocked_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::BloodForBloodReflectPercentStat = TEXT("blood_for_blood_reflect_percent");
@@ -10051,6 +10052,19 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 							Self, Near, LastRetaliationTaken * Action.Percent / 100.0f, Burst);
 					}
 				}
+			}
+			continue;
+		}
+		// EVERY OTHER GADGET PULLED TO THE ONE JUST PLACED: Forward Operating Base (the War trees' window 2, 2026-11-28).
+		if (Action.bGadgetsPulledToPlaced)
+		{
+			ACataclysmMinion* Placed = Cast<ACataclysmMinion>(const_cast<AActor*>(EventTarget));
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Placed && Self && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				ACataclysmMinion::PullOtherGadgetsTo(Self, Placed);
 			}
 			continue;
 		}

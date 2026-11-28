@@ -5684,6 +5684,12 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bEchoStrikeLater = false;
 
 	/**
+	 * Every other gadget the wearer commands pulled to the gadget the event names: `gadgets_pulled_to_placed`, on
+	 * `gadget_placed`. Forward Operating Base, the War trees' window 2 (2026-11-28).
+	 */
+	bool bGadgetsPulledToPlaced = false;
+
+	/**
 	 * Every enemy within `EventValue` metres below `Percent` per cent of its maximum health, that may be executed
 	 * (`UCataclysmAbilitySystemComponent::CanBeExecuted`: alive, no Boss, damage reaches it), loses the health it has left:
 	 * `execute_nearby_below`. The War trees' engine slice E2 (2026-11-27), Killing Blow's "when you attack at maximum

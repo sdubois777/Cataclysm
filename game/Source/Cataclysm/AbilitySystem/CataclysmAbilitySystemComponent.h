@@ -2132,6 +2132,8 @@ public:
 	static const TCHAR* FervourOfFrenzyDrainSecondsAction;
 	static const TCHAR* RetaliationBurstOnKillAction;
 	static const TCHAR* EchoStrikeLaterAction;
+	/** `gadgets_pulled_to_placed`. Forward Operating Base, the War trees' window 2 (2026-11-28). */
+	static const TCHAR* GadgetsPulledToPlacedAction;
 	static const TCHAR* NextAttackBonusOfBlockedDamageAction;
 
 	/**

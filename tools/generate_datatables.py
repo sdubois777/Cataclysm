@@ -8028,7 +8028,9 @@ PLACED_ACTIONS = {
     # THE WAR TREES' ENGINE SLICE E2 (2026-11-27): issue #964's mark, a stack on the enemy of the event that raises
     # the damage it takes from every source (Open Wound on a critical strike; Marked Territory on a trap's blow), and
     # Rend's, which lowers its damage reduction. `enemy_armor_removed` below gains `critical_strike` for Shatter.
-    "enemy_damage_taken": ("hit_dealt", "critical_strike", "deployable_hit"),
+    # AND ON `trap_triggered` SINCE THE WAR TREES' WINDOW 2 (2026-11-28): Marked Territory's "Enemies that trigger a
+    # trap are marked", the enemy that set the trap off, which that event names.
+    "enemy_damage_taken": ("hit_dealt", "critical_strike", "deployable_hit", "trap_triggered"),
     "enemy_damage_reduction_removed": ("hit_dealt",),
     "enemy_armor_removed": ("hit_dealt", "deployable_hit", "critical_strike"),
     "attacker_damage_removed": ("melee_hit_taken",),
@@ -8910,9 +8912,14 @@ FERVOUR_PER_PERCENT_OF_MAX_HEALTH_LEECHED_ACTION = "fervour_per_percent_of_max_h
 FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION = "fervour_of_frenzy_drain_seconds"
 RETALIATION_BURST_ON_KILL_ACTION = "retaliation_burst_on_kill"
 ECHO_STRIKE_LATER_ACTION = "echo_strike_later"
-RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION)
+#: AND `gadgets_pulled_to_placed`, on `gadget_placed` only: every other gadget the wearer commands moves to a ring around
+#: the gadget just placed. Forward Operating Base, the War trees' window 2 (2026-11-28). Its value is 100, the whole rule.
+GADGETS_PULLED_TO_PLACED_ACTION = "gadgets_pulled_to_placed"
+RIDER_ACTIONS = (FERVOUR_OF_FRENZY_DRAIN_SECONDS_ACTION, RETALIATION_BURST_ON_KILL_ACTION, ECHO_STRIKE_LATER_ACTION,
+                 GADGETS_PULLED_TO_PLACED_ACTION)
 RIDER_ACTION_EVENTS = {RETALIATION_BURST_ON_KILL_ACTION: ("kill",), ECHO_STRIKE_LATER_ACTION: ("hit_dealt",),
-                       "next_attack_bonus_of_blocked_damage": ("block",)}
+                       "next_attack_bonus_of_blocked_damage": ("block",),
+                       GADGETS_PULLED_TO_PLACED_ACTION: ("gadget_placed",)}
 MOST_ECHO_DELAY_SECONDS = 5.0
 #: AND `execute_nearby_below`: every enemy within the row's Event Value in metres (required, up to
 #: `MAX_SMITE_NEARBY_BY_HIT_METRES`) below the value's per cent of its maximum health, that may be executed, loses the

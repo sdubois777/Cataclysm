@@ -551,6 +551,14 @@ public:
 	 */
 	static int32 MoveEveryGadgetOf(AActor* Player, const FVector& Point);
 
+	/**
+	 * Move every gadget `Player` commands EXCEPT `Placed` to a ring of `GadgetMoveRingRadiusCm` around `Placed`, in placing
+	 * order, the first due east: Forward Operating Base's "When you deploy a gadget, all other active gadgets are pulled to
+	 * the most recent gadget" (the War trees' window 2, 2026-11-28). Each keeps its health and clock, as a move does.
+	 * Returns how many moved.
+	 */
+	static int32 PullOtherGadgetsTo(AActor* Player, ACataclysmMinion* Placed);
+
 	/** The ring moved gadgets land on, in centimetres from the point. Ruled G2. */
 	static constexpr float GadgetMoveRingRadiusCm = 150.0f;
 

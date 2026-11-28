@@ -1844,6 +1844,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::RetaliationBurstOnKillAction, ESearchCase::IgnoreCase);
 					Action.bEchoStrikeLater = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::EchoStrikeLaterAction, ESearchCase::IgnoreCase);
+					// AND FORWARD OPERATING BASE'S PULL, the War trees' window 2 (2026-11-28).
+					Action.bGadgetsPulledToPlaced = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::GadgetsPulledToPlacedAction, ESearchCase::IgnoreCase);
 					if (bArmourRemovedNearby)
 					{
 						Action.Nearby = ECataclysmNearbyAction::ArmourRemoved;
