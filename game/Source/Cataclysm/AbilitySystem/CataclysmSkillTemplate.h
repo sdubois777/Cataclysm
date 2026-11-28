@@ -1344,6 +1344,13 @@ protected:
 	bool ApplyStatedAilmentTo(AActor* Self, AActor* Target, float DealtToHealth = -1.0f) const;
 
 	/**
+	 * The War weapon skills' marks on a landed blow (slice WS1, issue #2972): the armour removed (W3), the damage taken
+	 * increased (W4), each a placed stack on `Target` keyed by this skill, and the Staggered state (W5). Nothing for a
+	 * row stating none, or a target missing or dead. Laid wherever the stated ailment is.
+	 */
+	void ApplyStatedHitMarksTo(AActor* Self, AActor* Target) const;
+
+	/**
 	 * The riders `HitTargets` lays on every LANDED blow beyond its damage, its burn and its stated ailment: the
 	 * knockback, the stun, the forced movement and a knockdown the caster's rows carry, in that order. Moved out of
 	 * `HitTargets` on 2026-11-17 (issue #2580) so a fired projectile's contact reaches the same code. The caller has

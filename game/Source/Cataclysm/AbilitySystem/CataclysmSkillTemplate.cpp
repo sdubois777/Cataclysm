@@ -95,6 +95,12 @@ static TAutoConsoleVariable<float> CVarCataclysmSkillDamageRoll(
  * Pins which of its named effects a skill stating `EffectPick=Random` lays, by its place among them. -1, the
  * default, draws each equally likely. Issue #2580, [N4].
  */
+static TAutoConsoleVariable<float> CVarCataclysmSkillAilmentRoll(
+	TEXT("Cataclysm.SkillAilmentRoll"),
+	-1.0f,
+	TEXT("Pins the roll of a skill row's AilmentChance, 0-100. -1 rolls normally. 0 lands it whenever there is any chance."),
+	ECVF_Default);
+
 static TAutoConsoleVariable<int32> CVarCataclysmSkillEffectPick(
 	TEXT("Cataclysm.SkillEffectPick"),
 	-1,
@@ -3232,6 +3238,8 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		if (bLanded)
 		{
 			ApplyStatedAilmentTo(Self, Target, Resolved.DealtToHealth);
+			// AND THE WAR WEAPON SKILLS' MARKS, by the same rule (slice WS1, issue #2972).
+			ApplyStatedHitMarksTo(Self, Target);
 		}
 
 		// AND ANY RUNNING BUFF THAT REACTS TO A LANDED BLOW IS TOLD, AND WHERE.
@@ -3798,7 +3806,45 @@ bool UCataclysmSkillTemplate::ApplyStatedAilmentTo(AActor* Self, AActor* Target,
 	{
 		return false;
 	}
-	return UCataclysmAilments::Apply(Self, Target, *Kind, /*Magnitude=*/1.0f, this);
+	// AND THE WAR WEAPON SKILLS' CHANCE AND MAGNITUDE (slice WS1, issue #2972): a chance below 100 rolls per blow, and the
+	// ailment lands at the row's magnitude, 1 by default, which is the magnitude every row had before.
+	if (Params.AilmentChancePercent < 100.0f)
+	{
+		const float Pinned = CVarCataclysmSkillAilmentRoll.GetValueOnAnyThread();
+		if ((Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f)) >= Params.AilmentChancePercent)
+		{
+			return false;
+		}
+	}
+	return UCataclysmAilments::Apply(Self, Target, *Kind, /*Magnitude=*/FMath::Max(0.0f, Params.AilmentMagnitude), this);
+}
+
+void UCataclysmSkillTemplate::ApplyStatedHitMarksTo(AActor* Self, AActor* Target) const
+{
+	if (!IsValid(Self) || !IsValid(Target) || UCataclysmSkillEffects::IsDead(Target))
+	{
+		return;
+	}
+	using EKind = UCataclysmAbilitySystemComponent::EPlacedStackKind;
+	if (UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(UCataclysmTargeting::AbilitySystemOf(Target)))
+	{
+		// ONE KEY A SKILL, so two skills each remove their own share and a second blow of one skill refreshes its own.
+		if (Params.ArmourRemovedPercent > 0.0f && Params.ArmourRemovedSeconds > 0.0f)
+		{
+			Theirs->ReceivePlacedStack(FName(*(SkillName + TEXT("_ArmourRemoved"))), Params.ArmourRemovedPercent,
+									   Params.ArmourRemovedSeconds, Params.ArmourRemovedCap, EKind::ArmourRemoved);
+		}
+		if (Params.DamageTakenIncreasedPercent > 0.0f && Params.DamageTakenIncreasedSeconds > 0.0f)
+		{
+			Theirs->ReceivePlacedStack(FName(*(SkillName + TEXT("_DamageTaken"))), Params.DamageTakenIncreasedPercent,
+									   Params.DamageTakenIncreasedSeconds, /*Cap=*/1, EKind::DamageTaken);
+		}
+	}
+	if (Params.StaggerSeconds > 0.0f)
+	{
+		UCataclysmSkillEffects::ApplyStagger(Self, Target, Params.StaggerSeconds);
+	}
 }
 
 int32 UCataclysmSkillTemplate::CashInOwnAilmentsAround(const FVector& Centre)

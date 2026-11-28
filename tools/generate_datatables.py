@@ -420,6 +420,22 @@ SHAPE_RIDERS = {
     # nothing. This key prices one, through `UCataclysmAilments::Apply`.
     "Ailment": "the ailment a landed blow applies outright, at magnitude one, "
                "one of SKILL_ROW_AILMENTS. Burn is `Burn=1` and not this",
+    # THE WAR WEAPON SKILLS' ON-HIT KEYS, slice WS1 (issue #2972, 2026-11-28),
+    # each laid on a landed blow beside `Ailment`.
+    "AilmentChance": "W1: the percent chance the stated Ailment lands, above 0 "
+                     "and below 100",
+    "AilmentMagnitude": "W2: the stated Ailment at that many times its normal "
+                        "damage, above 0",
+    "ArmourRemoved": "W3: percent of armour a landed blow removes, for "
+                     "ArmourRemovedDuration seconds",
+    "ArmourRemovedDuration": "W3: seconds ArmourRemoved lasts",
+    "ArmourRemovedCap": "W3: how many stacks of ArmourRemoved one skill may "
+                        "hold on a target, 1 when absent, 0 for no cap",
+    "DamageTakenIncreased": "W4: percent more damage a landed blow makes its "
+                            "target take from all sources",
+    "DamageTakenIncreasedDuration": "W4: seconds DamageTakenIncreased lasts",
+    "Stagger": "W5: seconds of the Staggered state a landed blow lays, not a "
+               "stun",
     # [N3]. NOT `MinDamagePercent` AND `MaxDamagePercent`, which already mean
     # a charged swing's floor and a scaling ceiling. A row stating a roll
     # leaves its Damage Percent cell blank; `weapon_skills` refuses both.
@@ -1056,6 +1072,30 @@ def check_a_bursting_wound_a_paid_hit_and_an_escape(params: dict[str, str], shap
                 f"{where}: states HitFervour on a projectile with no Speed "
                 f"and no Arc, a beam, and only a flying shot's contact pays "
                 f"it")
+    # THE WAR WEAPON SKILLS' ON-HIT KEYS, slice WS1 (issue #2972): each needs
+    # what it modifies, and a figure that does something.
+    for key in ("AilmentChance", "AilmentMagnitude"):
+        if key in params and "Ailment" not in params:
+            raise DataError(f"{where}: states {key} and no Ailment, so there is "
+                            f"no ailment for it to act on")
+    if "AilmentChance" in params and not 0.0 < float(params["AilmentChance"]) < 100.0:
+        raise DataError(f"{where}: states AilmentChance={params['AilmentChance']}; "
+                        f"a chance is above 0 and below 100 (leave it out for always)")
+    if "AilmentMagnitude" in params and float(params["AilmentMagnitude"]) <= 0.0:
+        raise DataError(f"{where}: states AilmentMagnitude={params['AilmentMagnitude']}, "
+                        f"which lays nothing")
+    for figure, seconds in (("ArmourRemoved", "ArmourRemovedDuration"),
+                            ("DamageTakenIncreased", "DamageTakenIncreasedDuration")):
+        if (figure in params) != (seconds in params):
+            raise DataError(f"{where}: states one of {figure} and {seconds} without "
+                            f"the other; each needs both")
+        if figure in params and (float(params[figure]) <= 0.0 or float(params[seconds]) <= 0.0):
+            raise DataError(f"{where}: states {figure}={params[figure]} for "
+                            f"{params[seconds]} seconds; both are above 0")
+    if "ArmourRemovedCap" in params and "ArmourRemoved" not in params:
+        raise DataError(f"{where}: states ArmourRemovedCap and no ArmourRemoved")
+    if "Stagger" in params and float(params["Stagger"]) <= 0.0:
+        raise DataError(f"{where}: states Stagger={params['Stagger']}, which lays nothing")
     if "HitFervourPerCast" in params:
         if "HitFervour" not in params:
             raise DataError(

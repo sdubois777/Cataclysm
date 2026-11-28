@@ -3185,6 +3185,7 @@ void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
 		if (Holder && Holder != Target && !UCataclysmSkillEffects::IsDead(Target) && !AtNoHealth(Target))
 		{
 			ApplyStatedAilmentTo(Holder, Target);
+			ApplyStatedHitMarksTo(Holder, Target);
 			ApplyForcedMovementTo(Holder, Target, /*DamageDealt=*/0.0f);
 			ApplyNamedEffectsTo(Target);
 			++BlowsLaidOn;

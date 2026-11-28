@@ -623,6 +623,39 @@ FCataclysmSkillShapeParams UCataclysmSkillShapes::ParseParams(
 		{
 			Params.HitFervourPerCast = Number;
 		}
+		// THE WAR WEAPON SKILLS' ON-HIT KEYS, slice WS1 (issue #2972, 2026-11-28): W1 to W5.
+		else if (Key.Equals(TEXT("AilmentChance"), ESearchCase::IgnoreCase))
+		{
+			Params.AilmentChancePercent = Number;
+		}
+		else if (Key.Equals(TEXT("AilmentMagnitude"), ESearchCase::IgnoreCase))
+		{
+			Params.AilmentMagnitude = Number;
+		}
+		else if (Key.Equals(TEXT("ArmourRemoved"), ESearchCase::IgnoreCase))
+		{
+			Params.ArmourRemovedPercent = Number;
+		}
+		else if (Key.Equals(TEXT("ArmourRemovedDuration"), ESearchCase::IgnoreCase))
+		{
+			Params.ArmourRemovedSeconds = Number;
+		}
+		else if (Key.Equals(TEXT("ArmourRemovedCap"), ESearchCase::IgnoreCase))
+		{
+			Params.ArmourRemovedCap = FMath::Max(0, FMath::RoundToInt(Number));
+		}
+		else if (Key.Equals(TEXT("DamageTakenIncreased"), ESearchCase::IgnoreCase))
+		{
+			Params.DamageTakenIncreasedPercent = Number;
+		}
+		else if (Key.Equals(TEXT("DamageTakenIncreasedDuration"), ESearchCase::IgnoreCase))
+		{
+			Params.DamageTakenIncreasedSeconds = Number;
+		}
+		else if (Key.Equals(TEXT("Stagger"), ESearchCase::IgnoreCase))
+		{
+			Params.StaggerSeconds = Number;
+		}
 		// The Death Crossbow draft's C1, issue #2885 slice DS5: a nail's critical strike chance, and the nails' ceiling.
 		else if (Key.Equals(TEXT("CritChanceAgainst"), ESearchCase::IgnoreCase))
 		{

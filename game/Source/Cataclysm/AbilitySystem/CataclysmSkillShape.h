@@ -676,6 +676,37 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	FString Ailment;
 
 	/**
+	 * THE WAR WEAPON SKILLS' ON-HIT KEYS, slice WS1 (issue #2972, 2026-11-28), each laid on a landed blow beside the
+	 * stated `Ailment` by `UCataclysmSkillTemplate::ApplyStatedHitMarksTo`:
+	 * - `AilmentChance` (W1), the per cent chance the stated ailment lands, 100 for always: Cleaving Blow's "a 30%
+	 *   chance to cause a deep bleed". Rolled per blow, pinned by `Cataclysm.SkillAilmentRoll`.
+	 * - `AilmentMagnitude` (W2), the stated ailment at that many times its normal damage, 1 for normal: Gut Wire's
+	 *   "applies bleed at double its normal damage" (ruled 2026-11-28: a multiplier on the damage, not extra stacks).
+	 * - `ArmourRemoved` and `ArmourRemovedDuration` (W3), a placed stack of that per cent of armour removed for that
+	 *   many seconds; `ArmourRemovedCap` stacks of it from one skill, 1 by default, 0 for none (Annihilator's "each
+	 *   revolution ... reduces enemy armor by 5%").
+	 * - `DamageTakenIncreased` and `DamageTakenIncreasedDuration` (W4), a placed stack of that per cent more damage
+	 *   taken from all sources for that many seconds: Warlord's Decree's "take 40% increased damage from all sources".
+	 * - `Stagger` (W5), the Staggered state for that many seconds (ruled 2026-11-28: the state, not a stun).
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float AilmentChancePercent = 100.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float AilmentMagnitude = 1.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float ArmourRemovedPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float ArmourRemovedSeconds = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	int32 ArmourRemovedCap = 1;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float DamageTakenIncreasedPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float DamageTakenIncreasedSeconds = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill Shape")
+	float StaggerSeconds = 0.0f;
+
+	/**
 	 * The ends of a skill's damage percent when it is drawn on each use, uniformly between them. Issue #2580, [N3], for
 	 * the Chaos Whip's Wild Lash and Pandemonium. Both nought when the skill states no roll; `RollsItsDamage` asks.
 	 *
