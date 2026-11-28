@@ -6610,6 +6610,90 @@ namespace CataclysmStatExemptionTest
 					   bStanding);
 	}
 
+	/**
+	 * `trap_arming_speed` under a scale, read by `ACataclysmMinion::SkillTrapArmingSecondsFor` through `IncreasesForStat`
+	 * with the state. The War trees' window 2 (2026-11-28), Hair Wire Expertise. 100% faster for each debuff carried: two
+	 * debuffs arm a trap in a third of the plain time.
+	 */
+	void ProbeScaledTrapArmingSpeed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
+		const FGameplayTagContainer TrapTags(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false));
+		ScaledBy(Holder.Actor, TEXT("trap_arming_speed"), 100.0f, ECataclysmStatScale::PerDebuffCarried, /*Base=*/0.0f);
+		const float Clean = ACataclysmMinion::SkillTrapArmingSecondsFor(Holder.Actor, TrapTags);
+		GiveTwoDebuffs(Holder.Actor);
+		const float Carrying = ACataclysmMinion::SkillTrapArmingSecondsFor(Holder.Actor, TrapTags);
+		Test.TestEqual(TEXT("control: with no debuff the trap arms in the ruled time"), Clean,
+					   ACataclysmMinion::SkillTrapArmSeconds, 0.0001f);
+		Test.TestEqual(TEXT("trap_arming_speed is asked with its scale: two debuffs arm it three times as fast"), Carrying,
+					   ACataclysmMinion::SkillTrapArmSeconds / 3.0f, 0.0001f);
+	}
+
+	/**
+	 * `minion_range` under a scale, read through `UCataclysmCommand::SummonerMultiplierFor` with the summoner's state.
+	 * The War trees' window 2 (2026-11-28), Combat Engineer. 50% for each debuff carried: two debuffs double the reach.
+	 */
+	void ProbeScaledMinionRange(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
+		const FGameplayTagContainer GadgetTags(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false));
+		ScaledBy(Holder.Actor, TEXT("minion_range"), 50.0f, ECataclysmStatScale::PerDebuffCarried, /*Base=*/0.0f);
+		const float Clean = UCataclysmCommand::SummonerMultiplierFor(Holder.Actor, TEXT("minion_range"), GadgetTags);
+		GiveTwoDebuffs(Holder.Actor);
+		const float Carrying = UCataclysmCommand::SummonerMultiplierFor(Holder.Actor, TEXT("minion_range"), GadgetTags);
+		Test.TestEqual(TEXT("control: with no debuff the reach is unchanged"), Clean, 1.0f, 0.0001f);
+		Test.TestEqual(TEXT("minion_range is asked with its scale: two debuffs double the reach"), Carrying, 2.0f, 0.0001f);
+	}
+
+	/**
+	 * `minion_range` under a condition, the same ask. The War trees' window 2 (2026-11-28), shipped under
+	 * `player_stationary_for_seconds` (Siege Mode, R19); a Fervour condition stands for it, on a holder at 50 of 100.
+	 */
+	void ProbeConditionedMinionRange(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const FGameplayTagContainer GadgetTags(
+			FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Gadget")), /*ErrorIfNotFound=*/false));
+		const auto Reach = [World, &GadgetTags](float AbovePercent)
+		{
+			FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
+			GiveAFervourPool(Holder);
+			Holder.AbilitySystem->SetNumericAttributeBase(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 50.0f);
+			FCataclysmStatModifier Longer;
+			Longer.Bucket = ECataclysmStatBucket::Increased;
+			Longer.Source = ECataclysmModifierSource::PassiveKeystone;
+			Longer.Value = 100.0f;
+			Longer.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			Longer.ConditionValue = AbovePercent;
+			TMap<FName, FCataclysmStatInputs> Lines;
+			Lines.FindOrAdd(FName(TEXT("minion_range"))).Modifiers.Add(Longer);
+			Cast<UCataclysmAbilitySystemComponent>(Holder.AbilitySystem)->SetStatInputs(MoveTemp(Lines));
+			return UCataclysmCommand::SummonerMultiplierFor(Holder.Actor, TEXT("minion_range"), GadgetTags);
+		};
+		Test.TestEqual(TEXT("minion_range under a refused condition: the reach is unchanged"), Reach(60.0f), 1.0f, 0.0001f);
+		Test.TestEqual(TEXT("and under one that holds, doubled"), Reach(30.0f), 2.0f, 0.0001f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -6634,6 +6718,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("retaliation"),                &ProbeScaledRetaliation},
 			{TEXT("health_regen"),               &ProbeScaledHealthRegen},
 			{TEXT("fervour_per_second"),         &ProbeScaledFervourPerSecond},
+			{TEXT("trap_arming_speed"),          &ProbeScaledTrapArmingSpeed},
+			{TEXT("minion_range"),               &ProbeScaledMinionRange},
 			{TEXT("fervour_from_minions"),       &ProbeScaledFervourFromMinions},
 			{TEXT("fervour_per_enemy_in_reach"), &ProbeScaledFervourPerEnemyInReach},
 			{TEXT("fervour_drain_per_second"),   &ProbeScaledFervourDrainPerSecond},
@@ -14529,6 +14615,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("berserking_on_every_melee_hit"), &ProbeConditionedBerserkingOnEveryMeleeHit},
 			{TEXT("berserking_spends_half"), &ProbeConditionedBerserkingSpendsHalf},
 			{TEXT("block_chance_floor"), &ProbeConditionedBlockChanceFloor},
+			{TEXT("minion_range"), &ProbeConditionedMinionRange},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -17286,8 +17373,8 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
 	// FORTY-EIGHT SINCE THE WAR TREES' ENGINE SLICES E1 TO E3 (2026-11-27): E1's three immunities, unmitigated
 	// retaliation and the retaliation radius, E2's full-circle swing and Fervour per enemy hit, and E3's Bloodied,
-	// Berserker's Rage and Eye of the Storm.
-	if (!TestEqual(TEXT("the forty-eight probes are all here"), ConditionedProbes().Num(), 48))
+	// Berserker's Rage and Eye of the Storm. FORTY-NINE SINCE WINDOW 2 (2026-11-28): Siege Mode's gadget range.
+	if (!TestEqual(TEXT("the forty-nine probes are all here"), ConditionedProbes().Num(), 49))
 	{
 		return false;
 	}

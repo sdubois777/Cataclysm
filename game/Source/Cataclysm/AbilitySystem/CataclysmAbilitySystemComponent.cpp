@@ -1254,6 +1254,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		if (const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>())
 		{
 			State.Armor = Combat->GetArmor();
+			// AND THE EVASION ATTRIBUTE, for Callous Setup (the War trees' window 2, 2026-11-28).
+			State.Evasion = Combat->GetEvasion();
 			// AND THE BLOCK CHANCE ATTRIBUTE, for Bastion's "for every 1% Block Chance you have". The War vow options'
 			// second slice, 2026-11-25. The attribute, as ruled that day; `FCataclysmStatConditions::BlockChance` says why.
 			State.BlockChance = Combat->GetBlockChance();
@@ -1773,6 +1775,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// above follow.
 	State.bIsMoving = IsMoving();
 	State.SecondsSinceMoved = SecondsSinceMoved();
+	// AND THE CHARACTER'S OWN, WHICH NOTHING BELOW REPLACES: Siege Mode (the War trees' window 2, 2026-11-28).
+	State.PlayerSecondsSinceMoved = State.SecondsSinceMoved;
 	State.SecondsSinceOwnAttack = SecondsSinceOwnAttack();
 
 	// AND THE TWO FACTS OF THE ATTACK AND THE HIT IN HAND, for `attack_at_full_fervour`, `blow_was_critical` and
@@ -1816,6 +1820,40 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND THE MAXIMUM HEALTH FROM OTHER SOURCES, only when some row asks, for `max_health_from_other_sources` (Colossus,
 	// R3). The War trees' slice E3 (2026-11-27). The line evaluated with an empty state, so no scaled row -- this scale's
 	// own included -- is in it.
+	// AND THE SABOTEUR'S READINGS, the War trees' window 2 (2026-11-28). Evasion before removal: the line with its
+	// removal rows left out, evaluated with an empty state, only when some row asks. The trap kinds: distinct slots among
+	// the traps standing, only when some row asks.
+	State.FervourSpentRecently = FervourSpentRecently();
+	if (bSomeRowAsksEvasionBeforeRemoval)
+	{
+		const FCataclysmStatInputs* Line = StatInputs.Find(FName(TEXT("evasion")));
+		TArray<FCataclysmStatModifier> Kept;
+		if (Line)
+		{
+			for (const FCataclysmStatModifier& Row : Line->Modifiers)
+			{
+				if (Row.Bucket != ECataclysmStatBucket::Removed)
+				{
+					Kept.Add(Row);
+				}
+			}
+		}
+		const UCataclysmCombatAttributeSet* Combat = GetSet<UCataclysmCombatAttributeSet>();
+		State.EvasionBeforeRemoval = Line
+			? FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(Line->Base, Kept, FGameplayTagContainer(),
+																FCataclysmStatConditions())
+								   .Final)
+			: (Combat ? Combat->GetEvasion() : 0.0f);
+	}
+	if (bSomeRowAsksTrapKindsActive)
+	{
+		TSet<ECataclysmAbilitySlot> Kinds;
+		for (const ACataclysmMinion* Trap : ACataclysmMinion::SkillTrapsOf(GetAvatarActor()))
+		{
+			Kinds.Add(Trap->SkillTrapSlot);
+		}
+		State.TrapKindsActive = Kinds.Num();
+	}
 	if (bSomeRowAsksMaximumHealthFromOtherSources)
 	{
 		const FCataclysmStatInputs* Health = StatInputs.Find(FName(TEXT("max_health")));
@@ -5387,6 +5425,8 @@ void UCataclysmAbilitySystemComponent::NoteWhatTheRowsAsk()
 {
 	bSomeRowAsksIncreasedMaximumHealth = false;
 	bSomeRowAsksMaximumHealthFromOtherSources = false;
+	bSomeRowAsksEvasionBeforeRemoval = false;
+	bSomeRowAsksTrapKindsActive = false;
 	for (const TPair<FName, FCataclysmStatInputs>& Line : StatInputs)
 	{
 		for (const FCataclysmStatModifier& Row : Line.Value.Modifiers)
@@ -5394,6 +5434,8 @@ void UCataclysmAbilitySystemComponent::NoteWhatTheRowsAsk()
 			bSomeRowAsksIncreasedMaximumHealth |= Row.Scale == ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth;
 			bSomeRowAsksMaximumHealthFromOtherSources |=
 				Row.Scale == ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources;
+			bSomeRowAsksEvasionBeforeRemoval |= Row.Scale == ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval;
+			bSomeRowAsksTrapKindsActive |= Row.Scale == ECataclysmStatScale::PerTrapKindActive;
 		}
 	}
 }
@@ -5447,6 +5489,10 @@ void UCataclysmAbilitySystemComponent::NoteFervourSpent(float Amount, const FGam
 	if (const UWorld* World = GetWorld())
 	{
 		LastFervourSpentAtSeconds = World->GetTimeSeconds();
+		// AND THE AMOUNT, FOR HOT DEPLOY'S "Fervour spent in the last 5 seconds" (the War trees' window 2).
+		const float SpentAt = LastFervourSpentAtSeconds;
+		RecentFervourSpent.RemoveAll([SpentAt](const TPair<float, float>& Spent) { return SpentAt - Spent.Key > 5.0f; });
+		RecentFervourSpent.Emplace(SpentAt, Amount);
 
 		// CINDERS KEPT: a share of every spend TAKEN FROM THE POOL comes back later, Phylactery's included. Not of
 		// Bound Offering's share of a reserve, which is only counted as spent: nothing was taken, so there is nothing
@@ -6952,6 +6998,25 @@ const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyOfMaximumHealthAction 
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyOfRecentDamageTakenAction =
 	TEXT("smite_nearby_of_recent_damage_taken");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteLineByHitAction = TEXT("smite_line_by_hit");
+
+float UCataclysmAbilitySystemComponent::FervourSpentRecently() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return -1.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	float Sum = 0.0f;
+	for (const TPair<float, float>& Spent : RecentFervourSpent)
+	{
+		if (Now - Spent.Key <= 5.0f)
+		{
+			Sum += Spent.Value;
+		}
+	}
+	return Sum;
+}
 
 void UCataclysmAbilitySystemComponent::NoteDamageTakenAmount(float Amount)
 {

@@ -670,6 +670,14 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Stationary For Seconds"),
 
 	/**
+	 * THE CHARACTER ITSELF has stood still for at least `Value` seconds, read from `PlayerSecondsSinceMoved`, which a
+	 * gadget's blow does not replace: Siege Mode's "Once you have stood still for 3 seconds" (R19), on a gadget's stat. The
+	 * War trees' window 2 (2026-11-28). A negative clock, no character, refuses.
+	 */
+	PlayerStationaryForSeconds
+		UMETA(DisplayName = "Player Stationary For Seconds"),
+
+	/**
 	 * The blow in hand was dealt after the character moved AT LEAST THAT FAR since
 	 * its own last attack. Issue #41, slice 2.
 	 *
@@ -3319,6 +3327,42 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Second Of Combat Held"),
 
 	/**
+	 * THE WAR TREES' WINDOW 2 (2026-11-28), the Saboteur's scales, each counting whole steps and nothing unread:
+	 * `Value` per `ScaleStep` of the class resource SPENT IN THE LAST 5 SECONDS (Hot Deploy's "for every 10 Fervour spent
+	 * in the last 5 seconds"), from `FervourSpentRecently`.
+	 */
+	PerPointOfClassResourceSpentRecently
+		UMETA(DisplayName = "Per Point Of Class Resource Spent Recently"),
+
+	/** `Value` per `ScaleStep` points of the class resource HELD ABOVE HALF ITS MAXIMUM (Steady Power), from the pool. */
+	PerPointOfClassResourceAboveHalf
+		UMETA(DisplayName = "Per Point Of Class Resource Above Half"),
+
+	/** `Value` per `ScaleStep` per cent of EVASION, the attribute (Callous Setup), from `Evasion`. */
+	PerPercentOfEvasion
+		UMETA(DisplayName = "Per Percent Of Evasion"),
+
+	/**
+	 * `Value` per `ScaleStep` per cent of EVASION AS IT WOULD HAVE BEEN WITHOUT A ROW THAT REMOVES IT (Calculated Risk's
+	 * "for every 1% of evasion chance you would have had from all sources"), from `EvasionBeforeRemoval`: the `evasion`
+	 * line evaluated with an empty state and its removal rows left out. Filled only for a component some row of which
+	 * asks.
+	 */
+	PerPercentOfEvasionBeforeRemoval
+		UMETA(DisplayName = "Per Percent Of Evasion Before Removal"),
+
+	/** `Value` per DISTINCT KIND OF TRAP the character has standing, a slot each (Hair Wire Expertise), from `TrapKindsActive`. */
+	PerTrapKindActive
+		UMETA(DisplayName = "Per Trap Kind Active"),
+
+	/**
+	 * `Value` per `ScaleStep` seconds THE CHARACTER ITSELF has stood still, never a gadget's (Siege Mode, R19), from
+	 * `PlayerSecondsSinceMoved`, which a gadget's blow does not replace.
+	 */
+	PerSecondPlayerStationary
+		UMETA(DisplayName = "Per Second Player Stationary"),
+
+	/**
 	 * `Value` per hostile character the character STRUCK IN THE LAST 3 SECONDS: Dancing Blades, "each unique enemy you
 	 * have hit in the last 3 seconds drains 2 additional Fervour per second". The War trees' slice E1 (2026-11-27). Read
 	 * from `EnemiesStruckRecently`, which `WithEnemiesInReach` counts when a row asks: every hostile within
@@ -4270,6 +4314,21 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceMoved = -1.0f;
+
+	/** THE CHARACTER'S OWN seconds since it moved, never a gadget's. The War trees' window 2 (2026-11-28), Siege Mode. */
+	float PlayerSecondsSinceMoved = -1.0f;
+
+	/** The class resource spent in the last 5 seconds, or -1 unread. Hot Deploy (window 2). */
+	float FervourSpentRecently = -1.0f;
+
+	/** The evasion attribute, or -1 unread. Callous Setup (window 2). */
+	float Evasion = -1.0f;
+
+	/** Evasion as it would have been without its removal rows, or -1 unread. Calculated Risk (window 2). */
+	float EvasionBeforeRemoval = -1.0f;
+
+	/** How many distinct kinds of trap stand, a slot each, or -1 unread. Hair Wire Expertise (window 2). */
+	int32 TrapKindsActive = -1;
 
 	/**
 	 * Seconds since the character last attacked. Issue #41, slice 2.

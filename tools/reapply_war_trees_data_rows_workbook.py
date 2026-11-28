@@ -478,9 +478,36 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # FORWARD OPERATING BASE: "When you deploy a gadget, all other active gadgets are pulled to the most recent gadget."
     ("Saboteur_keystone_gadget_dep", "Forward Operating Base",
      (R(None, "", 100, action="gadgets_pulled_to_placed", action_event="gadget_placed"),)),
-    # STEADY POWER, THE DRAIN (ruled 2026-11-27): each active gadget drains 1 Fervour a second.
+    # STEADY POWER (ruled 2026-11-27): each active gadget drains 1 Fervour a second; "+4% damage per point for each point
+    # of Fervour above 50% of your maximum".
     ("Saboteur_basic_gadget_sus_001", "Steady Power",
-     (R("fervour_drain_per_second", "flat", 1, scale="gadgets_active", step=1, min_points=1),)),
+     (R("fervour_drain_per_second", "flat", 1, scale="gadgets_active", step=1, min_points=1),
+      *_damage(4, tags=GADGET, scale="class_resource_above_half", step=1))),
+    # HOT DEPLOY: "+2% gadget attack speed per point for every 10 Fervour spent in the last 5 seconds."
+    ("Saboteur_basic_gadget_dep_001", "Hot Deploy",
+     (R("minion_attack_speed", "increased", 2, tags=GADGET, scale="class_resource_spent_recently", step=10),)),
+    # CALLOUS SETUP: "+5% trap damage per point for every 10% of your evasion chance, up to a maximum of 60%."
+    ("Saboteur_basic_trap_mid_007", "Callous Setup",
+     (R("minion_damage", "increased", 5, tags=TRAP, scale="evasion", step=10, cap=6),)),
+    # CALCULATED RISK: "Your evasion chance is permanently set to 0%. All gadget damage is increased by 3% for every 1% of
+    # evasion chance you would have had from all sources."
+    ("Saboteur_basic_gadget_mid_005", "Calculated Risk",
+     (R("evasion", "removed", 1), *_damage(3, tags=GADGET, scale="evasion_before_removal", step=1))),
+    # HAIR WIRE EXPERTISE (ruled 2026-11-28): "+8% trap arming speed per point for each unique trap type you have active."
+    ("Saboteur_basic_trap_mid_004", "Hair Wire Expertise",
+     (R("trap_arming_speed", "increased", 8, tags=TRAP, scale="trap_kinds_active", step=1),)),
+    # SIEGE MODE (R19): "Once you have stood still for 3 seconds, your gadgets gain +5% damage and +3% range for each
+    # second you have stood still, up to 10 seconds. Moving ends the bonus."
+    ("Saboteur_keystone_gadget_sus", "Siege Mode",
+     (*_damage(5, tags=GADGET, scale="player_seconds_stationary", step=1, cap=10, cond="player_stationary_for_seconds",
+               cond_value=3),
+      R("minion_range", "increased", 3, tags=GADGET, scale="player_seconds_stationary", step=1, cap=10,
+        cond="player_stationary_for_seconds", cond_value=3))),
+    # COMBAT ENGINEER: "+8% gadget attack range per point for each active gadget on the battlefield." Its 5-point half,
+    # "Gadgets can attack enemies through terrain within their range", is already true: a gadget's targeting has no
+    # line-of-sight test (`ACataclysmMinion`, `UCataclysmTargeting`), so it has no row.
+    ("Saboteur_basic_gadget_deep_001", "Combat Engineer",
+     (R("minion_range", "increased", 8, tags=GADGET, scale="gadgets_active", step=1),)),
 )
 
 NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES + E4_NODES

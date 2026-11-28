@@ -117,6 +117,7 @@ namespace
 		{ TEXT("while_moving"),                 ECataclysmStatCondition::WhileMoving },
 		{ TEXT("while_stationary"),             ECataclysmStatCondition::WhileStationary },
 		{ TEXT("stationary_for_seconds"),       ECataclysmStatCondition::StationaryForSeconds },
+		{ TEXT("player_stationary_for_seconds"), ECataclysmStatCondition::PlayerStationaryForSeconds },
 		{ TEXT("metres_moved_before_attack"),   ECataclysmStatCondition::MetresMovedBeforeAttack },
 		{ TEXT("not_attacked_for_seconds"),     ECataclysmStatCondition::NotAttackedForSeconds },
 		{ TEXT("attacker_beyond_metres"),       ECataclysmStatCondition::OpponentBeyondMetres },
@@ -234,6 +235,12 @@ namespace
 		{ TEXT("increased_max_health"), ECataclysmStatScale::PerPercentOfIncreasedMaximumHealth },
 		{ TEXT("max_health_from_other_sources"), ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources },
 		{ TEXT("combat_seconds_held"), ECataclysmStatScale::PerSecondOfCombatHeld },
+		{ TEXT("class_resource_spent_recently"), ECataclysmStatScale::PerPointOfClassResourceSpentRecently },
+		{ TEXT("class_resource_above_half"), ECataclysmStatScale::PerPointOfClassResourceAboveHalf },
+		{ TEXT("evasion"), ECataclysmStatScale::PerPercentOfEvasion },
+		{ TEXT("evasion_before_removal"), ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval },
+		{ TEXT("trap_kinds_active"), ECataclysmStatScale::PerTrapKindActive },
+		{ TEXT("player_seconds_stationary"), ECataclysmStatScale::PerSecondPlayerStationary },
 		{ TEXT("enemies_struck_recently"), ECataclysmStatScale::PerEnemyStruckRecently },
 		{ TEXT("enemies_that_struck_you_recently"), ECataclysmStatScale::PerEnemyThatStruckYouRecently },
 		{ TEXT("remains_in_reach"),    ECataclysmStatScale::PerOwnRemainsInReach },
@@ -637,6 +644,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfMeleeHitTaken:
 	case C::WithinSecondsOfCrowdControl:
 	case C::StationaryForSeconds:
+	case C::PlayerStationaryForSeconds:
 	case C::NotAttackedForSeconds:
 	case C::MovedWithinSeconds:
 	case C::WhileBleeding:
@@ -1423,6 +1431,10 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// AT LEAST THAT LONG, so three seconds of standing still meets a threshold
 		// of three. A negative clock is no character to read and refuses.
 		return State.SecondsSinceMoved >= 0.0f && State.SecondsSinceMoved >= Value;
+
+	case ECataclysmStatCondition::PlayerStationaryForSeconds:
+		// THE SAME, ON THE CHARACTER'S OWN CLOCK. The War trees' window 2 (Siege Mode).
+		return State.PlayerSecondsSinceMoved >= 0.0f && State.PlayerSecondsSinceMoved >= Value;
 
 	case ECataclysmStatCondition::MetresMovedBeforeAttack:
 		// AT LEAST THAT FAR, measured before the blow in hand. Negative means no
@@ -2460,6 +2472,44 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(State.CombatSecondsHeld / Modifier.ScaleStep));
 	}
 
+	// THE WAR TREES' WINDOW 2 (2026-11-28): the Saboteur's six, each whole steps, each nothing when unread.
+	case ECataclysmStatScale::PerPointOfClassResourceSpentRecently:
+	case ECataclysmStatScale::PerPointOfClassResourceAboveHalf:
+	case ECataclysmStatScale::PerPercentOfEvasion:
+	case ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval:
+	case ECataclysmStatScale::PerSecondPlayerStationary:
+	{
+		float Reading = -1.0f;
+		switch (Modifier.Scale)
+		{
+		case ECataclysmStatScale::PerPointOfClassResourceSpentRecently:
+			Reading = State.FervourSpentRecently;
+			break;
+		case ECataclysmStatScale::PerPointOfClassResourceAboveHalf:
+			Reading = State.ClassResourceHeld >= 0.0f && State.ClassResourceMaximum > 0.0f
+				? FMath::Max(0.0f, State.ClassResourceHeld - State.ClassResourceMaximum * 0.5f)
+				: -1.0f;
+			break;
+		case ECataclysmStatScale::PerPercentOfEvasion:
+			Reading = State.Evasion;
+			break;
+		case ECataclysmStatScale::PerPercentOfEvasionBeforeRemoval:
+			Reading = State.EvasionBeforeRemoval;
+			break;
+		default:
+			Reading = State.PlayerSecondsSinceMoved;
+			break;
+		}
+		if (Reading < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return Modifier.Value * FMath::Max(0.0f, FMath::FloorToFloat(Reading / Modifier.ScaleStep));
+	}
+
+	case ECataclysmStatScale::PerTrapKindActive:
+		return StackedValue(Modifier, State.TrapKindsActive);
+
 	// MAXIMUM HEALTH FROM OTHER SOURCES IN WHOLE STEPS, the shape of the maximum health one. The War trees' slice E3.
 	case ECataclysmStatScale::PerPointOfMaximumHealthFromOtherSources:
 	{
@@ -2781,6 +2831,7 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	// still. The node would read as conditional and be unconditional, which is
 	// the silent failure the checks above exist for.
 	if ((Modifier.Condition == ECataclysmStatCondition::StationaryForSeconds
+			|| Modifier.Condition == ECataclysmStatCondition::PlayerStationaryForSeconds
 			|| Modifier.Condition == ECataclysmStatCondition::NotAttackedForSeconds
 			|| Modifier.Condition
 				== ECataclysmStatCondition::MetresMovedBeforeAttack)

@@ -7172,6 +7172,16 @@ protected:
 	/** The same for `max_health_from_other_sources` (Colossus, R3). The War trees' slice E3 (2026-11-27). */
 	bool bSomeRowAsksMaximumHealthFromOtherSources = false;
 
+	/** The same for `evasion_before_removal` (Calculated Risk) and `trap_kinds_active` (Hair Wire Expertise). Window 2. */
+	bool bSomeRowAsksEvasionBeforeRemoval = false;
+	bool bSomeRowAsksTrapKindsActive = false;
+
+	/** When and how much of the class resource was spent, pruned past 5 seconds. Hot Deploy (window 2). */
+	TArray<TPair<float, float>> RecentFervourSpent;
+
+	/** The class resource spent in the last 5 seconds. */
+	float FervourSpentRecently() const;
+
 	/** Sets `bSomeRowAsksIncreasedMaximumHealth` and `bSomeRowAsksMaximumHealthFromOtherSources` from `StatInputs`. */
 	void NoteWhatTheRowsAsk();
 

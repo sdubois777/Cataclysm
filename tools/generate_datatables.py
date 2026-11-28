@@ -5713,6 +5713,9 @@ CONDITIONS = {
     # AND "If you take two hits within 1 second" is `two_hits_taken_within_seconds` with a value of 1: the last two landed
     # hits taken, not ticks, came that close together. Counter Stance, the War trees' engine slice E2 (2026-11-27).
     "two_hits_taken_within_seconds": (0.0, 10.0, "a number of seconds"),
+    # AND "Once you have stood still for 3 seconds" ON THE CHARACTER'S OWN CLOCK, never a gadget's: Siege Mode (R19, the
+    # War trees' window 2, 2026-11-28).
+    "player_stationary_for_seconds": (0.0, 60.0, "a number of seconds"),
 
     # "When your class resource is full, gain 10%-20% damage reduction for 3
     # seconds" is `seconds_after_resource_full` with 3. Issue #1815.
@@ -6795,6 +6798,16 @@ SCALES = {
     # AND "for every 10 seconds in continuous combat" WHEN ITS STACKS ARE "lost 50% slower when leaving combat" is
     # `combat_seconds_held` (Grinding Advance), the same slice: seconds held, rising in combat and falling out of it.
     "combat_seconds_held": (0.0, 600.0, "a number of seconds"),
+    # AND THE WAR TREES' WINDOW 2 (2026-11-28), the Saboteur's six: Hot Deploy's "for every 10 Fervour spent in the last 5
+    # seconds", Steady Power's "each point of Fervour above 50% of your maximum", Callous Setup's "for every 10% of your
+    # evasion chance", Calculated Risk's "for every 1% of evasion chance you would have had", Hair Wire Expertise's "each
+    # unique trap type currently active" and Siege Mode's "for each second you have stood still" (R19).
+    "class_resource_spent_recently": (0.0, 1000.0, "an amount of the class resource"),
+    "class_resource_above_half": (0.0, 1000.0, "points of the class resource"),
+    "evasion": (0.0, 100.0, "a percentage of evasion chance"),
+    "evasion_before_removal": (0.0, 100.0, "a percentage of evasion chance"),
+    "trap_kinds_active": (0.0, 10.0, "a number of trap kinds"),
+    "player_seconds_stationary": (0.0, 60.0, "a number of seconds"),
 
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish
@@ -13020,6 +13033,12 @@ STATS_WITH_AN_ASKER = frozenset({
     "health_regen",
     "mana_regen",
     "fervour_per_second",
+    # ADDED IN THE WAR TREES' WINDOW 2 (2026-11-28): Hair Wire Expertise's trap arming speed for each trap kind, read by
+    # `ACataclysmMinion::SkillTrapArmingSecondsFor` through `IncreasesForStat` with the state; and the gadget range of
+    # Combat Engineer and Siege Mode, read through `UCataclysmCommand::SummonerMultiplierFor` with the summoner's state.
+    # `ProbeScaledTrapArmingSpeed` and `ProbeScaledMinionRange`.
+    "trap_arming_speed",
+    "minion_range",
     "fervour_per_enemy_in_reach",
     "fervour_from_minions",
     "max_energy_shield",
@@ -13367,6 +13386,9 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # AND EYE OF THE STORM'S BLOCK FLOOR under "While 3 or more enemies are within 3 meters", the same slice, asked by
     # `UCataclysmDamageCalculation::Resolve` at the block step as `block_chance` is; `ProbeConditionedBlockChanceFloor`.
     "block_chance_floor": ASKER_PASSES_A_BLOW_TAKEN,
+    # AND SIEGE MODE'S GADGET RANGE under "Once you have stood still for 3 seconds" (R19, window 2, 2026-11-28), asked by
+    # `UCataclysmCommand::SummonerMultiplierFor` with the summoner's state; `ProbeConditionedMinionRange`.
+    "minion_range": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,
