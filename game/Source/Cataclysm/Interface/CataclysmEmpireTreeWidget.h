@@ -7,6 +7,7 @@
 #include "Character/CataclysmPassiveTree.h"
 #include "CataclysmEmpireTreeWidget.generated.h"
 
+class UBorder;
 class UButton;
 class UCanvasPanel;
 class UCataclysmChoiceButton;
@@ -248,6 +249,11 @@ protected:
 	/** Closes the screen (`ACataclysmPlayerController::ToggleEmpireTree`). */
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> CloseButton;
+
+	/** The screen's background, which this class makes opaque and the preview's colour. Optional: the screen works
+	 *  without one, and a Widget Blueprint made before 2026-11-27 has it under this name. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UBorder> Backdrop;
 
 	/** The screen's heading, decoration and so optional, as on the class tree screen. */
 	UPROPERTY(meta = (BindWidgetOptional))

@@ -189,6 +189,11 @@ public:
 	static float ZoomToFit(const FCataclysmTreeExtent& Extent,
 						   FVector2D CanvasSize);
 
+	/** The same, with a margin of the caller's instead of `FitMarginPx`: the empire tree's whole view, whose outermost
+	 *  things are its rings and labels rather than nodes with a name to show beside them. */
+	static float ZoomToFit(const FCataclysmTreeExtent& Extent,
+						   FVector2D CanvasSize, float MarginPx);
+
 	/**
 	 * Where a node sits on the panel, as the CENTRE of the node.
 	 *

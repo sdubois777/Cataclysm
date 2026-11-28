@@ -3,6 +3,7 @@
 #include "Interface/CataclysmChoiceButton.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
+#include "Brushes/SlateColorBrush.h"
 
 void UCataclysmChoiceButton::SetChoice(FName InValue, const FText& InLabel,
 									   bool bInChosen, bool bInAvailable)
@@ -64,6 +65,13 @@ void UCataclysmChoiceButton::NativeConstruct()
 	RefreshDisplay();
 }
 
+void UCataclysmChoiceButton::SetMarkColour(const FLinearColor& Colour)
+{
+	MarkColour = Colour;
+	bHasMarkColour = true;
+	RefreshDisplay();
+}
+
 void UCataclysmChoiceButton::SetDimmed(bool bInDimmed)
 {
 	bDimmed = bInDimmed;
@@ -113,6 +121,20 @@ void UCataclysmChoiceButton::RefreshDisplay()
 	if (ChoiceButton)
 	{
 		ChoiceButton->SetIsEnabled(bAvailable);
+
+		// A FLAT SQUARE OF THE MARK'S COLOUR, lighter under the cursor and darker pressed, so a hover still shows. Only
+		// for a button told a colour: every other button keeps the Widget Blueprint's style.
+		if (bHasMarkColour)
+		{
+			FButtonStyle Style = ChoiceButton->GetStyle();
+			const FLinearColor Lighter = FMath::Lerp(MarkColour, FLinearColor::White, 0.3f).CopyWithNewOpacity(MarkColour.A);
+			Style.SetNormal(FSlateColorBrush(MarkColour));
+			Style.SetHovered(FSlateColorBrush(Lighter));
+			Style.SetPressed(FSlateColorBrush(MarkColour * FLinearColor(0.75f, 0.75f, 0.75f, 1.0f)));
+			Style.SetDisabled(FSlateColorBrush(MarkColour));
+			ChoiceButton->SetStyle(Style);
+			ChoiceButton->SetBackgroundColor(FLinearColor::White);
+		}
 	}
 }
 
