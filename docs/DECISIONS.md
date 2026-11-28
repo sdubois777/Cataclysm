@@ -65,8 +65,13 @@ to the top-down view when the hold ended. The cause is in the engine: `UWorld::T
 while the world is not paused (UE 5.8 `LevelTick.cpp`, about line 1845), and a resume pauses before the level's first
 tick, so the camera manager had never worked out a view. `HoldUntilFirstInput` now calls `UpdateCameraManager(0.0f)`
 before it pauses, which takes the view from the character's top-down camera at the end of its boom. Test:
-`Cataclysm.ResumeHold.TheHoldPutsTheViewAtTheTopDownCameraBeforeItPauses`. Branch `fix/resume-hold-camera`; not compiled
-and not run when this paragraph was written.
+`Cataclysm.ResumeHold.TheHoldPutsTheViewAtTheTopDownCameraBeforeItPauses`. Window camera-w1, 2026-11-28, at e0a690c97,
+every figure registered before the run: three compiles succeeded with 0 warning or error lines; the whole Unreal suite
+`6152 tests performed, 6152 succeeded, 0 failed`, 63 skipped halves, `898 written and deleted, 0 left behind`; Python
+`9763 passed, 10 skipped` (JUnit tests 9773, failures 0, errors 0), `ruff check .` clean; the C++ guard proof (the camera
+update run only when already paused) `PROVED: with the break in: 4 tests performed, 3 succeeded, 1 failed:
+TheHoldPutsTheViewAtTheTopDownCameraBeforeItPauses | restored: 4 tests performed, 4 succeeded, 0 failed`. The test's own
+line: the view before the hold at the origin, 2265 cm from the top-down camera; during the hold 0.0 cm from it, pitch -60.
 
 ---
 
