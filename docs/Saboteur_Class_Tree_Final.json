@@ -441,7 +441,7 @@
       "data": {
         "kind": "basic",
         "name": "Scattershot",
-        "description": "When you deploy a trap, there is a 10% chance per point to spend 20 Fervour to deploy an additional trap at a random nearby location.",
+        "description": "When you deploy a trap, there is a 10% chance per point to deploy an additional trap at a random nearby location, which reserves Fervour as normal.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -507,7 +507,7 @@
       "data": {
         "kind": "basic",
         "name": "Reinforced Housing",
-        "description": "Traps are not consumed when triggered. Instead each subsequent trigger costs 15 Fervour, reduced by 1 Fervour per point. At 5 points: Each subsequent trigger deals 20% more damage than the last.",
+        "description": "Traps are not consumed when triggered. Instead each subsequent trigger costs 15 Fervour, reduced by 1 Fervour per point; with too little Fervour, the trap is used up. At 5 points: Each subsequent trigger deals 20% more damage than the last.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -727,7 +727,7 @@
       "data": {
         "kind": "basic",
         "name": "Efficient Design",
-        "description": "Each active gadget on the battlefield extends the active duration of all your other gadgets by 2 seconds per point.",
+        "description": "Each other active gadget reduces the Fervour your gadgets reserve by 1% per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -837,7 +837,7 @@
       "data": {
         "kind": "basic",
         "name": "Volatile Construction",
-        "description": "When a gadget is destroyed, it explodes dealing damage equal to +15% of its maximum HP per point to all nearby enemies.",
+        "description": "When a gadget is destroyed, it explodes dealing damage equal to +15% of its maximum HP per point to all enemies within 4 metres.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -925,7 +925,7 @@
       "data": {
         "kind": "basic",
         "name": "Steady Power",
-        "description": "Gadgets passively drain 1 Fervour per second while active. Your gadgets gain +4% damage per point for each point of Fervour above 50% of your maximum that you currently have.",
+        "description": "Each active gadget drains 1 Fervour per second. Your gadgets gain +4% damage per point for each point of Fervour above 50% of your maximum that you currently have.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -947,7 +947,7 @@
       "data": {
         "kind": "basic",
         "name": "Persistent Systems",
-        "description": "+15% gadget HP regeneration per point per second while above 50% HP. At 4 points: Gadgets that survive for 20 seconds gain a permanent +10% damage stack.",
+        "description": "Gadgets above 50% HP regenerate 1.5% of their maximum HP per second per point. At 4 points: Gadgets that survive for 20 seconds gain a permanent +10% damage stack.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -969,7 +969,7 @@
       "data": {
         "kind": "keystone",
         "name": "Power Surge",
-        "description": "Your gadgets build a charge over time, gaining one stack every 5 seconds up to a maximum of 5 stacks. At maximum stacks the gadget discharges, dealing 40% of its attack damage to all nearby enemies and resetting to 0 stacks.",
+        "description": "Your gadgets build a charge over time, gaining one stack every 5 seconds up to a maximum of 5 stacks. At maximum stacks the gadget discharges, dealing 40% of its attack damage to all enemies within its attack range and resetting to 0 stacks.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1035,7 +1035,7 @@
       "data": {
         "kind": "keystone",
         "name": "Siege Mode",
-        "description": "After remaining stationary for 3 seconds your gadgets gain +5% damage and +3% range per second stationary up to a maximum of 10 seconds. Moving more than 10 meters from any active gadget resets the bonus.",
+        "description": "Once you have stood still for 3 seconds, your gadgets gain +5% damage and +3% range for each second you have stood still, up to 10 seconds. Moving ends the bonus.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1101,7 +1101,7 @@
       "data": {
         "kind": "basic",
         "name": "Scrap and Rebuild",
-        "description": "When a gadget is destroyed gain +5 Fervour per point and reduce the deployment cooldown of your next gadget by 2 seconds per point.",
+        "description": "When a gadget is destroyed gain 5 Fervour per point and your next gadget move is ready 2 seconds sooner per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6
@@ -1459,7 +1459,7 @@
       "data": {
         "kind": "keystone",
         "name": "Concealed",
-        "description": "Your traps do not reveal your position when triggered. Additionally, the first enemy to enter each trap's trigger radius is rooted for 0.5 seconds per point before the trap fires.",
+        "description": "The first enemy to trigger each of your traps is stunned for 1 second.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1481,7 +1481,7 @@
       "data": {
         "kind": "basic",
         "name": "Hair Wire Expertise",
-        "description": "+8% trap attack speed and trigger rate per point for each unique trap type currently active on the battlefield.",
+        "description": "+8% trap arming speed per point for each unique trap type you have active.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
