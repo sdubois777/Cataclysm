@@ -13,6 +13,7 @@
 #include "Animation/AnimSequence.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
+#include "Character/CataclysmCreatureAnimInstance.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -104,8 +105,10 @@ namespace CataclysmChargeGaitTest
 		if (bHasArt)
 		{
 			Test.TestTrue(TEXT("and plays its jog"), Creature->CurrentLoopingAnimation == Creature->JogAnimation);
-			Test.TestEqual(TEXT("at the rate the charge's speed asks, capped"), Creature->GetMesh()->GetPlayRate(),
-						   ExpectedRate, 0.001f);
+			// THE LOOP'S RATE ON EITHER PLAYBACK: `GetPlayRate` answers only in single-node mode, and the Imp plays on
+			// `UCataclysmCreatureAnimInstance` since issue #2976 (window additive-w1 measured 0.0 here with the art).
+			Test.TestEqual(TEXT("at the rate the charge's speed asks, capped"),
+						   UCataclysmCreatureAnimInstance::LoopPlayRate(Creature->GetMesh()), ExpectedRate, 0.001f);
 		}
 		else
 		{
