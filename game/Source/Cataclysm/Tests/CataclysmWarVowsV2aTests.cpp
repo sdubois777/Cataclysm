@@ -527,8 +527,11 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	const FName Unbuilt(TEXT("Berserker_trunk_006"));
 	const FName Built(TEXT("Berserker_twoh_001"));
 	const FName FinalOath(TEXT("Saboteur_capstone_100"));
+	// OPEN WOUNDS HAS ROWS SINCE THE WAR TREES' ENGINE SLICE E3 (2026-11-27), so its rows are taken out of the copy too,
+	// as Bolted Together's are, and the table as loaded is its control.
 	if (!TestTrue(TEXT("control: the table as loaded holds Bolted Together's rows"),
-				  FTree::HasEffectRows(Loaded, FinalOath, 2)))
+				  FTree::HasEffectRows(Loaded, FinalOath, 2))
+		|| !TestTrue(TEXT("control: the table as loaded holds Open Wounds' rows"), FTree::HasEffectRows(Loaded, Unbuilt)))
 	{
 		return false;
 	}
@@ -541,7 +544,7 @@ CATACLYSM_WAR_VOWS_V2A_TEST(FCataclysmWarVowsV2aNotBuiltYetTest,
 	for (const TPair<FName, uint8*>& Each : Effects->GetRowMap())
 	{
 		const FCataclysmPassiveEffectRow* Row = reinterpret_cast<const FCataclysmPassiveEffectRow*>(Each.Value);
-		if (Row && Row->Node == FinalOath.ToString() && Row->Option == 2)
+		if (Row && ((Row->Node == FinalOath.ToString() && Row->Option == 2) || Row->Node == Unbuilt.ToString()))
 		{
 			Removing.Add(Each.Key);
 		}

@@ -8418,8 +8418,8 @@ namespace CataclysmStatExemptionTest
 	/**
 	 * `crit_chance_past_cap_to_multiplier`, read where a hit is priced. The War trees' engine slice E3 (2026-11-27), Hair
 	 * Trigger. Two strikers with 200% critical strike chance and a multiplier of 150; the one holding it adds 50, so its
-	 * certain critical strike deals more. The 100 past the cap come through the pipeline (`crit_chance` flat 100 on the
-	 * attribute's 100), because the attribute itself is clamped to its ceiling when it is written.
+	 * certain critical strike deals more. The 200 come through the pipeline (`crit_chance` flat 200 on a line of base
+	 * nought), because the attribute itself is clamped to its ceiling when it is written.
 	 */
 	void ProbeCritChancePastCapToMultiplier(FAutomationTestBase& Test)
 	{
@@ -8438,9 +8438,11 @@ namespace CataclysmStatExemptionTest
 			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritChanceAttribute(), 100.0f);
 			Striker->AbilitySystem->SetNumericAttributeBase(Combat::GetCritMultiplierAttribute(), 150.0f);
 		}
-		GrantFlats(Plain.Actor, {{FName(TEXT("crit_chance")), 100.0f}});
+		// 200 ON A LINE WHOSE BASE IS NOUGHT: `GrantFlats` writes the line from nothing, so the attribute's 100 is not
+		// under it (war-w1's first run: with 100 here both blows dealt 1500).
+		GrantFlats(Plain.Actor, {{FName(TEXT("crit_chance")), 200.0f}});
 		GrantFlats(Holding.Actor,
-				   {{FName(TEXT("crit_chance")), 100.0f}, {FName(TEXT("crit_chance_past_cap_to_multiplier")), 1.0f}});
+				   {{FName(TEXT("crit_chance")), 200.0f}, {FName(TEXT("crit_chance_past_cap_to_multiplier")), 1.0f}});
 		const FCataclysmDamageResult Without = OneBlow(Plain, Defender);
 		const FCataclysmDamageResult With = OneBlow(Holding, Defender);
 		if (!Test.TestTrue(TEXT("both blows landed and critically struck"),

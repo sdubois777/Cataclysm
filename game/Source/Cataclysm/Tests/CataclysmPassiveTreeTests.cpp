@@ -8974,6 +8974,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSpendingRefreshesTheStatLineTe
 bool FCataclysmPassiveSpendingRefreshesTheStatLineTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
+	// THE RAVAGER'S LINE, PINNED, since issue #932 (2026-11-27): with `Cataclysm.PlayerClass` empty, ten points in the
+	// Masochist's tree would make the character a Masochist and move the base this test's figures stand on. The class
+	// rule is `Cataclysm.ClassLine`'s; this test is about the tree reaching the stat line.
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
 	using Vital = UCataclysmVitalAttributeSet;
 	using Combat = UCataclysmCombatAttributeSet;
 
@@ -9178,6 +9182,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassivePossessionAppliesTheTreeTest,
 bool FCataclysmPassivePossessionAppliesTheTreeTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
+	// THE RAVAGER'S LINE, PINNED, since issue #932 (2026-11-27): with `Cataclysm.PlayerClass` empty, ten points in the
+	// Masochist's tree would make the character a Masochist and move the base this test's figures stand on. The class
+	// rule is `Cataclysm.ClassLine`'s; this test is about the tree reaching the stat line.
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
 	using Vital = UCataclysmVitalAttributeSet;
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
