@@ -26,8 +26,9 @@ WHAT IT MAKES, under `/Game/Interface`:
     WBP_NewCharacter        the new-character screen New opens: a name, the
                             lethality, Solo Self-Found, the population, the
                             weapon type and damage type, issue #753
-    WBP_EmpireTree          the empire upgrade tree: one branch at a time, the
-                            points banked, Respec and Close, issue #2741
+    WBP_EmpireTree          the empire upgrade tree: the whole tree drawn as
+                            built, a view per branch, the points banked,
+                            Respec and Close, issue #2741
     WBP_Forge               the Cataclysmic Forge: every worn and carried piece,
                             Upgrade, one Combine per stone level, and Close,
                             ruled 2026-11-19

@@ -107,6 +107,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	CHECK_TABLE(FCataclysmPassiveNodeRow,       "PassiveNodes.csv")
 	CHECK_TABLE(FCataclysmPassiveEdgeRow,       "PassiveEdges.csv")
 	CHECK_TABLE(FCataclysmEmpireTreeNodeRow,    "EmpireTreeNodes.csv")
+	CHECK_TABLE(FCataclysmEmpireTreeDecorationRow, "EmpireTreeDecorations.csv")
 	CHECK_TABLE(FCataclysmEmpireTreeEdgeRow,    "EmpireTreeEdges.csv")
 	CHECK_TABLE(FCataclysmEmpireTreeEffectRow,  "EmpireTreeEffects.csv")
 	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv")
@@ -284,6 +285,7 @@ bool FCataclysmDataTableAssetsTest::RunTest(const FString& Parameters)
 		{ TEXT("DT_ForgeOperations"),       TEXT("ForgeOperations.csv") },
 		{ TEXT("DT_DungeonModifiers"),      TEXT("DungeonModifiers.csv") },
 		{ TEXT("DT_ElementVisuals"),        TEXT("ElementVisuals.csv") },
+		{ TEXT("DT_EmpireTreeDecorations"), TEXT("EmpireTreeDecorations.csv") },
 		{ TEXT("DT_EmpireTreeEdges"),       TEXT("EmpireTreeEdges.csv") },
 		{ TEXT("DT_EmpireTreeEffects"),     TEXT("EmpireTreeEffects.csv") },
 		{ TEXT("DT_EmpireTreeNodes"),       TEXT("EmpireTreeNodes.csv") },

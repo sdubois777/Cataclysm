@@ -2,6 +2,96 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The empire upgrade tree screen draws the whole tree at once, as the owner built it: every node at its file position, the builder's rings, lines and labels, and each node a mark
+
+**Affects:**
+- `game/Source/Cataclysm/Interface/CataclysmEmpireTreeLayout.h` and `.cpp`, `CataclysmEmpireTreeWidget.h` and `.cpp`:
+  the screen.
+- `game/Data/EmpireTreeDecorations.csv` and `DT_EmpireTreeDecorations`, a new table, made by
+  `tools/generate_datatables.py` (`empire_tree_decorations`) from `docs/Empire_Development_Tree_Final.json`.
+- `game/Source/Cataclysm/Interface/CataclysmPassiveTreeLayout.h`: the old box's width (`NodeWidthPx`) and 3 px edge
+  (`EdgeThicknessPx`) removed, since no screen draws the box any more.
+
+**Replaces slice 2's S3 of 2026-11-18** ("One branch at a time, with the class tree screen's zoom, pan and fit; the branch
+capstones in their branches, the four centre capstones in a fifth view").
+
+### What the owner said
+
+The project owner, 2026-11-27, verbatim: "The more important issue is the empire passive tree. Right now it looks like
+this weird mess, not the beautiful circle json with 4 quadrants we built with the passivetreebuilder". The coordinating
+session asked, the same day, for the whole tree drawn at once at the file's positions, with the quadrants, the edges,
+any drawn shapes and labels from the builder, pan and zoom, and each node drawn as a mark in the class screen's style,
+keeping everything the screen does.
+
+**The target, set by the owner the same day.** A picture of the whole-tree view, drawn by a Python script from the
+generated tables with the screen's sizes and fit (`.claude/windows/empire_tree_preview.png` on the branch's worktree; not
+a screenshot of the game), was shown to the owner, who said, verbatim: "Yes! That looks beautiful". The screen is to
+match that picture.
+
+### Why S3 no longer holds
+
+S3 rested on a measurement: every node was a 150 by 44 box holding its name, and the whole tree allowed a box only
+0.263 of that size, so no name could be read. Since 2026-11-24 a class tree draws each node as a mark sized by its kind
+(28 by 28, a keystone 48 by 48, a vow 72 by 40) with the name beside it on hover. **With those marks the whole empire
+tree allows 0.695 of their size** (`UCataclysmEmpireTreeLayout::MarkScaleFor`, every pair; set by a basic node and a
+keystone of the Explorer branch 26 units apart across and 21 down), so it can be drawn whole.
+
+### What the screen does now
+
+- **One drawing, every node at the file's own position**, through one focus and zoom: no branch is rescaled. The marks
+  are the class screen's, at the whole tree's one scale; a mark says only its spent count, and the name and count are
+  drawn beside the mark of the node hovered or selected.
+- **The builder's drawn elements**: six rings centred on the middle (radii 60, 160, 280, 410, 540, 740), four lines from
+  the middle along the axes, and twelve labels (the four quadrant names, the four tiers, "EMPIRE TREE" and "EMPIRE
+  MILESTONES"), in the builder's colours and on the builder's side of the nodes: rings and lines below, labels over.
+- **Six views in the list**: the whole tree, then each branch and the centre, each with its points ("Architect  26
+  points"). The whole tree is what the screen opens on; a branch's view fits the same drawing to that branch. The list is
+  where each branch's points are read.
+- Unchanged: buying, refusals with their tool tips and dimming, the bank line, the line under the tree, a centre
+  capstone's options, Imperial Prowess's extra option, the walk refusal, and Respec's two presses.
+
+### What the tree file holds that the tables did not
+
+`uiElements`: 22 drawn elements, of three kinds the builder calls `ui_circle`, `ui_line` and `ui_textLabel`. They are
+now carried, as `EmpireTreeDecorations.csv`. The builder places each by the top-left corner of its box; the table states
+the point the screen draws around (a ring's centre, a label's centre, a line's start). A kind the builder adds later
+stops generation (`EMPIRE_TREE_DECORATION_KINDS`). The file's `viewport` (the builder's own last pan and zoom) and
+`metadata` are not carried: the screen fits its own view.
+
+### Judgements of this change, each labelled as one
+
+- **A ring is drawn as straight pieces**, one for every 8 units of radius, 24 to 96, because UMG has no circle: the
+  largest ring's pieces are about 48 units long. A ring or line is never drawn thinner than 1.5 pixels, so the builder's
+  1-unit lines are seen at a fitted zoom of about 0.45.
+- **A label's size follows the zoom**, as the builder's does, so the words keep their place against the rings: a 15-unit
+  quadrant name is about 7 pixels at the fitted zoom, and readable zoomed in.
+- **An edge is the class screen's 10 px, scaled with the marks**, so it keeps its proportion to the marks it joins.
+- **A node is drawn centred on its file position.** The builder draws a node's 16 by 16 box (20 by 20 for a capstone)
+  with its top-left corner there, so in the builder each node sits up to 10 units further right and down against the
+  rings than it does here: about 4 pixels at the fitted zoom. Left as it is, because the node positions are the tree's
+  data and every rule reads them; said here so it is not mistaken for a drawing fault.
+- **A branch capstone's mark meets its quadrant's name.** The vow mark is 50 units wide at the whole tree's scale and the
+  builder's capstone 20, so the corner capstones reach under the names; the names are drawn over them, as the builder
+  draws them.
+
+**Built and run in window emp-w1, 2026-11-27, at c064d1f5** (this branch with development 4f22dac96 merged, and the
+asset commit the editor step made); nothing has been seen in play:
+
+| Step | Printed |
+| :-- | :-- |
+| Compile: the branch, each changed `.cpp` alone, the unity files again | all three `Build: Succeeded`, 0 compiler warning or error lines |
+| Editor step | `DT_EmpireTreeDecorations.uasset` and `datatable_asset_sources.json`, committed alone as c064d1f5 |
+| `Cataclysm.EmpireTreeScreen.` alone | `14 tests performed, 14 succeeded, 0 failed` |
+| The whole Unreal suite | `6131 tests performed, 6131 succeeded, 0 failed. 62 skipped part of what they check`; `895 written and deleted, 0 left behind`, the 2 above the base's 893 written by #2962's `InAHordeDungeonAnEchoComesForThePlayerFromAfarAndElsewhereItWaits` |
+| Python | `9735 passed, 10 skipped`; the JUnit file: tests 9745, failures 0, errors 0, skipped 10; `ruff check .` clean |
+| C++ guard proof, three breaks in one call, prefix `Cataclysm.EmpireTreeScreen.` | `PROVED: with the break in: 14 tests performed, 11 succeeded, 3 failed: EveryViewDrawsEveryNodeAndEveryEdgeAndNoMarksOverlap, NodesKeepTheTreeFilesPositionsInEveryView, TheWholeTreesViewHoldsItsOutermostRing \| restored: 14 tests performed, 14 succeeded, 0 failed` |
+
+The three breaks: `NodeCentreOnPanel` placing the Architect branch's nodes 1.2 times further out across;
+`FitToBranch` fitting the whole tree without the builder's rings; `MarkScaleFor` never returning below 1. The three
+named failures are exactly the three predicted.
+
+---
+
 ## 2026-11-27 — An aura reserves maximum mana while it is on and drains none: 50 at skill level 1, lowered by the skill's level and by three new reserve stats, the summed percent held at 75% for mana and Fervour alike
 
 **Affects:**

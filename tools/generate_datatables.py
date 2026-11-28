@@ -4987,6 +4987,98 @@ def empire_tree_edges(_book=None) -> list[dict]:
     return _no_duplicates(out, "Empire Tree Edges")
 
 
+#: The builder's three kinds of drawn element, and the name each is given in the
+#: table. A kind the builder adds later stops generation rather than being left out.
+EMPIRE_TREE_DECORATION_KINDS = {
+    "ui_circle": "circle",
+    "ui_line": "line",
+    "ui_textLabel": "label",
+}
+
+#: A colour as the builder writes one.
+_HEX_COLOUR = re.compile(r"#[0-9a-fA-F]{6}")
+
+
+def empire_tree_decorations(_book=None) -> list[dict]:
+    """One row per drawn ring, line or label of the empire tree's canvas.
+
+    WHY THEY ARE CARRIED. The owner, 2026-11-27, of the screen that drew one
+    branch at a time: "the beautiful circle json with 4 quadrants we built with
+    the passivetreebuilder". The circle and its quadrants are these elements --
+    six rings around the centre, four lines between the quadrants, and the
+    quadrant and tier names -- and not the nodes, so the screen needs them.
+
+    CENTRED RATHER THAN CORNERED. The builder places each element by the top-left
+    corner of its box: a ring of radius 160 centred on the origin sits at
+    (-160, -160). The row says the point the screen draws around: a ring's
+    centre, a label's centre (the corner plus half its measured box), and a
+    line's start, which is where the builder's line begins.
+    """
+    data = _load_empire_tree()
+    out = []
+    for element in data.get("uiElements", []):
+        kind = EMPIRE_TREE_DECORATION_KINDS.get(element.get("type", ""))
+        if kind is None:
+            raise DataError(
+                f"{EMPIRE_TREE_FILE.name}: drawn element {element.get('id')} is "
+                f"of type {element.get('type')!r}, which "
+                f"EMPIRE_TREE_DECORATION_KINDS does not name")
+        body = element.get("data", {})
+        position = element.get("position", {})
+        x = float(position.get("x", 0.0))
+        y = float(position.get("y", 0.0))
+        colour = str(body.get("color", ""))
+        if not _HEX_COLOUR.fullmatch(colour):
+            raise DataError(f"{EMPIRE_TREE_FILE.name}: drawn element "
+                            f"{element.get('id')} has the colour {colour!r}, "
+                            f"which is not #RRGGBB")
+        row = {
+            "Name": element["id"],
+            "Kind": kind,
+            "CentreX": x,
+            "CentreY": y,
+            "Radius": 0.0,
+            "Length": 0.0,
+            "AngleDegrees": 0.0,
+            "Thickness": 0.0,
+            "Text": "",
+            "FontSize": 0.0,
+            "Colour": colour.upper(),
+            "Opacity": float(body.get("opacity", 1.0)),
+            # BELOW THE NODES OR OVER THEM, as the builder draws it: its rings
+            # and lines are -1 and its labels 1.
+            "Layer": int(element.get("zIndex", 0)),
+        }
+        if kind == "circle":
+            radius = float(body.get("radius", 0.0))
+            if radius <= 0.0:
+                raise DataError(f"{EMPIRE_TREE_FILE.name}: ring "
+                                f"{element.get('id')} has no radius")
+            row.update(CentreX=x + radius, CentreY=y + radius, Radius=radius,
+                       Thickness=1.0)
+        elif kind == "line":
+            length = float(body.get("length", 0.0))
+            if length <= 0.0:
+                raise DataError(f"{EMPIRE_TREE_FILE.name}: line "
+                                f"{element.get('id')} has no length")
+            row.update(Length=length, AngleDegrees=float(body.get("angle", 0.0)),
+                       Thickness=float(body.get("width", 1.0)))
+        else:
+            text = clean(str(body.get("text", "")))
+            measured = element.get("measured", {})
+            if not text:
+                raise DataError(f"{EMPIRE_TREE_FILE.name}: label "
+                                f"{element.get('id')} has no words")
+            row.update(CentreX=x + float(measured.get("width", 0.0)) / 2.0,
+                       CentreY=y + float(measured.get("height", 0.0)) / 2.0,
+                       Text=text, FontSize=float(body.get("fontSize", 0.0)))
+        out.append(row)
+
+    if not out:
+        raise DataError("no empire tree drawn elements were read")
+    return _no_duplicates(out, "Empire Tree Decorations")
+
+
 #: THE EFFECTS `ECataclysmEmpireTreeEffect` NAMES, in its order, without `None`.
 #: HELD HERE AS WELL AS IN C++ ON PURPOSE, and the two have to agree:
 #: `tools/tests/test_empire_tree_effects_match_their_texts.py` reads the enum
@@ -17740,6 +17832,7 @@ TREE_TABLES = {
     "PassiveEdges": passive_edges,
     "EmpireTreeNodes": empire_tree_nodes,
     "EmpireTreeEdges": empire_tree_edges,
+    "EmpireTreeDecorations": empire_tree_decorations,
     "EmpireTreeEffects": empire_tree_effects,
 }
 

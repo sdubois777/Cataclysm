@@ -4,7 +4,8 @@
 integration can run without a build:
 
   1. the marks: an ordinary 28 by 28, a keystone 48 by 48, a vow 72 by 40; edges 10 px; the name 8 px past the mark;
-     and the empire tree's box (150 by 44) and 3 px edge unchanged, since that screen still reads them;
+     the old box's 44 px height, which a mark's count is scaled against; and, since 2026-11-27, the empire tree drawn
+     with the same marks, its box's width and edge gone;
   2. a mark is chosen by the tree files' own words for a kind, through `UCataclysmPassiveTree`'s constants;
   3. the class tree screen sizes each node by its mark, draws its edges at the mark thickness, says only the spent
      count on a mark, and adds the name label after the nodes, hit-test invisible; the box rule is gone;
@@ -52,17 +53,24 @@ def constant(name: str) -> str:
     return found.group(1).strip()
 
 
-def test_the_marks_and_the_empire_trees_box_are_the_stated_sizes() -> None:
+def test_the_marks_are_the_stated_sizes_and_the_empire_tree_draws_them_too() -> None:
     assert constant("OrdinaryMarkPx") == "28.0f"
     assert constant("KeystoneMarkPx") == "48.0f"
     assert (constant("VowMarkWidthPx"), constant("VowMarkHeightPx")) == ("72.0f", "40.0f")
     assert constant("MarkEdgeThicknessPx") == "10.0f"
     assert constant("CaptionGapPx") == "8.0f"
-    assert (constant("NodeWidthPx"), constant("NodeHeightPx"), constant("EdgeThicknessPx")) == (
-        "150.0f", "44.0f", "3.0f"), "the empire tree's box or edge moved, and that screen still reads them"
+    assert constant("NodeHeightPx") == "44.0f", "the height a mark's count is scaled against moved"
+    header = code(LAYOUT_H)
+    assert "NodeWidthPx" not in header and "EdgeThicknessPx =" not in header.replace("MarkEdgeThicknessPx =", ""), (
+        "the old box's width or edge is back")
+    # THE EMPIRE TREE DRAWS MARKS SINCE 2026-11-27: each node sized by its kind's mark at the whole tree's scale.
     empire = flat(code(EMPIRE_WIDGET_CPP))
-    assert "UCataclysmPassiveTreeLayout::NodeWidthPx" in empire and "UCataclysmPassiveTreeLayout::EdgeThicknessPx" in empire, (
-        "the empire tree no longer reads the box; if that is meant, this check and the header's note go with it")
+    assert "Placement->SetSize(MarkSizeOnPanel(*Row));" in empire, "an empire node is not sized by its mark"
+    size = flat(body(code(EMPIRE_WIDGET_CPP), "FVector2D UCataclysmEmpireTreeWidget::MarkSizeOnPanel("))
+    assert "UCataclysmEmpireTreeLayout::MarkSizeFor(Row) * BuiltMarkScale * Zoom" in size, (
+        "an empire mark is not its kind's mark at the whole tree's scale")
+    assert "UCataclysmPassiveTreeLayout::MarkCaption(Points, Row->MaxPoints)" in empire, (
+        "an empire node's mark says more than its spent count")
 
 
 def test_a_mark_is_chosen_by_the_tree_files_words_for_a_kind() -> None:

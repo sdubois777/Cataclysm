@@ -98,7 +98,7 @@ them by hand.
 | `Content/Maps/L_Sandbox.umap` | A flat test level: a floor, a directional light and sky, a player start and a navigation bounds volume. Built by `tools/generate_input_assets.py`, which owns it. No enemy is in the map — `ACataclysmGameMode` spawns them at play time. Reached only by opening it in the editor since issue #2733 slice 2. |
 | `Content/Maps/L_FrontEnd.umap` | The level the game and the editor open on: a player start and nothing else, its world settings naming `ACataclysmFrontEndGameMode`, which shows the character select screen. Built by `tools/generate_interface_assets.py`, which owns it. The editor opened on `L_Sandbox` until issue #2733 slice 2, so pressing Play now opens the front end. Issue #753. |
 | `Content/Maps/L_Capital.umap` | The capital, the empire map's home: a floor, a directional light and sky, and a player start, its world settings naming `ACataclysmCapitalGameMode`, which loads the chosen character, spawns no creatures and opens the empire map. Start and every Continue not saved inside a dungeon open it. A Walk button on its map takes the character to `L_Dungeon` to walk that dungeon, and the end of the walk brings it back here (since issue #2733 slice 3). Built by `tools/generate_capital_map.py`, which owns it. Issue #2733. |
-| `Content/Data/` | Thirty-four DataTable assets: twenty-seven imported from the design workbook, two from the simulation package's enemy model, and five from the tree files: the class passive trees and the empire upgrade tree. See below. |
+| `Content/Data/` | Thirty-five DataTable assets: twenty-seven imported from the design workbook, two from the simulation package's enemy model, and six from the tree files: the class passive trees and the empire upgrade tree. See below. |
 | `Content/Input/` | The Enhanced Input mapping contexts, twenty-two input actions and the input config data asset. Built by `tools/generate_input_assets.py`. |
 
 **Not in git.**
@@ -660,12 +660,13 @@ them, and `--check` compares them. They are **not content**. Nothing in the
 engine can reference one, `Data/` is not cooked, and a packaged build does not
 contain them. So they are then imported as DataTable assets under `/Game/Data/`:
 
-Seven of the thirty-four do not come from the workbook. `EnemyArchetypes.csv` and
+Eight of the thirty-five do not come from the workbook. `EnemyArchetypes.csv` and
 `EnemyRarities.csv` are built from `sim/cataclysm_sim/enemy_stats.py`, which is
 where the enemy stat block is designed and where its self-checks live.
 `PassiveNodes.csv` and `PassiveEdges.csv` are built from the class passive
-tree files in `docs/`, and `EmpireTreeNodes.csv` and `EmpireTreeEdges.csv` from
-`docs/Empire_Development_Tree_Final.json` (issue #2741). Those tree files are exported
+tree files in `docs/`, and `EmpireTreeNodes.csv`, `EmpireTreeEdges.csv` and
+`EmpireTreeDecorations.csv` (the rings, lines and labels the empire tree screen draws
+around the nodes) from `docs/Empire_Development_Tree_Final.json` (issue #2741). Those tree files are exported
 from `C:\Projects\PassiveTreeCreator`, and the game cannot read them directly,
 because `docs/` is not packaged. `EmpireTreeEffects.csv` is what each built node
 of that tree does, stated in the generator itself (`EMPIRE_TREE_EFFECTS`) against
