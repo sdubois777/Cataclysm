@@ -2,6 +2,61 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-11-27 — The game holds every loaded object of the Paragon art packs for the rest of the session, which stops the packaged game's crash when a Paragon creature is drawn again after a garbage collection (#2968)
+
+**Affects:**
+- `game/Source/Cataclysm/Player/CataclysmParagonHold.h` and `.cpp`: `UCataclysmParagonHold`, a game instance subsystem.
+  Before every garbage collection it adds every live object whose package lies under the Paragon packs' folders to
+  `Held`, a property the collector follows.
+- `game/Source/Cataclysm/Tests/CataclysmParagonHoldTests.cpp`:
+  `Cataclysm.ParagonHold.WhatItHoldsSurvivesACollectionAndWhatItDoesNotIsFreed`.
+- `tools/tests/test_the_paragon_hold.py`.
+
+**What the owner saw**: the packaged game closed after about two minutes of play, with an access violation on the
+render thread while it set a draw's shader parameters (`SetSamplerTable` under `RHISetShaderParameters`). Asked which
+creatures, the owner, verbatim: "it's the paragon enemies. That's my guess". That proved right.
+
+**How it was found.** A bisect on the packaged game, 2026-11-27, every run on a copy of the same character's saves
+(resuming dungeon 7 floor 1) and walking the same route, with the diagnostic switches of the branch
+`fix/packaged-render-crash`, which is not merged:
+
+| Run | Settings | Result |
+| :-- | :-- | :-- |
+| ordinary play | none | crashed 2 to 4 minutes after a floor loaded, when the character moved again |
+| validation | `-rhivalidation` | crashed reading a freed uniform buffer; the validation layer could not name it |
+| (a) | parallel animation off | crashed |
+| (0) | `gc.CollectGarbageEveryFrame 1` | crashed about 10 s into walking: the fast repro |
+| additive clips | additive single-node clips skipped | crashed |
+| (b) | PSO proxy creation at once, GPU skin cache off | crashed |
+| (c) | texture streaming off | crashed |
+| effects | our Niagara effects, telegraphs and projectile visuals off | crashed |
+| the Brute's rock | its failing material `M_Rock_To_Throw` never drawn | crashed |
+| uncooked | `UnrealEditor.exe -game`, the same saves, collection every frame | **survived** 2.5 minutes |
+| no creatures drawn | `DrawOnlyCreatureKinds None` | **survived** |
+| Wraith only, Lich only | | **survived** |
+| Imp only, Brute only, Sentinel only | | crashed, at 26 to 38 s |
+| Imp only, no animation | | crashed |
+| all creatures in the engine's default material | `PlainCreatureMaterials 1` | **survived** 94 s |
+| all creatures in their own materials, every loaded Paragon object held | `HoldParagonAssets 1` | **survived** 94 s |
+
+So the fault needs the cooked Paragon materials and a garbage collection. Every creature that crashed alone is from a
+Paragon pack (Minions, Rampage). The Imp's and the Brute's materials are built with material attributes and the
+Wraith's and Lich's are not (read in the editor; the Sentinel's were not read). A garbage collection frees an object of
+the Paragon packs that a cooked Paragon material still needs when it is drawn. Why the uncooked game keeps it is not
+established; references the cook removes are the likeliest reason, and a judgement.
+
+**Which object, not established.** The freed-asset log named no texture or material still used by a kept component,
+and the Imp's own material and textures were never freed in the run that drew only Imps. The bisect proved that holding
+the loaded Paragon objects stops it, not which object it is. Narrowing the hold to the kinds of object that matter is
+#2973.
+
+**The scope, a judgement.** Everything of the Paragon packs that has been loaded once stays loaded for the session: the
+scope the bisect proved, at the cost of never unloading that content. The memory this costs was not measured; #2973 asks for it.
+
+**Not built or run when this was written.**
+
+---
+
 ## 2026-11-27 — The player controller holds its input configuration, so a right click over the inventory still equips after the packaged game's first garbage collection
 
 **Affects:**
