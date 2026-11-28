@@ -201,3 +201,25 @@ ACCEPTED, with:
 - Coordinator: largest-wins overleech, conditioned stun immunity, crowd-control-RECEIVED event approved as engine work, each in its slice.
 - Windows: TWO. W1 = E1+E2+E3 + Berserker/Bulwark rows + 29 A rows + #932. W2 = E4 + Saboteur rows. One session, in order. Register each window before it runs.
 - Go: D's 29 A rows first, then E1. Push each commit as it stands.
+
+## Progress, 2026-11-27 (head 4bee12412)
+
+Written (rows in tools/reapply_war_trees_data_rows_workbook.py; workbook NOT yet rewritten for E2 rows; last workbook
+run had DATA+E1 = 75 rows; the script now holds 132):
+- DATA_NODES 23, E1_NODES 20, E2_NODES so far: Open Wound, Rend, Mountain's Wrath, Dead Weight, Immovable Object,
+  Fortified Mind, Shield Slam, The Inevitable, Overwhelming Force, Momentum, Unrelenting, Apex Predator, Coup de Grace,
+  Whirlwind, Death Strike, Frenetic, Knife Dance, Unstoppable Force, Wrecking Ball, Flurry, Killing Rhythm,
+  Consecutive Blocks, Feeding Frenzy, Spiteful, Killing Blow, Shatter.
+
+Still to write for window 1 (Berserker/Bulwark):
+- E2: Seismic Slam (Bulwark, needs a chance column in the War row machinery + chance in strike/nova), Seismic Slam
+  (Berserker, line shockwave), Weaving (R12, last skill), Glass Cannon (crit penetration + overflow), Vampiric Fury,
+  Counter Stance (2 hits in 1 s), and the five asked of the coordinator: Unbreakable Will, Carnage, Spreading Thorns,
+  Phantom Blades, Blood for Blood.
+- E3: Bloodied, Berserker's Rage (half the pool), Colossus Berserker (Earthquake, owner ruling), Hair Trigger,
+  Open Wounds Berserker (largest overleech), Flesh Fortress (R16), Eye of the Storm, The Last Bastion, Colossus Bulwark
+  (R3), Grinding Advance, Wrathful Presence.
+- #932: class line selection + three War stat lines.
+- Then: workbook re-run from development, text-check words, pins, DECISIONS E2/E3 sections, C++ tests E2/E3, whole
+  suite, second compile (watcher waits for icf-w1), register window 1.
+- BUILT_AHEAD list: remove while_crowd_controlled once Dead Weight rows are in the workbook (they are in the script).
