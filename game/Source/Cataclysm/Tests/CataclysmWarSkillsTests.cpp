@@ -53,7 +53,7 @@ namespace CataclysmWarSkillsTest
 	{
 		UCataclysmStrikeSkill* Strike = NewObject<UCataclysmStrikeSkill>(Outer);
 		Strike->SkillName = TEXT("War Skills Test Strike");
-		Strike->Params = UCataclysmSkillShape::ParseParams(Text);
+		Strike->Params = UCataclysmSkillShapes::ParseParams(Text);
 		return Strike;
 	}
 }
@@ -68,7 +68,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarSkillsKeysParseTest,
 bool FCataclysmWarSkillsKeysParseTest::RunTest(const FString&)
 {
 	FString Error;
-	const FCataclysmSkillShapeParams Stated = UCataclysmSkillShape::ParseParams(
+	const FCataclysmSkillShapeParams Stated = UCataclysmSkillShapes::ParseParams(
 		TEXT("Radius=3; Ailment=Bleed; AilmentChance=30; AilmentMagnitude=2; ArmourRemoved=20; ArmourRemovedDuration=8; "
 			 "ArmourRemovedCap=0; DamageTakenIncreased=40; DamageTakenIncreasedDuration=6; Stagger=0.5"),
 		&Error);
@@ -81,7 +81,7 @@ bool FCataclysmWarSkillsKeysParseTest::RunTest(const FString&)
 	TestEqual(TEXT("DamageTakenIncreased"), Stated.DamageTakenIncreasedPercent, 40.0f);
 	TestEqual(TEXT("DamageTakenIncreasedDuration"), Stated.DamageTakenIncreasedSeconds, 6.0f);
 	TestEqual(TEXT("Stagger"), Stated.StaggerSeconds, 0.5f);
-	const FCataclysmSkillShapeParams Plain = UCataclysmSkillShape::ParseParams(TEXT("Radius=3"));
+	const FCataclysmSkillShapeParams Plain = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3"));
 	TestEqual(TEXT("control: no AilmentChance is always"), Plain.AilmentChancePercent, 100.0f);
 	TestEqual(TEXT("control: no AilmentMagnitude is one"), Plain.AilmentMagnitude, 1.0f);
 	TestEqual(TEXT("control: no ArmourRemovedCap is one stack"), Plain.ArmourRemovedCap, 1);
@@ -252,9 +252,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWarSkillsBackwardTest,
  */
 bool FCataclysmWarSkillsBackwardTest::RunTest(const FString&)
 {
-	TestTrue(TEXT("Backward=1 is read"), UCataclysmSkillShape::ParseParams(TEXT("Mode=Blink; Range=6; Backward=1")).bBackward);
+	TestTrue(TEXT("Backward=1 is read"), UCataclysmSkillShapes::ParseParams(TEXT("Mode=Blink; Range=6; Backward=1")).bBackward);
 	TestFalse(TEXT("control: no Backward is a forward blink"),
-			  UCataclysmSkillShape::ParseParams(TEXT("Mode=Blink; Range=6")).bBackward);
+			  UCataclysmSkillShapes::ParseParams(TEXT("Mode=Blink; Range=6")).bBackward);
 	const FVector Start(0.0f, 0.0f, 50.0f);
 	const FVector Aimed(500.0f, 0.0f, 0.0f);
 	const FVector Landed = UCataclysmMovementSkill::BackwardDestination(Start, Aimed, 600.0f, FVector::ForwardVector);
