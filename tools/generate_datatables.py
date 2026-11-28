@@ -7783,6 +7783,8 @@ def passive_effects(book) -> list[dict]:
         # radius exactly as the two above do and so needs one just as much.
         counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach",
                           "crippled_enemies_in_reach",
+                          # AND THE WAR TREES' SLICE E1'S BLEEDING ENEMIES (2026-11-27).
+                          "bleeding_enemies_in_reach",
                           # AND THE DEATH TREES' SLICE C6b3'S TWO (2026-11-25).
                           "enemy_of_rarity_in_reach", "no_enemy_in_reach",
                           # AND SLICE C6d1'S OWN MINIONS.
@@ -8765,6 +8767,10 @@ STRIKE_TARGET_ACTION = "strike_target"
 #: game raises an event with a character that is neither here nor in
 #: `EVENTS_WHOSE_CHARACTER_CANNOT_BE_STRUCK`.
 STRIKE_TARGET_EVENTS = (
+    # CROWD CONTROL RECEIVED OR REFUSED, naming whose act it was: Dead Weight (R27) and Immovable Object (R4) strike that
+    # character back. The War trees' engine slice E1 (2026-11-27).
+    "crowd_control_taken",
+    "crowd_control_refused",
     "hit_dealt",
     "first_hit_dealt",
     "critical_strike",
@@ -12705,6 +12711,9 @@ STATS_WITH_AN_ASKER = frozenset({
     # `UCataclysmDamageCalculation::Resolve` through `StatForSkill` with every reading; `ProbeScaledBlockChance`
     # measures it.
     "block_chance",
+    # AND THE FERVOUR A LANDED BLOW GAINS, scaled by its own stacks (Sanguine), the same slice. Asked by
+    # `FCataclysmWarFervour::GainByRate` through `StatForSkill`; `ProbeScaledFervourPerHitDealt` measures it.
+    "fervour_per_hit_dealt",
     # THE FINISHING OF THE DEATH CATACLYSM, SLICE C (2026-11-26): a detonation's
     # damage scaled by the other minions near the one going off (Close Packed),
     # by the summoner's own stacks (Bursting Ranks) and by the minion's age
@@ -13138,6 +13147,9 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # cannot be reduced by enemy resistances". Asked by `UCataclysmRetaliation` through `StatForSkill`;
     # `ProbeConditionedRetaliationCannotBeMitigated` measures it.
     "retaliation_cannot_be_mitigated": ASKER_PASSES_NOTHING_MORE,
+    # AND THE RETALIATION RADIUS, under "While at maximum Fervour" (Outnumbered), the same slice. Asked by
+    # `UCataclysmRetaliation::RadiusMetresFor` through `StatForSkill`; `ProbeConditionedRetaliationRadius` measures it.
+    "retaliation_radius_metres": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,

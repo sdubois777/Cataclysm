@@ -1,7 +1,8 @@
 """The two scripts of the War trees' data rows (2026-11-27), and what they wrote.
 
-`tools/reapply_war_trees_data_rows_workbook.py` writes 39 rows on 23 War nodes with slice D's machinery;
-`tools/apply_war_trees_sentences_2026_11_27.py` writes the ruled sentences of R8 and R9 into the Bulwark tree file.
+`tools/reapply_war_trees_data_rows_workbook.py` writes 75 rows on 43 War nodes with slice D's machinery: 39 on the 23
+data-only nodes and 36 on the 20 nodes engine slice E1 made writable. `tools/apply_war_trees_sentences_2026_11_27.py`
+writes five sentences into the Berserker and Bulwark tree files: R8, R9, R10, R13, and Outnumbered's 4 metres.
 These tests hold that the workbook, the generated table and the tree file hold what the scripts write, that each script
 is idempotent, and that each refuses rather than overwrites something written since.
 """
@@ -30,22 +31,37 @@ def _all_rows():
     return [(node, row) for node, _, wanted in rows.NODES for row in wanted]
 
 
-def test_there_are_thirty_nine_rows_on_twenty_three_nodes():
-    assert len(_all_rows()) == 39
-    assert len({node for node, _, _ in rows.NODES}) == len(rows.NODES) == 23
+def test_there_are_seventy_five_rows_on_forty_three_nodes():
+    assert len(_all_rows()) == 75
+    assert len({node for node, _, _ in rows.NODES}) == len(rows.NODES) == 43
+    assert (len(rows.DATA_NODES), len(rows.E1_NODES)) == (23, 20)
+    assert sum(len(wanted) for _, _, wanted in rows.DATA_NODES) == 39
 
 
-def test_the_nodes_split_six_twelve_five_by_tree():
-    trees = [node.split("_")[0] for node, _, _ in rows.NODES]
-    assert (trees.count("Berserker"), trees.count("Bulwark"), trees.count("Saboteur")) == (6, 12, 5)
+def test_the_nodes_split_by_tree():
+    data = [node.split("_")[0] for node, _, _ in rows.DATA_NODES]
+    engine = [node.split("_")[0] for node, _, _ in rows.E1_NODES]
+    assert (data.count("Berserker"), data.count("Bulwark"), data.count("Saboteur")) == (6, 12, 5)
+    assert (engine.count("Berserker"), engine.count("Bulwark"), engine.count("Saboteur")) == (10, 10, 0)
 
 
-def test_the_two_nodes_moved_to_the_engine_and_the_four_refused_rows_are_not_here():
-    """War Cry and Rapid Fire need the full-pool attack fact; four Bulwark nodes need an asker the generator lacks.
-    Each is written whole in engine slice E1, so none may appear here half written."""
+def test_the_six_nodes_moved_to_the_engine_are_written_with_it_and_not_as_data():
+    """War Cry and Rapid Fire needed the full-pool attack fact; four Bulwark nodes needed an asker the generator
+    lacked. Each is written whole with engine slice E1, so none may appear half written among the data rows."""
     moved = {"Berserker_trunk_010", "Berserker_dw_009", "Bulwark_basic_ic_stem_005", "Bulwark_basic_ic_t3_002",
              "Bulwark_keystone_ic_t2", "Bulwark_basic_tw_final_001"}
-    assert moved.isdisjoint(node for node, _, _ in rows.NODES)
+    assert moved.isdisjoint(node for node, _, _ in rows.DATA_NODES)
+    assert moved <= {node for node, _, _ in rows.E1_NODES}
+
+
+def test_vital_strike_is_at_full_health_and_unbroken_at_fifty_fervour():
+    """Two values the text check reads only as words: Vital Strike's "While your health is full" is 100, and Unbroken's
+    "above 50 Fervour" is 50 points."""
+    wanted = {node: rows_ for node, _, rows_ in rows.E1_NODES}
+    (_, crit_fervour) = wanted["Berserker_leech_003"]
+    assert (crit_fervour.cond, crit_fervour.cond_value) == ("health_at_or_above", 100)
+    (unbroken,) = wanted["Bulwark_keystone_trunk_001"]
+    assert (unbroken.cond, unbroken.cond_value) == ("class_resource_points_at_least", 50)
 
 
 def test_each_label_is_the_nodes_own_name():
@@ -102,7 +118,7 @@ def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
 def test_the_script_writes_the_rows_once(tmp_path):
     copy = _workbook_without_the_rows(tmp_path)
     first = rows.apply(copy)
-    assert sum(1 for line in first if ": + " in line) == 39, first
+    assert sum(1 for line in first if ": + " in line) == 75, first
     second = rows.apply(copy)
     assert second[-1] == "every row is already written; nothing written", second
 
@@ -134,8 +150,8 @@ def test_the_tree_files_hold_the_ruled_sentences():
 
 
 def test_the_ruled_sentences_are_the_decisions_entrys_words():
-    """R8 and R9 are quoted from the rulings pass in `docs/DECISIONS.md`, so a sentence typed differently here would be
-    a sentence nobody ruled."""
+    """Each sentence is quoted in `docs/DECISIONS.md` -- R8, R9, R10 and R13 from the rulings pass, Outnumbered's from
+    the War trees entry -- so a sentence typed differently here would be a sentence nobody ruled."""
     decisions = (REPO_ROOT / "docs" / "DECISIONS.md").read_text(encoding="utf-8")
     for each in sentences.SENTENCES:
         assert f'"{each.after}"' in decisions, each.ruling
@@ -165,7 +181,7 @@ def test_the_sentence_script_writes_each_once_and_keeps_the_rest_of_the_file(tmp
     folder = _tree_files_before(tmp_path)
     before = (folder / "Bulwark_Class_Tree_Final.json").read_bytes()
     first = sentences.apply(folder)
-    assert first[-1] == "written" and sum(1 for line in first if line.endswith(": written")) == 2, first
+    assert first[-1] == "written" and sum(1 for line in first if line.endswith(": written")) == 5, first
     after = (folder / "Bulwark_Class_Tree_Final.json").read_bytes()
     assert after == (sentences.DOCS / "Bulwark_Class_Tree_Final.json").read_bytes() != before
     assert sentences.apply(folder)[-1] == "every sentence is already written; nothing written"

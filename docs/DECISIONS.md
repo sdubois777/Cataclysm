@@ -5,11 +5,20 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-11-27 — The War passive trees finished: every Berserker, Bulwark and Saboteur node does what its sentence says (window 1: the data rows, the rulings, and the engine slices E1 to E3)
 
 **Affects (so far; each slice adds its own):**
-- `tools/reapply_war_trees_data_rows_workbook.py`, new: 39 rows on 23 War nodes in `docs/All_Things_Cataclysm.xlsx`,
-  Passive Effects, with slice D's machinery (`tools/reapply_war_data_rows_workbook.py`). `game/Data/PassiveEffects.csv`
-  (1,046 rows). **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
+- `tools/reapply_war_trees_data_rows_workbook.py`, new: 75 rows on 43 War nodes in `docs/All_Things_Cataclysm.xlsx`,
+  Passive Effects -- 39 on the data-only nodes and 36 on engine slice E1's -- with slice D's machinery
+  (`tools/reapply_war_data_rows_workbook.py`), run once from development's workbook. `game/Data/PassiveEffects.csv`
+  (1,082 rows). **The editor step must rebuild `DT_PassiveEffects` and `DT_PassiveNodes`.**
 - `tools/apply_war_trees_sentences_2026_11_27.py`, new: the ruled sentences, by node id, in the War tree files.
-  `docs/Bulwark_Class_Tree_Final.json` (R8, R9) and `game/Data/PassiveNodes.csv`.
+  `docs/Bulwark_Class_Tree_Final.json` (R8, R9, R10, Outnumbered), `docs/Berserker_Class_Tree_Final.json` (R13) and
+  `game/Data/PassiveNodes.csv`.
+- Engine slice E1: `CataclysmStatPipeline.h` and `.cpp` (seven conditions, six scales), `CataclysmAbilitySystemComponent.h`
+  and `.cpp` (their readings, the full-pool snapshot, the hit-in-hand critical flag, the crowd control and leech events),
+  `CataclysmSkillTemplate.cpp` (the snapshot and its event; the three immunities in `IsImmuneTo`), `CataclysmSkillEffects.h`
+  and `.cpp` (`NoteCrowdControlReceived`; Stagger immunity), `CataclysmFear.cpp`, `CataclysmSilence.cpp`,
+  `CataclysmTaunt.cpp`, `CataclysmVitalAttributeSet.cpp`, `CataclysmPlayerCharacter.cpp`, `CataclysmPlayerClassStats.cpp`
+  (three stats with no attribute), `CataclysmPassiveTreeTests.cpp` (the condition names that compare nothing),
+  `CataclysmStatExemptionTests.cpp` (eleven probes), `tools/generate_datatables.py`.
 - Tests: `tools/tests/test_war_trees_data_rows_scripts.py` and `tools/tests/without_the_war_trees_rows.py`, new;
   `test_passive_effects_match_the_node_text.py` (the words of these nodes; the pins, 1,046 rows and 566 nodes),
   `test_a_sentence_stating_a_condition_has_a_row_carrying_it.py` (Battle Scars), `without_the_aura_reservation.py` and
@@ -98,6 +107,95 @@ coordinating session the same day, with these rulings.
 - Overkill's "+5% damage" a stack says no "per point", so it is 5 whatever the points.
 - Synchronized's "the nearest active trap" is the nearest within 30 m; the sentence names no distance.
 - Indomitable's "(multiplicative)" is a More, as the tree writes it elsewhere (Iron Wall, Dense Muscle).
+
+### ENGINE SLICE E1: CONDITIONS, SCALES, EVENTS AND STATS (20 more nodes, 36 rows)
+
+**Not compiled or run in Unreal.** Read as the compiler. Window 1 compiles it and runs its tests.
+
+**Seven conditions.** Each names a state or a fact and compares no number; an unknown reading refuses.
+
+| Condition | What it asks | Read from | Nodes |
+|---|---|---|---|
+| `target_carries_bleed` | the character struck carries a Bleed, whoever laid it | `TargetDebuffs` against `UCataclysmDebuffs::BleedTag`, filled by `WithTargetState` | Open Wounds (R10) |
+| `holding_shield` | a Shield (an item whose base row's weapon type is `Shield`) is in a weapon slot | `ShieldsHeld`, counted by `CurrentConditions`; -1 with no equipment refuses | Stalwart, Reinforced Guard |
+| `not_holding_shield` | no Shield in either weapon slot; -1 refuses here too | the same | Flesh Fortress (R16, slice E3) |
+| `attack_at_full_fervour` | the attack this blow or kill belongs to began at a full pool | a snapshot `UCataclysmSkillTemplate::BeginAttackOn` takes before Bought With Ruin, Cleave's trade and Berserking spend; `EndAttack` clears it. "Full" is `ClassResourceAtMaximum`'s judgement (`IsClassResourceFull`) | Executioner, and slice E2's attack-at-maximum nodes |
+| `blow_was_critical` | the hit being announced or leeched from was critical | `HitInHandCritical`, set by `OnSomethingWasHit` around the Fervour a blow gains and by `UCataclysmVitalAttributeSet` around `UCataclysmLeech::NoteHit`; -1, no hit, refuses | Vital Strike (R13) |
+| `blow_was_not_critical` | the same hit was not critical; -1 refuses | the same | Relentless |
+| `while_crowd_controlled` | the character is held by crowd control now | `UCataclysmSkillEffects::IsCrowdControlled` | Dead Weight (R27, slice E2's rider) |
+
+The two hit conditions are named `blow_was_*` and not `hit_is_*`: `test_every_conditioned_stat_has_an_asker.py`
+reads a `hit_is_` name as a fact of a blow TAKEN, and these are facts of a blow DEALT.
+
+**Six scales.** Each scales to nothing on an unknown reading.
+
+| Scale | What it counts | Nodes |
+|---|---|---|
+| `bleeding_enemies_in_reach` | bleeding hostiles within the row's reach, the walk `crippled_enemies_in_reach` makes | Open Wounds |
+| `class_resource_held_percent` | the Fervour counted as held over its maximum, in per cent; takes an offset in per cent | Thick Skin; Steady Power (window 2) |
+| `target_health_missing` | the per cent of its maximum health the character struck is missing | Executioner; Death Strike (slice E2) |
+| `increased_max_health` | the increases the `max_health` line sums, from its unconditional rows only, filled by `CurrentConditions` only for a component some row of which asks | Iron Will |
+| `enemies_struck_recently` | hostiles within 40 m this character struck in the last 3 seconds | Dancing Blades |
+| `enemies_that_struck_you_recently` | characters that struck this one in the last 10 seconds, from its own record | Outnumbered |
+
+**Four events.** `attack_at_full_fervour`, raised by `BeginAttackOn` when the snapshot holds, for a stack granted on it
+(War Cry, Rapid Fire). `crowd_control_taken` and `crowd_control_refused`, raised on the character crowd control landed
+on or was refused by, with whose act it was as the event's own character; NOT `crowd_control`, which is raised on the
+character that applied it. They are raised beside every `NoteCrowdControlApplied` (the stun, the knockdown, the four
+displacements, a fear, a silence, a taunt) and where the stun, knockdown, displacements and stagger are refused by an
+immunity. `life_leeched`, raised when a health leech payment is promised, with the health promised as its amount.
+
+**Three immunity stats**, each read by `UCataclysmSkillTemplate::IsImmuneTo` with its conditions judged, as
+`immune_to_slow` is: `immune_to_crowd_control` (every effect that function is asked about), `immune_to_stun`,
+`immune_to_stagger`. `UCataclysmSkillEffects::ApplyStagger` now asks for Stagger immunity first, so a character immune to
+it is not marked staggered (the shove that got there has already landed).
+
+**Four stats the generator now accepts with a scale or a condition**, each already asked through `StatForSkill` with
+every reading, with a probe each in `CataclysmStatExemptionTests.cpp`: `block_chance` with a scale, `fervour_per_hit_dealt`
+with a scale, `retaliation_cannot_be_mitigated` and `retaliation_radius_metres` with a condition.
+
+**Outnumbered's new sentence**, the coordinating session's reading of 2026-11-27 ("all nearby enemies" is every enemy
+within 4 metres, R7's radius), written by `tools/apply_war_trees_sentences_2026_11_27.py`, on one line so it can be
+read back whole:
+
+"+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at maximum Fervour, your retaliation damage hits every enemy within 4 metres rather than just your attacker."
+
+R10 (Open Wounds) and R13 (Vital Strike) take their
+ruled sentences by the same script.
+
+| Tree | Node | Rows |
+|---|---|---|
+| Berserker | War Cry `trunk_010` | 2% melee attack damage a point for 4 s after an attack at full Fervour |
+| Berserker | Rapid Fire `dw_009` | 5% melee attack speed a point a stack, 4 at most, 3 s, on the same event |
+| Berserker | Thick Skin `trunk_011` | 1% damage reduction for every 4% of maximum Fervour held, 25 steps |
+| Berserker | Juggernaut `twoh_010` | 3% movement speed a point; from 5 points immune to stun and stagger and no knockback above 50% Fervour |
+| Berserker | Executioner `twoh_013` | 1% melee attack damage a point per 1% of the target's health missing, on an attack at full Fervour |
+| Berserker | Vital Strike `leech_003` (R13) | 1% life leech a point on critical melee hits; 1 Fervour a point a melee crit at full health |
+| Berserker | Relentless `dw_005` | 1 Fervour a point for a melee hit that is not critical, in Frenzy |
+| Berserker | Dancing Blades `dw_007` | in Frenzy, 2 Fervour a second more drain for each enemy struck in 3 s; 6% damage a point against one struck in 3 s |
+| Berserker | Iron Will `leech_002` | 1 maximum Fervour for every 2% increased maximum health |
+| Berserker | Sanguine `leech_005` | 1% melee life leech a point; 1 Fervour a hit a point a stack, a stack per leech, 5 at most (10 from 4 points), 2 s |
+| Bulwark | Stalwart `ic_stem_003` | 2% armour a point while holding a shield |
+| Bulwark | Reinforced Guard `ic_t2_001` | 3% maximum health a point while holding a shield |
+| Bulwark | Iron Mind `jg_t1_002` | 15 crowd control resistance a point; 10 Fervour for each crowd control effect received |
+| Bulwark | Unbroken `keystone_trunk_001` | immune to stun at 50 Fervour or more |
+| Bulwark | Open Wounds `tw_t1_003` (R10) | 3% retaliation a point per bleeding enemy within 4 m, 5 at most; from 5 points 20% damage against bleeding enemies |
+| Bulwark | Outnumbered `tw_stem_004` | 2% retaliation a point per enemy that struck you in 10 s; a 4 m retaliation radius at full Fervour |
+| Bulwark | Resolve to Steel `ic_stem_005` | 1% block chance a point per 10 Fervour held |
+| Bulwark | Living Fortress `ic_t3_002` | 2% more damage reduction a point per enemy within 3 m; from 6 points 1% block chance per enemy |
+| Bulwark | Unyielding Guard `keystone_ic_t2` | 5% block chance a stack, a stack per block, 4 at most, 3 s; 3 Fervour a block |
+| Bulwark | Undying Rage `tw_final_001` | 3% retaliation a point per 10% health missing; from 6 points doubled and unmitigated below 25% |
+
+**Judgements of slice E1**, none measured:
+- Unbroken's "above 50 Fervour" is 50 points or more (`class_resource_points_at_least` 50), as Steeled Resolve's is.
+- Iron Mind's "+15% crowd control duration reduction" is `crowd_control_resistance`, which shortens crowd control and at
+  100 stops it.
+- Sanguine's "your Fervour generation on the next hit is increased" is a bonus to each hit while the stacks last; the
+  stacks are not spent by the hit.
+- Unyielding Guard grants its stack and 3 Fervour on every block; the first block of a streak counts.
+- Iron Will counts the unconditional increases on the maximum health line; a conditioned one is left out.
+- Dancing Blades' and Relentless' "Dual wield only" is carried by `in_frenzy`: Frenzy begins only for a dual wielder.
+- The two "recently" scales' windows, 3 and 10 seconds, are the scales' own, each named by its one sentence.
 
 ### EVIDENCE
 

@@ -4970,6 +4970,45 @@ namespace CataclysmStatExemptionTest
 	 * stack; one holds a stack. A blocked hit of 100 keeps 50 on the one and 40 on
 	 * the other.
 	 */
+	void ProbeScaledFervourPerHitDealt(FAutomationTestBase& Test)
+	{
+		// `fervour_per_hit_dealt`, asked by `FCataclysmWarFervour::GainByRate` through `StatForSkill`. The War trees'
+		// slice E1 (2026-11-27), shipped under `own_stacks` (Sanguine). A holder at 50 of 100 carries the line at nought
+		// with 3 per own stack: it gains nothing with no stack, and 3 holding one.
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const FName Key(TEXT("Probe:fervour_per_hit_dealt"));
+		FCataclysmStatModifier PerStack;
+		PerStack.Bucket = ECataclysmStatBucket::Flat;
+		PerStack.Source = ECataclysmModifierSource::Enchantment;
+		PerStack.Value = 3.0f;
+		PerStack.Scale = ECataclysmStatScale::PerOwnStack;
+		PerStack.ScaleStep = 1.0f;
+		PerStack.ScaleMaxSteps = 1;
+		PerStack.StackKey = Key;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(FCataclysmWarFervour::PerHitDealtStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {PerStack};
+		System->SetStatInputs(MoveTemp(Inputs));
+		const float Plain = FCataclysmWarFervour::GainOnHitDealt(System, FGameplayTagContainer());
+		System->GrantOwnStack(Key, /*WindowSeconds=*/3.0f, /*Cap=*/1);
+		const float Stacked = FCataclysmWarFervour::GainOnHitDealt(System, FGameplayTagContainer());
+		Test.TestEqual(TEXT("fervour_per_hit_dealt: control, nothing is gained with no stack"), Plain, 0.0f);
+		Test.TestEqual(TEXT("and 3 holding a stack, so the scaled row is asked for"), Stacked, 3.0f, 0.001f);
+	}
+
 	void ProbeScaledBlockChance(FAutomationTestBase& Test)
 	{
 		// `block_chance`, asked by `UCataclysmDamageCalculation::Resolve` at the block step. The War trees' slice E1
@@ -6605,6 +6644,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("block_damage_reduction"),     &ProbeScaledBlockDamageReduction},
 			// THE WAR TREES' SLICE E1 (2026-11-27): Unyielding Guard, Resolve to Steel and Living Fortress.
 			{TEXT("block_chance"),               &ProbeScaledBlockChance},
+			{TEXT("fervour_per_hit_dealt"),      &ProbeScaledFervourPerHitDealt},
 			{TEXT("resistance_cap"),             &ProbeScaledResistanceCap},
 			{TEXT("life_leech"),                 &ProbeScaledLifeLeech},
 			{TEXT("mana_leech"),                 &ProbeScaledManaLeech},
@@ -8612,6 +8652,28 @@ namespace CataclysmStatExemptionTest
 	 * (2026-11-27), shipped under `health_below` (Undying Rage). Below half health the whole retaliation reaches the
 	 * attacker's health through its armour; at full health the armour takes a share.
 	 */
+	/**
+	 * `retaliation_radius_metres`, read by `UCataclysmRetaliation::RadiusMetresFor` through `StatForSkill`. The War trees'
+	 * slice E1 (2026-11-27), shipped under `class_resource_at_maximum` (Outnumbered); a health condition stands for it.
+	 */
+	void ProbeConditionedRetaliationRadius(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, TEXT("retaliation_radius_metres"), ECataclysmStatBucket::Flat, 4.0f, 0.0f);
+		const float AtFull = UCataclysmRetaliation::RadiusMetresFor(Fighter.AbilitySystem);
+		AtHealthShare(Fighter, 0.4f);
+		const float BelowHalf = UCataclysmRetaliation::RadiusMetresFor(Fighter.AbilitySystem);
+		Test.TestEqual(TEXT("retaliation_radius_metres at full health: no radius"), AtFull, 0.0f, 0.001f);
+		Test.TestEqual(TEXT("and it is asked for, so below half health the radius is 4 metres"), BelowHalf, 4.0f, 0.001f);
+	}
+
 	void ProbeConditionedRetaliationCannotBeMitigated(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -14074,6 +14136,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("immune_to_stun"), &ProbeConditionedImmuneToStun},
 			{TEXT("immune_to_stagger"), &ProbeConditionedImmuneToStagger},
 			{TEXT("retaliation_cannot_be_mitigated"), &ProbeConditionedRetaliationCannotBeMitigated},
+			{TEXT("retaliation_radius_metres"), &ProbeConditionedRetaliationRadius},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -16684,8 +16747,9 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
 	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
 	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
-	// FORTY-TWO SINCE THE WAR TREES' SLICE E1 (2026-11-27): its three immunities and unmitigated retaliation.
-	if (!TestEqual(TEXT("the forty-two probes are all here"), ConditionedProbes().Num(), 42))
+	// FORTY-THREE SINCE THE WAR TREES' SLICE E1 (2026-11-27): its three immunities, unmitigated retaliation and the
+	// retaliation radius.
+	if (!TestEqual(TEXT("the forty-three probes are all here"), ConditionedProbes().Num(), 43))
 	{
 		return false;
 	}

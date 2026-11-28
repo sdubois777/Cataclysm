@@ -1277,7 +1277,7 @@
       "data": {
         "kind": "basic",
         "name": "Outnumbered",
-        "description": "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at maximum Fervour, your retaliation damage hits all nearby enemies rather than just your attacker.",
+        "description": "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at maximum Fervour, your retaliation damage hits every enemy within 4 metres rather than just your attacker.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 10
@@ -1431,7 +1431,7 @@
       "data": {
         "kind": "basic",
         "name": "Open Wounds",
-        "description": "+3% retaliation damage per point for each bleed stack on any nearby enemy. At 5 points: Enemies with 5 or more bleed stacks take 20% increased damage from all sources.",
+        "description": "+3% retaliation damage per point for each bleeding enemy within 4 metres, up to 5 enemies. At 5 points: your hits deal 20% increased damage to bleeding enemies.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8

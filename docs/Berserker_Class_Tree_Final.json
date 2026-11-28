@@ -1387,7 +1387,7 @@
       "data": {
         "kind": "basic",
         "name": "Vital Strike",
-        "description": "+1% life leech per point on critical melee strikes only. Critical strike leech is not subject to the normal leech cap. Excess leech beyond your HP cap is stored and added as bonus Fervour generation on your next hit, up to 10 Fervour per point.",
+        "description": "+1% life leech per point on critical melee strikes. While your health is full, your critical melee strikes generate 1 additional Fervour per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 6

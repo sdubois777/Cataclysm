@@ -128,8 +128,9 @@ def test_the_three_probe_tables_can_be_read_and_are_three_tables():
     # 36 THE SAME DAY, for slice C4d3's Wearer of the Dead: `max_health`. 37
     # THE SAME DAY, for slice C6d1's Ringed in Bone: `immune_to_slow`. 38 ON
     # 2026-11-26, for the Death line's finishing slice E's Ever Moving:
-    # `evasion_against_area_percent`.
-    assert sizes["ConditionedProbes"] == 38, sizes
+    # `evasion_against_area_percent`. 43 ON 2026-11-27, for the War trees' engine slice E1: its three immunities,
+    # `retaliation_cannot_be_mitigated` and `retaliation_radius_metres`.
+    assert sizes["ConditionedProbes"] == 43, sizes
     assert sizes["ScaledProbes"] >= 20, sizes
     assert sizes["Probes"] >= 40, sizes
     assert len(set(sizes.values())) == 3, sizes

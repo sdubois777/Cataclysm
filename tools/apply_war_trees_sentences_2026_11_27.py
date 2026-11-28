@@ -47,6 +47,25 @@ SENTENCES: tuple[Sentence, ...] = (
     Sentence("R9", "Bulwark", "basic_tw_t1_002",
              "+5% bleed damage per point for each bleed stack on the target.",
              "+5% bleed damage per point."),
+    # ENGINE SLICE E1'S THREE (2026-11-27): two War rulings, and the coordinating session's reading of Outnumbered's
+    # "all nearby enemies" as every enemy within 4 metres, the radius R7 gave Vengeful Discharge.
+    Sentence("R10", "Bulwark", "basic_tw_t1_003",
+             "+3% retaliation damage per point for each bleed stack on any nearby enemy. At 5 points: Enemies with 5 or "
+             "more bleed stacks take 20% increased damage from all sources.",
+             "+3% retaliation damage per point for each bleeding enemy within 4 metres, up to 5 enemies. At 5 points: "
+             "your hits deal 20% increased damage to bleeding enemies."),
+    Sentence("R13", "Berserker", "leech_003",
+             "+1% life leech per point on critical melee strikes only. Critical strike leech is not subject to the "
+             "normal leech cap. Excess leech beyond your HP cap is stored and added as bonus Fervour generation on your "
+             "next hit, up to 10 Fervour per point.",
+             "+1% life leech per point on critical melee strikes. While your health is full, your critical melee "
+             "strikes generate 1 additional Fervour per point."),
+    Sentence("Outnumbered (coordinator, 2026-11-27)", "Bulwark", "basic_tw_stem_004",
+             "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at "
+             "maximum Fervour, your retaliation damage hits all nearby enemies rather than just your attacker.",
+             "+2% retaliation damage per point for each unique enemy that has hit you in the last 10 seconds. While at "
+             "maximum Fervour, your retaliation damage hits every enemy within 4 metres rather than just your "
+             "attacker."),
 )
 
 

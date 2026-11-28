@@ -221,7 +221,11 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 51 WHEN SLICE B JOINED THE DEATH FINISH BUNDLE (2026-11-26): `minion_kinds_beyond_the_first`, the
 #: Necromancer's Motley Host.
-EXPECTED_NAMED_BY_A_ROW = 51
+#: AND 57 WHEN THE WAR TREES' ENGINE SLICE E1 JOINED (2026-11-27): its six new scales, each named by one of its rows --
+#: `bleeding_enemies_in_reach`, `class_resource_held_percent`, `target_health_missing`, `increased_max_health`,
+#: `enemies_struck_recently` and `enemies_that_struck_you_recently`. 58 sources; `damage_reduction` is still the one
+#: no row names.
+EXPECTED_NAMED_BY_A_ROW = 57
 
 
 def scales_named_by_a_row() -> set[str]:

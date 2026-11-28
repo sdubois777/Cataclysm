@@ -55,6 +55,13 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
 EXPRESSED_ANOTHER_WAY = {
+    ("Berserker_dw_005", "0", "dual_wielding"):
+        "Relentless' 'Dual wield only' is carried by its row's 'in_frenzy': Frenzy begins only for a character the "
+        "dual_wielding condition holds for (Berserker_dw_001's frenzy_on_full_fervour), so a row under in_frenzy "
+        "is a dual wielder's (engine slice E1 of the War trees, 2026-11-27)",
+    ("Berserker_dw_007", "0", "dual_wielding"):
+        "Dancing Blades' 'Dual wield only' is carried by its rows' 'in_frenzy', for the reason Relentless gives "
+        "(engine slice E1 of the War trees, 2026-11-27)",
     ("Bulwark_basic_trunk_005", "0", "in_combat_for_seconds"):
         "Battle Scars' 'At 8 points: Fervour no longer decays while you are in combat' has no row because it is already "
         "true: the Bulwark's Fervour decays only out of combat (Bulwark_basic_trunk_000's "

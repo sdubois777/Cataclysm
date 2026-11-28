@@ -56,8 +56,8 @@ def _damage(value: float, **columns) -> tuple[base.Row, base.Row]:
     return (R("attack_damage", "increased", value, **columns), R("spell_damage", "increased", value, **columns))
 
 
-#: (node, Node Name label, rows), in the shape `base.NODES` takes.
-NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
+#: The data-only nodes: (node, Node Name label, rows), in the shape `base.NODES` takes.
+DATA_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # ---- Berserker ----
     ("Berserker_trunk_007", "Battle Cry", (R("fervour_decay_out_of_combat_per_second", "flat", -0.2),)),
     ("Berserker_twoh_005", "Crusher", (
@@ -121,6 +121,76 @@ NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
         R(None, "", 100, action="gadget_fires_at_trap_enemy", action_event="trap_triggered"),
         R(None, "", 30, action="trigger_traps_nearby", action_event="gadget_destroyed", cap=1, min_points=1))),
 )
+
+
+#: ENGINE SLICE E1'S NODES (2026-11-27): written once the slice's conditions, scales, events and stats exist. The six
+#: that left the data-only group come first; the rest are the nodes the plan put under E1. Each judgement is in the
+#: decisions entry.
+E1_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
+    # ---- Berserker ----
+    ("Berserker_trunk_010", "War Cry", (
+        R("attack_damage", "increased", 2, tags=MELEE, scale="own_stacks", step=1, cap=1,
+          action_event="attack_at_full_fervour", stack_seconds=4),)),
+    ("Berserker_dw_009", "Rapid Fire", (
+        R("attack_speed", "increased", 5, tags=MELEE, scale="own_stacks", step=1, cap=4,
+          action_event="attack_at_full_fervour", stack_seconds=3, **DUAL),)),
+    ("Berserker_trunk_011", "Thick Skin", (
+        R("damage_reduction", "flat", 1, scale="class_resource_held_percent", step=4, cap=25),)),
+    ("Berserker_twoh_010", "Juggernaut", (
+        R("movement_speed", "increased", 3, **TWO_HANDED),
+        *(R(stat, "flat", 1, min_points=5, cond="class_resource_above", cond_value=50,
+            cond2="wielding_two_handed_weapon")
+          for stat in ("immune_to_stun", "immune_to_stagger", "knockback_suppressed")))),
+    ("Berserker_twoh_013", "Executioner", (
+        R("attack_damage", "increased", 1, tags=MELEE, scale="target_health_missing", step=1,
+          cond="attack_at_full_fervour", cond2="wielding_two_handed_weapon"),)),
+    ("Berserker_leech_003", "Vital Strike", (
+        R("life_leech", "flat", 1, tags=MELEE, cond="blow_was_critical"),
+        R("fervour_per_critical_strike", "flat", 1, tags=MELEE, cond="health_at_or_above", cond_value=100))),
+    ("Berserker_dw_005", "Relentless", (
+        R("fervour_per_hit_dealt", "flat", 1, tags=MELEE, cond="in_frenzy", cond2="blow_was_not_critical"),)),
+    ("Berserker_dw_007", "Dancing Blades", (
+        R("fervour_drain_per_second", "flat", 2, scale="enemies_struck_recently", step=1, min_points=1,
+          cond="in_frenzy"),
+        *_damage(6, cond="target_damaged_by_you_within_seconds", cond_value=3, cond2="in_frenzy"))),
+    ("Berserker_leech_002", "Iron Will", (R("class_resource", "flat", 1, scale="increased_max_health", step=2),)),
+    ("Berserker_leech_005", "Sanguine", (
+        R("life_leech", "flat", 1, tags=MELEE),
+        R("fervour_per_hit_dealt", "flat", 1, scale="own_stacks", step=1, cap=5, action_event="life_leeched",
+          stack_seconds=2, max_points=4),
+        R("fervour_per_hit_dealt", "flat", 1, scale="own_stacks", step=1, cap=10, action_event="life_leeched",
+          stack_seconds=2, min_points=4, per_point_from=1))),
+    # ---- Bulwark ----
+    ("Bulwark_basic_ic_stem_003", "Stalwart", (R("armor", "increased", 2, cond="holding_shield"),)),
+    ("Bulwark_basic_ic_t2_001", "Reinforced Guard", (R("max_health", "increased", 3, cond="holding_shield"),)),
+    ("Bulwark_basic_jg_t1_002", "Iron Mind", (
+        R("crowd_control_resistance", "flat", 15),
+        R(None, "", 10, action="class_resource", action_event="crowd_control_taken", fraction_of="points",
+          min_points=1))),
+    ("Bulwark_keystone_trunk_001", "Unbroken", (
+        R("immune_to_stun", "flat", 1, cond="class_resource_points_at_least", cond_value=50),)),
+    ("Bulwark_basic_tw_t1_003", "Open Wounds", (
+        R("retaliation", "increased", 3, scale="bleeding_enemies_in_reach", step=1, reach=4, cap=5),
+        *_damage(20, cond="target_carries_bleed", min_points=5))),
+    ("Bulwark_basic_tw_stem_004", "Outnumbered", (
+        R("retaliation", "increased", 2, scale="enemies_that_struck_you_recently", step=1),
+        R("retaliation_radius_metres", "flat", 4, cond="class_resource_at_maximum", min_points=1))),
+    ("Bulwark_basic_ic_stem_005", "Resolve to Steel", (
+        R("block_chance", "flat", 1, scale="class_resource_held", step=10),)),
+    ("Bulwark_basic_ic_t3_002", "Living Fortress", (
+        R("damage_reduction", "more", 2, scale="enemies_in_reach", step=1, reach=3),
+        R("block_chance", "flat", 1, scale="enemies_in_reach", step=1, reach=3, min_points=6))),
+    ("Bulwark_keystone_ic_t2", "Unyielding Guard", (
+        R("block_chance", "flat", 5, scale="own_stacks", step=1, cap=4, action_event="block", stack_seconds=3),
+        R(None, "", 3, action="class_resource", action_event="block", fraction_of="points"))),
+    ("Bulwark_basic_tw_final_001", "Undying Rage", (
+        R("retaliation", "increased", 3, scale="health_missing", step=10),
+        R("retaliation", "more", 100, cond="health_below", cond_value=25, min_points=6),
+        R("retaliation_cannot_be_mitigated", "flat", 1, cond="health_below", cond_value=25, min_points=6))),
+)
+
+#: Every node this script writes.
+NODES = DATA_NODES + E1_NODES
 
 
 def apply(path: pathlib.Path = base.WORKBOOK, check_only: bool = False) -> list[str]:

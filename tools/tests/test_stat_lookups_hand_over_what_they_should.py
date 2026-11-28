@@ -928,6 +928,17 @@ INVENTORY = {
         "slice C6d2: Unstoppable, Nothing Moves You, Relentless), asked in "
         "IsImmuneTo for Slow as the movement refresh asks it, the attribute "
         "the answer when no row states it; a flag of the character's, so no tags",
+    # THE WAR TREES' THREE IMMUNITIES, engine slice E1 (2026-11-27), asked in IsImmuneTo beside immune_to_slow.
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(TEXT("immune_to_crowd_control")), NoTags, 0.0f'):
+        "whether the character is immune to all crowd control (Immovable Object), asked in IsImmuneTo with the "
+        "character's own state; a flag of the character's, so no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(TEXT("immune_to_stun")), NoTags, 0.0f'):
+        "whether the character cannot be stunned (Unbroken, Juggernaut), asked in IsImmuneTo for Stun; no tags",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(TEXT("immune_to_stagger")), NoTags, 0.0f'):
+        "whether the character cannot be staggered (Juggernaut), asked in IsImmuneTo for Stagger; no tags",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(TEXT("immune_to_slow")), FGameplayTagContainer(), 0.0f'):
         "whether the character cannot be slowed (the Death trees' slice C6d1, "
