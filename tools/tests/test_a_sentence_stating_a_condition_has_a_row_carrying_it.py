@@ -51,6 +51,9 @@ TOO_GENERAL_TO_READ_BACKWARDS = {
                                       "and a spend of '10 or more Fervour at once'",
     "attacker_beyond_metres": "'more than' (7): 'no more than once every N seconds'",
     "opponent_within_metres": "'enemies within' (6): an area's size",
+    "dual_wielding_outside_frenzy": "'dual wield only' (every dual-wield node): the words dual_wielding is written with; "
+                                    "outside Frenzy is a second half the sentence states apart (the War trees' engine "
+                                    "slice E2, 2026-11-27)",
 }
 
 #: (node, option, condition): how a sentence that says the condition's words carries it without that condition.
@@ -99,18 +102,24 @@ EXPRESSED_ANOTHER_WAY = {
     ("Berserker_dw_014", "0", "dual_wielding"):
         "in_frenzy, which only a dual-wielding character enters",
     # THE WAR TREES' ENGINE SLICES E2 AND E3 (2026-11-27), each for the reason the four above give.
-    ("Berserker_dw_008", "0", "dual_wielding"):
-        "Feeding Frenzy's rows are under dual_wielding_outside_frenzy and in_frenzy, each only a dual wielder's",
     ("Berserker_dw_012", "0", "dual_wielding"):
         "Frenetic acts on frenzy_drained, which only Frenzy raises, and only a dual-wielding character enters Frenzy",
     ("Berserker_dw_012", "0", "in_frenzy"):
         "frenzy_drained is raised only by Frenzy's drain, so the row acts only in Frenzy",
-    ("Berserker_dw_013", "0", "dual_wielding"):
-        "Death Strike's rows carry dual_wielding_outside_frenzy and in_frenzy as their second conditions",
     ("Berserker_dw_018", "0", "dual_wielding"):
         "Knife Dance acts on frenzy_drained, which only a dual wielder's Frenzy raises",
     ("Berserker_dw_ks_002", "0", "dual_wielding"):
         "Unstoppable Force's rows are under in_frenzy and on frenzy_entered, each only a dual wielder's",
+    ("Berserker_dw_009", "0", "attack_at_full_fervour"):
+        "Rapid Fire's 'Each time you attack at maximum Fervour' is its stack's event, attack_at_full_fervour, not a "
+        "condition on it",
+    ("Berserker_twoh_008", "0", "attack_at_full_fervour"):
+        "Overwhelming Force's shockwave acts on the event attack_at_full_fervour",
+    ("Berserker_twoh_015", "0", "attack_at_full_fervour"):
+        "Killing Blow's execute acts on the event attack_at_full_fervour",
+    ("Bulwark_basic_tw_t2_002", "0", "seconds_after_hit_taken"):
+        "Martyrdom's 'for 5 seconds after taking a hit that reduces you below 50% HP' is a 5-second stack granted on "
+        "health_falls_below, not a window after every hit",
     ("Berserker_trunk_012", "0", "class_resource_at_maximum"):
         "Bloodied's 'rather than only when Fervour is full' names the rule its row replaces below 30% health "
         "(berserking_on_every_melee_hit), not a condition on it",
