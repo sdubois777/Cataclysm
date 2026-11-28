@@ -80,7 +80,8 @@ public:
 
 	/** The thinnest a ring or a line is drawn, in panel units. Two, not one and a half: at a 720 pixel high window
 	 *  Slate draws a panel unit two thirds of a pixel, and a piece one pixel wide turned exactly upright on a whole
-	 *  pixel's edge was drawn as nothing in the packaged game (the vertical quadrant line, 2026-11-27). */
+	 *  pixel's edge is the judgement, not proved, of why the packaged game drew no vertical quadrant line (2026-11-27);
+	 *  only a render shows whether 2 does. */
 	static constexpr float ThinnestDecorationPx = 2.0f;
 
 	/**

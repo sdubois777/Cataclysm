@@ -21,7 +21,7 @@ was changed:
 | What the screenshot showed | What it was | What changed |
 | :-- | :-- | :-- |
 | The empire map's city boxes under the rings | The shared panel colour, linear (0.039, 0.059, 0.071) at 0.94 opacity, which is sRGB (55, 68, 75); the screenshot's background is (56, 69, 75). The map shows through the other 6% | This screen's backdrop is the preview's sRGB (14, 16, 22), opaque. Every other screen keeps the shared panel |
-| No vertical quadrant line, and a green horizontal one | The horizontal line's middle row is (92, 105, 173), blue; the green beside it is the JPEG's. The vertical line drew no pixel. No UI scale rule is set, so at 720 pixels high a panel unit is about two thirds of a pixel and the 1.5 unit minimum was one pixel: a judgement, not proved, is that a one pixel piece turned exactly upright on a whole pixel's edge covers no pixel's centre | No ring or line thinner than 2 units. **Only the packaged game can show the line now draws**; the tests run with no renderer |
+| No vertical quadrant line, and a green horizontal one | The horizontal line's middle row is (92, 105, 173), blue; the green beside it is the JPEG's. The vertical line drew no pixel. No UI scale rule is set, so at 720 pixels high a panel unit is about two thirds of a pixel and the 1.5 unit minimum was one pixel: a judgement, not proved, is that a one pixel piece turned exactly upright on a whole pixel's edge covers no pixel's centre | No ring or line thinner than 2 units, for that reason. **Whether the vertical line draws is confirmed only by a render of the packaged game**, which had not been done when this was written; the tests run with no renderer |
 | Every node light grey, of every kind | The button style's own grey, about (188, 188, 188), whatever the kind or state; "cannot buy yet" colours only the label, and a node holding no points has none | A node's button is a flat square in its kind's preview colour: ordinary (110, 120, 135), keystone (150, 160, 175), capstone (200, 176, 120). The label keeps the state's colour |
 | The ring about 376 pixels across in a 720 pixel window | The whole view fitted the line ends (800 from the middle) inside the class tree's 90 unit margin, in a panel about 790 units high once the title, the list, Respec and Close have theirs | The whole view's margin is 24 units: the ring about 686 units, 87% of the panel's height. A branch's view keeps 90, which leaves room for a hovered node's name |
 
@@ -94,8 +94,7 @@ stops generation (`EMPIRE_TREE_DECORATION_KINDS`). The file's `viewport` (the bu
 
 - **A ring is drawn as straight pieces**, one for every 8 units of radius, 24 to 96, because UMG has no circle: the
   largest ring's pieces are about 48 units long. A ring or line is never drawn thinner than 1.5 pixels, so the builder's
-  1-unit lines are seen at a fitted zoom of about 0.45. (2 units since the entry above, which the packaged game showed
-  was needed.)
+  1-unit lines are seen at a fitted zoom of about 0.45. (2 units since the entry above.)
 - **A label's size follows the zoom**, as the builder's does, so the words keep their place against the rings: a 15-unit
   quadrant name is about 7 pixels at the fitted zoom, and readable zoomed in.
 - **An edge is the class screen's 10 px, scaled with the marks**, so it keeps its proportion to the marks it joins.
