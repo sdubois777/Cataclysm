@@ -56,6 +56,12 @@
       "csv_sha256": "610b18d95ab301584e75d0b493147d68eee84afecade9f3c2a1988253f132967"
     },
     {
+      "asset": "DT_EmpireTreeDecorations",
+      "csv": "EmpireTreeDecorations.csv",
+      "rows": 22,
+      "csv_sha256": "8e76344c5ec6ec82cc570a255c03bfffae9c73260c5d3df8ba62433abaa91768"
+    },
+    {
       "asset": "DT_EmpireTreeEdges",
       "csv": "EmpireTreeEdges.csv",
       "rows": 158,
