@@ -379,6 +379,12 @@ E3_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     ("Bulwark_basic_jg_t3_002", "Grinding Advance",
      (R("damage_reduction", "more", 1, scale="combat_seconds_held", step=10, cap=5),
       R("combat_seconds_fall_slower", "flat", 1, min_points=5))),
+    # WRATHFUL PRESENCE: "Your retaliation aura now pulses every second, dealing damage equal to 5% of all damage you
+    # have taken in the last 5 seconds to all nearby enemies." Nearby is the larger of 4 metres (the design document's
+    # melee range) and the retaliation radius.
+    ("Bulwark_keystone_tw_t3", "Wrathful Presence",
+     (R(None, "", 5, action="smite_nearby_of_recent_damage_taken", action_event="every_seconds",
+       every_seconds=1, event_value=4),)),
 )
 
 #: Every node this script writes.

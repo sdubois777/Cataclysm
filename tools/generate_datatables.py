@@ -8205,6 +8205,10 @@ NEARBY_ACTIONS = (
     # required, as the hit-sized nova's is. The War trees' engine slice E2 (2026-11-27): The Inevitable and Seismic
     # Slam's rider. `SmiteNearbyOfMaximumHealthAction` holds the same name.
     "smite_nearby_of_max_health",
+    # A DIRECT BLOW OF A SHARE OF ALL THE DAMAGE THE WEARER TOOK IN THE LAST 5 SECONDS on every enemy within the larger
+    # of the row's Event Value in metres, required, and the wearer's retaliation radius. The War trees' engine slice E3
+    # (2026-11-27): Wrathful Presence. `SmiteNearbyOfRecentDamageTakenAction` holds the same name.
+    "smite_nearby_of_recent_damage_taken",
 )
 
 #: The nova sized by a hit, its events and its radius. The War vow options'
@@ -8225,6 +8229,7 @@ MAX_NEARBY_PERCENT = {
     "smite_nearby_by_armor": 1000.0,
     "smite_nearby_by_hit": 1000.0,
     "smite_nearby_of_max_health": 100.0,
+    "smite_nearby_of_recent_damage_taken": 100.0,
 }
 
 #: The action that PAYS A SHARE OF WHAT A BLOCK REMOVED BACK TO THE ATTACKER, as
@@ -9827,7 +9832,7 @@ def _check_nearby_action(index: int, who: str, action: str, event: str,
     known = action_events()
     # AND THE CLOCK, FOR THE NOVA SIZED BY MAXIMUM HEALTH: The Inevitable's "per second" (the War trees' engine slice E2,
     # 2026-11-27). `UCataclysmAbilitySystemComponent`'s timed step acts on it.
-    if action == "smite_nearby_of_max_health":
+    if action in ("smite_nearby_of_max_health", "smite_nearby_of_recent_damage_taken"):
         known = known | {TIMED_EVENT}
     if event not in known:
         raise DataError(
@@ -11923,7 +11928,8 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                     f"Enchantment Effects row {index}: {name} reaches a death "
                     f"{event_value:g} metres away. It is 0, the 3 metres every "
                     f"such row reached before, up to {MAX_NEARBY_DEATH_METRES:g}.")
-    elif action in (SMITE_NEARBY_BY_HIT_ACTION, "smite_nearby_of_max_health", EXECUTE_NEARBY_BELOW_ACTION):
+    elif action in (SMITE_NEARBY_BY_HIT_ACTION, "smite_nearby_of_max_health", EXECUTE_NEARBY_BELOW_ACTION,
+                    "smite_nearby_of_recent_damage_taken"):
         # OR THE RADIUS OF A NOVA SIZED BY A HIT, in metres, required. V2b,
         # 2026-11-25. See `SMITE_NEARBY_BY_HIT_ACTION`. AND OF ONE SIZED BY MAXIMUM HEALTH, the War trees' engine slice
         # E2 (2026-11-27), which reads its radius the same way.

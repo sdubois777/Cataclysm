@@ -6936,6 +6936,42 @@ const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyByHitAction =
 	TEXT("smite_nearby_by_hit");
 const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyOfMaximumHealthAction =
 	TEXT("smite_nearby_of_max_health");
+const TCHAR* UCataclysmAbilitySystemComponent::SmiteNearbyOfRecentDamageTakenAction =
+	TEXT("smite_nearby_of_recent_damage_taken");
+
+void UCataclysmAbilitySystemComponent::NoteDamageTakenAmount(float Amount)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Amount <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	RecentDamageTaken.RemoveAll([Now](const TPair<float, float>& Taken)
+	{
+		return Now - Taken.Key > RecentDamageTakenSeconds;
+	});
+	RecentDamageTaken.Emplace(Now, Amount);
+}
+
+float UCataclysmAbilitySystemComponent::DamageTakenRecently() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	float Sum = 0.0f;
+	for (const TPair<float, float>& Taken : RecentDamageTaken)
+	{
+		if (Now - Taken.Key <= RecentDamageTakenSeconds)
+		{
+			Sum += Taken.Value;
+		}
+	}
+	return Sum;
+}
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetOfMaximumHealthAction =
 	TEXT("strike_target_of_max_health");
 const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfMaximumHealthAction =
@@ -7837,8 +7873,11 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			}
 			// A NOVA SIZED BY MAXIMUM HEALTH ON A CLOCK: The Inevitable's "flat damage per second to all enemies within
 			// 4 metres" (the War trees' engine slice E2, 2026-11-27).
-			else if (Action.Nearby == ECataclysmNearbyAction::SmiteByMaximumHealth)
+			else if (Action.Nearby == ECataclysmNearbyAction::SmiteByMaximumHealth
+				|| Action.Nearby == ECataclysmNearbyAction::SmiteByRecentDamageTaken)
 			{
+				// AND ONE SIZED BY DAMAGE TAKEN RECENTLY: Wrathful Presence's pulse each second (the War trees' engine
+				// slice E3, 2026-11-27).
 				ActOnNearby(Action, 0.0f);
 			}
 			// AND A NEXT-ATTACK BONUS ON ONE: Mountain's Wrath's "Once every 10 seconds, your next attack deals bonus
@@ -11761,7 +11800,18 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 	{
 		return;
 	}
-	const float RadiusCm = (bByHit || bByMaximumHealth) ? Action.EventValue * 100.0f : NearbyActionRadiusCm;
+	// AND ONE SIZED BY THE DAMAGE THE WEARER TOOK IN THE LAST 5 SECONDS, reaching the larger of its Event Value and the
+	// wearer's retaliation radius: "your retaliation aura now pulses". The War trees' engine slice E3 (2026-11-27). A
+	// wearer that took nothing does nothing and searches nothing.
+	const bool bByRecentDamage = Action.Nearby == ECataclysmNearbyAction::SmiteByRecentDamageTaken;
+	const float ByRecentDamage = bByRecentDamage ? DamageTakenRecently() * Action.Percent / 100.0f : 0.0f;
+	if (bByRecentDamage && ByRecentDamage <= 0.0f)
+	{
+		return;
+	}
+	const float RadiusCm = bByRecentDamage
+		? FMath::Max(Action.EventValue, UCataclysmRetaliation::RadiusMetresFor(this)) * 100.0f
+		: (bByHit || bByMaximumHealth) ? Action.EventValue * 100.0f : NearbyActionRadiusCm;
 
 	// THE SEARCH THE PLAYER'S OWN NOVAS MAKE (`UCataclysmNova`): every living
 	// character with an ability system that the wearer's side counts as an
@@ -11772,6 +11822,12 @@ void UCataclysmAbilitySystemComponent::ActOnNearby(const FCataclysmPoolAction& A
 
 	for (AActor* Other : Nearby)
 	{
+		if (bByRecentDamage)
+		{
+			// A DIRECT BLOW OF THE SHARE OF DAMAGE TAKEN ON EACH ONE, as the maximum health one below. War trees E3.
+			UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, ByRecentDamage);
+			continue;
+		}
 		if (bByMaximumHealth)
 		{
 			// A DIRECT BLOW OF THE SHARE OF MAXIMUM HEALTH ON EACH ONE, as the hit-sized one below. War trees E2.

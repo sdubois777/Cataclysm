@@ -2094,6 +2094,20 @@ public:
 	static const TCHAR* SmiteNearbyByHitAction;
 	/** `smite_nearby_of_max_health`. The War trees' engine slice E2 (2026-11-27). */
 	static const TCHAR* SmiteNearbyOfMaximumHealthAction;
+	/** `smite_nearby_of_recent_damage_taken`. The War trees' engine slice E3 (2026-11-27), Wrathful Presence. */
+	static const TCHAR* SmiteNearbyOfRecentDamageTakenAction;
+
+	/** How far back `DamageTakenRecently` looks, in seconds: Wrathful Presence's "in the last 5 seconds". */
+	static constexpr float RecentDamageTakenSeconds = 5.0f;
+
+	/**
+	 * Note damage this character took: what reached health, the energy shield, mana and the temporary absorb, ticks
+	 * included, evaded blows not. Called by `UCataclysmVitalAttributeSet` for every blow. The War trees' engine slice E3.
+	 */
+	void NoteDamageTakenAmount(float Amount);
+
+	/** All the damage noted by `NoteDamageTakenAmount` in the last `RecentDamageTakenSeconds`. Nought with no world. */
+	float DamageTakenRecently() const;
 	/** `strike_target_of_max_health`. The same slice. */
 	static const TCHAR* StrikeTargetOfMaximumHealthAction;
 	/** `next_attack_bonus_of_max_health`. The same slice. */
@@ -7098,6 +7112,9 @@ protected:
 
 	/** The seconds of combat held when the current combat began. See `CombatSecondsHeld`. War trees E3. */
 	float CombatSecondsCarriedIn = 0.0f;
+
+	/** When and how much damage was taken, oldest first, pruned past `RecentDamageTakenSeconds`. War trees E3. */
+	TArray<TPair<float, float>> RecentDamageTaken;
 
 	/**
 	 * Whether some row in `StatInputs` is scaled by `increased_max_health`, set by `NoteWhatTheRowsAsk` whenever the

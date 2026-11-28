@@ -2951,6 +2951,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					const AActor* BigHitAttacker = UCataclysmCombatEvents::AttackerOf(Data.EffectSpec.GetContext());
 					const float GotThrough = Outcome.DealtToHealth + Outcome.AbsorbedByShield + Outcome.AbsorbedByMana
 						+ Outcome.AbsorbedByTemporary;
+					// AND NOTED AS DAMAGE TAKEN, ticks included, for Wrathful Presence's "all damage you have taken in the
+					// last 5 seconds" (the War trees' engine slice E3, 2026-11-27).
+					if (!Outcome.bEvaded)
+					{
+						Cataclysm->NoteDamageTakenAmount(GotThrough);
+					}
 					const bool bOwnBlow = BigHitAttacker
 						&& (BigHitAttacker == Cataclysm->GetAvatarActor() || BigHitAttacker == Cataclysm->GetOwnerActor());
 					if (!Outcome.bEvaded && !Hit.bIsDamageOverTime && !bOwnBlow

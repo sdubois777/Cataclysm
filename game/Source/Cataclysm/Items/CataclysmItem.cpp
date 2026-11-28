@@ -1787,6 +1787,12 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.Nearby = ECataclysmNearbyAction::SmiteByMaximumHealth;
 					}
+					// AND THE ONE SIZED BY DAMAGE TAKEN RECENTLY, engine slice E3 (2026-11-27), Wrathful Presence.
+					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::SmiteNearbyOfRecentDamageTakenAction,
+											  ESearchCase::IgnoreCase))
+					{
+						Action.Nearby = ECataclysmNearbyAction::SmiteByRecentDamageTaken;
+					}
 					Action.bStrikeTargetOfMaximumHealth = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::StrikeTargetOfMaximumHealthAction, ESearchCase::IgnoreCase);
 					Action.bStrikeTargetOfTargetMissingHealth = Effect->Action.Equals(

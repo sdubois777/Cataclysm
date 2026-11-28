@@ -5104,6 +5104,15 @@ enum class ECataclysmNearbyAction : uint8
 	 * Maximum HP" and Seismic Slam's "This bonus damage hits all enemies within 2 meters".
 	 */
 	SmiteByMaximumHealth UMETA(DisplayName = "Smite nearby enemies by a share of maximum health"),
+
+	/**
+	 * A direct blow of `Percent` per cent of all the damage the wearer took in the last 5 seconds
+	 * (`UCataclysmAbilitySystemComponent::DamageTakenRecently`) on every enemy within the larger of the row's Event Value
+	 * in metres and the wearer's retaliation radius. The War trees' engine slice E3 (2026-11-27), Wrathful Presence:
+	 * "Your retaliation aura now pulses every second, dealing damage equal to 5% of all damage you have taken in the last
+	 * 5 seconds to all nearby enemies."
+	 */
+	SmiteByRecentDamageTaken UMETA(DisplayName = "Smite nearby enemies by a share of damage taken recently"),
 };
 
 /**
