@@ -4970,6 +4970,9 @@ namespace CataclysmStatExemptionTest
 	 * stack; one holds a stack. A blocked hit of 100 keeps 50 on the one and 40 on
 	 * the other.
 	 */
+	// DECLARED HERE, DEFINED BELOW: the probe that follows uses the holder the Ravager rework's probes made.
+	ACataclysmEnemyCharacter* RavagerReworkHolder(FAutomationTestBase& Test, UWorld* World);
+
 	void ProbeScaledFervourPerHitDealt(FAutomationTestBase& Test)
 	{
 		// `fervour_per_hit_dealt`, asked by `FCataclysmWarFervour::GainByRate` through `StatForSkill`. The War trees'

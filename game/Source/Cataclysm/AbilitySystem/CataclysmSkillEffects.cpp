@@ -4359,7 +4359,7 @@ namespace
 		if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Displacement")))
 		{
 			// AND THE CHARACTER IMMUNE TO IT REFUSED IT, the War trees' slice E1 (2026-11-27).
-			NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
+			UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
 			return false;
 		}
 
@@ -4517,7 +4517,7 @@ bool UCataclysmSkillEffects::ApplyStagger(AActor* Instigator, AActor* Target,
 	// is refused, as the ceiling below refuses it; the shove that got here has already landed.
 	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Stagger")))
 	{
-		NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
+		UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
 		return false;
 	}
 
@@ -5219,7 +5219,7 @@ bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Stun")))
 	{
 		// AND THE CHARACTER IMMUNE TO IT REFUSED IT, the War trees' slice E1 (2026-11-27).
-		NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
+		UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
 		return false;
 	}
 
@@ -5356,7 +5356,7 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 	if (UCataclysmSkillTemplate::IsImmuneTo(Target, TEXT("Knockdown")))
 	{
 		// AND THE CHARACTER IMMUNE TO IT REFUSED IT, the War trees' slice E1 (2026-11-27).
-		NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
+		UCataclysmSkillEffects::NoteCrowdControlReceived(Instigator, Target, /*bRefused=*/true);
 		return false;
 	}
 
