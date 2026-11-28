@@ -871,7 +871,8 @@ MULTIPLIES = re.compile(r"multiplicative|\b(?:is|are) doubled\b|\d+\s*%\s+(?:mor
 # 1,181 SINCE THE WAR TREES' ENGINE SLICES E2, E3 AND THE RIDERS (2026-11-27): 99 more rows.
 #: AND TO 1231 ON 2026-11-28, THE WAR TREES' WINDOW 2 (`E4_NODES` in `tools/reapply_war_trees_data_rows_workbook.py`),
 #: on 1181: 50 rows on 27 Saboteur nodes that had none, the data rows and engine slice E4's.
-AUTHORED_ROWS = 1231
+#: AND TO 1232 ON 2026-11-28, THE WAR WEAPON SKILLS' SLICE WS1 (issue #2972): Colossus's one row (`WS1_NODES`).
+AUTHORED_ROWS = 1232
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1411,7 +1412,8 @@ AUTHORED_ROWS = 1231
 #: AND TO 586 THE SAME DAY, ENGINE SLICE E1's ROWS: 20 more War nodes.
 # 633 SINCE THE WAR TREES' ENGINE SLICES E2, E3 AND THE RIDERS (2026-11-27): 47 more nodes.
 #: AND TO 660 ON 2026-11-28, THE WAR TREES' WINDOW 2: the 27 Saboteur nodes of `E4_NODES` that had no row, on 633.
-AUTHORED_NODES = 660
+#: AND 661, EVERY NODE, SINCE THE WAR WEAPON SKILLS' SLICE WS1 (issue #2972, 2026-11-28) gave Colossus its row.
+AUTHORED_NODES = 661
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -4484,6 +4486,9 @@ ACTION_VALUE_FORMS = {
     # Fervour per point", Volatile Construction's "+15% of its maximum HP per point" and Coordinated Strike's "+8% bonus
     # damage per point".
     "gadget_move_cooldown_cut": ("ready {value:g} seconds sooner",),
+    # COLOSSUS, the War weapon skills' slice WS1 (issue #2972, 2026-11-28): the 25 is the potency at an empty pool,
+    # "scaling down to 25% potency at minimum Fervour".
+    "cast_earthquake_by_fervour": ("{value:g}% potency",),
     "gadget_empowered": ("consumes {value:g} Fervour",),
     "gadget_overclocked": ("drains {value:g} Fervour",),
     "gadget_explodes_for_share_of_maximum_health": ("+{value:g}% of its maximum HP",),

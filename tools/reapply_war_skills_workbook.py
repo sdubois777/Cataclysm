@@ -45,7 +45,10 @@ ApplyError = death.ApplyError
 #: coordinating session on 2026-11-28). Slice WS1: W1 `AilmentChance`, W2 `AilmentMagnitude`, W3 `ArmourRemoved`, W4
 #: `DamageTakenIncreased`, W5 `Stagger`.
 BUILT = frozenset({"W1", "W2", "W3", "W4", "W5"})
-KNOWN_PIECES = frozenset({f"W{n}" for n in range(1, 12) if n != 7})
+#: W12, a dash BACKWARD from where the player aims, joined during slice WS1: Recoil Dash's "propel yourself backward 6
+#: meters". The existing Blink goes toward the aim, which would make a 6 m gap-closer, shorter than every Movement skill
+#: before it, and three enemy designs are measured against the shortest gap-closer (`test_enemy_abilities.py`).
+KNOWN_PIECES = frozenset({f"W{n}" for n in range(1, 13) if n != 7})
 
 WEAPON, DAMAGE, SLOT = "Weapon Type", "Damage Type", "Slot"
 DESCRIPTION, SHAPE, PARAMS, DAMAGE_PERCENT = "Skill Description", "Shape", "Shape Params", "Damage Percent"
@@ -71,7 +74,8 @@ ROWS: tuple[WarRow, ...] = (
     # ---- DATA: an existing Shape with parameters is enough (ranges past 14 m cut to 14, ruled 2026-11-28).
     WarRow("2H Crossbow", "Heavy", "Projectile", "Range=14; Radius=0.5; Pierce=2; Speed=3000; Ailment=Bleed",
            reword=(", causing them to bleed for 10 seconds.", ", causing them to bleed.")),
-    WarRow("2H Crossbow", "Movement", "Movement", "Mode=Blink; Range=6; Radius=2.5; Knockback=2"),
+    WarRow("2H Crossbow", "Movement", "Movement", "Mode=Blink; Range=6; Radius=2.5; Knockback=2; Backward=1",
+           needs=("W12",)),
     WarRow("2H Crossbow", "Ultimate", "Projectile", "Range=14; Radius=6; Speed=1400; Arc=0.25; Ailment=Bleed",
            reword=("up to 20 meters away", "up to 14 meters away")),
     WarRow("Axe", "Movement", "Movement",

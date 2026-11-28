@@ -32,14 +32,14 @@ def _all_rows():
 
 
 def test_there_are_seventy_five_rows_on_forty_three_nodes():
-    """The name is the first slice's; since engine slices E2, E3 and the riders (2026-11-27) it is 174 rows on 90, and
-    since window 2's Saboteur nodes (E4, 2026-11-28) 224 rows on 117."""
-    assert len(_all_rows()) == 224
-    assert len({node for node, _, _ in rows.NODES}) == len(rows.NODES) == 117
-    assert (len(rows.DATA_NODES), len(rows.E1_NODES), len(rows.E2_NODES), len(rows.E3_NODES),
-            len(rows.E4_NODES)) == (23, 20, 26, 21, 27)
-    assert [sum(len(wanted) for _, _, wanted in group)
-            for group in (rows.DATA_NODES, rows.E1_NODES, rows.E2_NODES, rows.E3_NODES, rows.E4_NODES)]         == [39, 36, 57, 42, 50]
+    """The name is the first slice's; since engine slices E2, E3 and the riders (2026-11-27) it is 174 rows on 90,
+    since window 2's Saboteur nodes (E4, 2026-11-28) 224 rows on 117, and since the War weapon skills' slice WS1 (issue
+    #2972, 2026-11-28) 225 on 118, with Colossus."""
+    assert len(_all_rows()) == 225
+    assert len({node for node, _, _ in rows.NODES}) == len(rows.NODES) == 118
+    groups = (rows.DATA_NODES, rows.E1_NODES, rows.E2_NODES, rows.E3_NODES, rows.E4_NODES, rows.WS1_NODES)
+    assert tuple(len(group) for group in groups) == (23, 20, 26, 21, 27, 1)
+    assert [sum(len(wanted) for _, _, wanted in group) for group in groups] == [39, 36, 57, 42, 50, 1]
 
 
 def test_the_nodes_split_by_tree():
@@ -126,7 +126,7 @@ def _workbook_without_the_rows(tmp_path) -> pathlib.Path:
 def test_the_script_writes_the_rows_once(tmp_path):
     copy = _workbook_without_the_rows(tmp_path)
     first = rows.apply(copy)
-    assert sum(1 for line in first if ": + " in line) == 224, first
+    assert sum(1 for line in first if ": + " in line) == 225, first
     second = rows.apply(copy)
     assert second[-1] == "every row is already written; nothing written", second
 

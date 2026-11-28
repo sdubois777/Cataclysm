@@ -76,6 +76,9 @@ NOT_THE_BLOW = {
     # Haymaker's 100% is an extra dealt when the target is thrown into a wall,
     # on top of the blow, rather than the blow itself.
     "Haymaker",
+    # Annihilator (the War weapon skills' slice WS1, issue #2972, ruled 2026-11-28) is Pyroclasm's shape: the 300% is
+    # its closing hit, `FinalHitPercent=300`, and its ticks take the slot's figure.
+    "Annihilator",
 }
 
 

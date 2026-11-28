@@ -1230,3 +1230,4 @@ Saboteur_keystone_trap_ql#3,Saboteur_keystone_trap_ql,area_of_effect,increased,2
 Saboteur_keystone_trap_deep_001#1,Saboteur_keystone_trap_deep_001,trap_last_surprise,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Saboteur_keystone_trap_deep_002#1,Saboteur_keystone_trap_deep_002,trap_unreserved_drain_per_second,flat,5.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
 Saboteur_basic_trap_mid_003#1,Saboteur_basic_trap_mid_003,trap_first_trigger_stun_seconds,flat,1.0,,,0.0,,0.0,0,-1.0,0,0,,,,0.0,0.0,0.0,0,,0.0,0.0,0.0,,0.0,0,0.0,0
+Berserker_twoh_ks_001#1,Berserker_twoh_ks_001,,,25.0,,in_wrath,0.0,,0.0,0,-1.0,0,0,cast_earthquake_by_fervour,movement_skill_ends,,0.0,0.0,0.0,0,wielding_two_handed_weapon,0.0,0.0,0.0,,0.0,0,0.0,0

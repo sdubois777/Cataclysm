@@ -70,6 +70,9 @@ IMMUNITY = (
     # AND THE STAT THAT GRANTS IT, since the War trees' engine slice E1 (2026-11-27): a row's text is its cells, and
     # `immune_to_stun` (Juggernaut, Unbroken) is immunity, not application.
     r"\bimmune_to_stun\b",
+    # AND A SKILL ROW'S `Immune` KEY NAMING STUN, since the War weapon skills' slice WS1 (issue #2972, 2026-11-28):
+    # Shield Charge's `Immune=Displacement, Stun`, "you cannot be staggered or interrupted during the charge".
+    r"\bImmune=[^;|]*\bStun\b",
     r"cannot be stunned",
     r"immune to stun",
     r"immunity to stun",
