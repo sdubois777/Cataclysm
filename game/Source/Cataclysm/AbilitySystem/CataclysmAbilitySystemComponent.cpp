@@ -5202,6 +5202,22 @@ float UCataclysmAbilitySystemComponent::TakePendingOverkillExplosionRadiusCm()
 	return Was;
 }
 
+void UCataclysmAbilitySystemComponent::NoteFrenzyDrained(float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+	// ONE EVENT FOR EACH 10 TAKEN, counted across steps, with the allowance `NoteFervourDecayed` gives. The War trees'
+	// engine slice E2 (2026-11-27). THE NAME WRITTEN OUT, as every raise spells its event.
+	FrenzyDrainedTowardAnEvent += Amount;
+	while (FrenzyDrainedTowardAnEvent >= FrenzyDrainedPerEvent - KINDA_SMALL_NUMBER)
+	{
+		FrenzyDrainedTowardAnEvent = FMath::Max(0.0f, FrenzyDrainedTowardAnEvent - FrenzyDrainedPerEvent);
+		ActOnEvent(FName(TEXT("frenzy_drained")), nullptr, FrenzyDrainedPerEvent);
+	}
+}
+
 void UCataclysmAbilitySystemComponent::NoteFervourDecayed(float Amount)
 {
 	const UWorld* World = GetWorld();
@@ -6736,6 +6752,7 @@ const TCHAR* UCataclysmAbilitySystemComponent::FervourHoldExtendedAction = TEXT(
 const TCHAR* UCataclysmAbilitySystemComponent::CriticalTwiceOnEvasionAction = TEXT("next_hit_critical_twice");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetAction = TEXT("strike_target");
 const TCHAR* UCataclysmAbilitySystemComponent::StrikeStrongestNearAction = TEXT("strike_strongest_near");
+const TCHAR* UCataclysmAbilitySystemComponent::StrikeNearestNearAction = TEXT("strike_nearest_near");
 const TCHAR* UCataclysmAbilitySystemComponent::DashToStrongestAndStrikeAction = TEXT("dash_to_strongest_and_strike");
 const TCHAR* UCataclysmAbilitySystemComponent::CritIncreasesToAilmentsStat =
 	TEXT("crit_multiplier_increases_to_poison_and_bleed_percent");
@@ -6786,6 +6803,12 @@ const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfMaximumHealthAct
 	TEXT("next_attack_bonus_of_max_health");
 const TCHAR* UCataclysmAbilitySystemComponent::NextAttackBonusOfArmourAction =
 	TEXT("next_attack_bonus_of_armor");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceAllPercentAction =
+	TEXT("cooldown_reduce_all_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::StrikeTargetOfTargetMissingHealthAction =
+	TEXT("strike_target_of_target_missing_health");
+const TCHAR* UCataclysmAbilitySystemComponent::KnockBackTargetAction =
+	TEXT("knock_back_target");
 const TCHAR* UCataclysmAbilitySystemComponent::RetaliationPulseAction =
 	TEXT("retaliation_pulse");
 const TCHAR* UCataclysmAbilitySystemComponent::FrenzyChainAction =
@@ -6937,9 +6960,10 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 			}
 		}
 	}
-	if (Action.CooldownReduce == ECataclysmCooldownReset::All)
+	if (Action.CooldownReduce == ECataclysmCooldownReset::All && !Action.bCooldownReduceShare)
 	{
-		// AND THE KEPT COOLDOWN OF EVERY SKILL OFF THE KEYS, by the same seconds. Issue #2528.
+		// AND THE KEPT COOLDOWN OF EVERY SKILL OFF THE KEYS, by the same seconds. Issue #2528. NOT FOR A SHARE (the War
+		// trees' engine slice E2): Apex Predator reduces the cooldowns running on the keys.
 		ShortenCooldownsOffTheKeys(Action.Percent);
 	}
 	else if (Action.CooldownReduce == ECataclysmCooldownReset::Heavy)
@@ -6994,13 +7018,19 @@ int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolActi
 		{
 			continue;
 		}
-		if (Running->GetTimeRemaining(Now) <= Action.Percent)
+		// SECONDS, OR A SHARE OF WHAT IS LEFT for `cooldown_reduce_all_percent` (the War trees' engine slice E2). A share
+		// of 100 or more ends it.
+		const float Remaining = Running->GetTimeRemaining(Now);
+		const float Taken = Action.bCooldownReduceShare
+			? (Action.Percent >= 100.0f ? Remaining : Remaining * Action.Percent / 100.0f)
+			: Action.Percent;
+		if (Remaining <= Taken)
 		{
 			RemoveActiveGameplayEffect(Handle);
 		}
 		else
 		{
-			ModifyActiveEffectStartTime(Handle, -Action.Percent);
+			ModifyActiveEffectStartTime(Handle, -Taken);
 		}
 		++Changed;
 	}
@@ -9540,11 +9570,30 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		// of the row's per cent of weapon damage on the wearer's own mark within 10 metres, else the strongest enemy that
 		// near, the one just slain left out; Thousand Cuts puts the wearer beside it first. Dealt inside this loop, as
 		// the strike below is, so its own kill acts on none of the wearer's rows and cannot chain.
-		if (Action.bStrikeStrongestNear || Action.bDashToStrongestAndStrike)
+		if (Action.bStrikeStrongestNear || Action.bDashToStrongestAndStrike || Action.bStrikeNearestNear)
 		{
 			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
 			AActor* Struck = (bLanded && Self && Action.Percent > 0.0f && !UCataclysmSkillEffects::IsDead(Self))
 				? MarkedOrStrongestNear(StrongestNearReachCm) : nullptr;
+			// OR THE NEAREST LIVING ENEMY THAT NEAR, for `strike_nearest_near` (the War trees' engine slice E2,
+			// 2026-11-27). The sphere search answers nearest first; the event's own character, dead on a kill, is passed
+			// over.
+			if (Action.bStrikeNearestNear)
+			{
+				Struck = nullptr;
+				if (bLanded && Self && Action.Percent > 0.0f && !UCataclysmSkillEffects::IsDead(Self))
+				{
+					for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(
+							 GetWorld(), Self, Self->GetActorLocation(), StrongestNearReachCm))
+					{
+						if (Near && Near != EventTarget && !UCataclysmSkillEffects::IsDead(Near))
+						{
+							Struck = Near;
+							break;
+						}
+					}
+				}
+			}
 			// AND ON A ROLL OF ITS CHANCE, WHEN THE ROW STATES ONE: the Soul Collector's Gleaning, "Each kill has a 5% chance
 			// per point to strike the strongest enemy within 10 metres" (issue #2951). A row stating none strikes every time.
 			if (Struck && Struck != EventTarget && !StackedThisEvent.Contains(Action.TriggerKey) && TriggerReady(Action)
@@ -9559,7 +9608,15 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				FCataclysmHitDelivery Delivery;
 				Delivery.bCannotBeEvaded = true;
 				Delivery.bIsARowsAnswerToAnEvent = true;
-				UCataclysmSkillEffects::ApplyHit(Self, Struck, Action.Percent, FGameplayTagContainer(), Delivery);
+				// AS MANY STRIKES AS THE ROW'S EVENT VALUE SAYS, for the nearest enemy's (one when it says none):
+				// Unstoppable Force's "strikes the nearest enemy three times" (the War trees' engine slice E2). Each its
+				// own hit, so each rolls its own critical strike and pays its own leech; the struck may die between.
+				const int32 Strikes = Action.bStrikeNearestNear ? FMath::Clamp(FMath::RoundToInt32(Action.EventValue), 1, 10)
+																: 1;
+				for (int32 Strike = 0; Strike < Strikes && !UCataclysmSkillEffects::IsDead(Struck); ++Strike)
+				{
+					UCataclysmSkillEffects::ApplyHit(Self, Struck, Action.Percent, FGameplayTagContainer(), Delivery);
+				}
 			}
 			continue;
 		}
@@ -9578,6 +9635,35 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				StackedThisEvent.Add(Action.TriggerKey);
 				NoteTriggerFired(Action);
 				UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Amount);
+			}
+			continue;
+		}
+		// A DIRECT BLOW OF A SHARE OF THE HEALTH THE EVENT'S OTHER CHARACTER IS MISSING (Coup de Grace), and a knockback
+		// of it (Whirlwind). Once per row per event, landed only. The War trees' engine slice E2 (2026-11-27).
+		if (Action.bStrikeTargetOfTargetMissingHealth || Action.bKnockBackTarget)
+		{
+			AActor* Other = const_cast<AActor*>(EventTarget);
+			AActor* Self = GetAvatarActor() ? GetAvatarActor() : GetOwnerActor();
+			if (bLanded && Other && Self && Other != Self && Action.Percent > 0.0f
+				&& !UCataclysmSkillEffects::IsDead(Other) && !StackedThisEvent.Contains(Action.TriggerKey)
+				&& TriggerReady(Action))
+			{
+				StackedThisEvent.Add(Action.TriggerKey);
+				NoteTriggerFired(Action);
+				if (Action.bKnockBackTarget)
+				{
+					UCataclysmSkillEffects::ApplyKnockback(Self, Other, Action.Percent * 100.0f);
+				}
+				else if (const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Other))
+				{
+					const float Missing = FMath::Max(0.0f,
+						Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+						- Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute()));
+					if (Missing > 0.0f)
+					{
+						UCataclysmSkillEffects::ApplyDirectDamage(Self, Other, Missing * Action.Percent / 100.0f);
+					}
+				}
 			}
 			continue;
 		}

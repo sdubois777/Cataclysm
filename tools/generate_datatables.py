@@ -6327,6 +6327,9 @@ CONDITIONS = {
     "target_carries_bleed": None,
     "holding_shield": None,
     "not_holding_shield": None,
+    # AND THE COMPLEMENT OF "While in Frenzy", the War trees' engine slice E2 (2026-11-27): Death Strike's 20% row holds
+    # outside Frenzy and its 35% row in it.
+    "dual_wielding_outside_frenzy": None,
     # AND THREE FACTS OF THE ATTACK OR HIT IN HAND, the same slice: "when you attack at maximum Fervour" is
     # `attack_at_full_fervour`, the pool full when the attack began, before Berserking spends it (Executioner, Apex
     # Predator, Whirlwind, Coup de Grace); "on critical melee strikes" on a leech row is `blow_was_critical` (Vital
@@ -8085,6 +8088,9 @@ COOLDOWN_REDUCE_ACTIONS = (
     # second ... off your movement skill's remaining cooldown". The Death trees'
     # slice C6a (2026-11-25).
     "cooldown_reduce_movement",
+    # A SHARE OF WHAT IS LEFT OF EVERY COOLDOWN ON THE KEYS, in per cent, above 0 and up to 100: Apex Predator's
+    # "instantly reduces all cooldowns by 50%" (the War trees' engine slice E2, 2026-11-27).
+    "cooldown_reduce_all_percent",
 )
 
 #: The most seconds a reduction may take off, the same sanity bound the clocks use.
@@ -8851,6 +8857,12 @@ MAX_STRIKE_TARGET_PERCENT = 1000.0
 #: Shield Slam). `smite_nearby_of_max_health` is in `NEARBY_ACTIONS`. Each value is a per cent above 0 and up to
 #: `MAX_SIZED_BY_A_STAT_PERCENT`. `UCataclysmAbilitySystemComponent` holds the same names.
 STRIKE_TARGET_OF_MAX_HEALTH_ACTION = "strike_target_of_max_health"
+#: AND TWO MORE ON THE EVENT'S OTHER CHARACTER, the same slice: `strike_target_of_target_missing_health`, direct damage of
+#: the value's per cent of the health that character is missing (Coup de Grace), and `knock_back_target`, which knocks
+#: it back the value in metres, up to `MAX_KNOCK_BACK_METRES` (Whirlwind). Checked with the strike above.
+STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION = "strike_target_of_target_missing_health"
+KNOCK_BACK_TARGET_ACTION = "knock_back_target"
+MAX_KNOCK_BACK_METRES = 10.0
 NEXT_ATTACK_BONUS_ACTIONS = ("next_attack_bonus_of_max_health", "next_attack_bonus_of_armor")
 MAX_SIZED_BY_A_STAT_PERCENT = 100.0
 
@@ -8899,6 +8911,7 @@ def takes_a_trigger_cooldown(action: str) -> bool:
             or action == STRIKE_TARGET_ACTION
             # AND THE WAR TREES' ACTIONS SIZED BY A STAT (engine slice E2): Mountain's Wrath's "Once every 10 seconds".
             or action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS
+            or action == STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION or action == KNOCK_BACK_TARGET_ACTION
             # COUNTERFIRE'S ANSWERS ARE SOMETHING HAPPENING: "No more than once
             # a second" is its Trigger Cooldown (V4b, 2026-11-25).
             or action == COUNTERFIRE_ACTION
@@ -9138,6 +9151,9 @@ ACTION_ONLY_EVENTS = (
     # AN ATTACK BEGUN AT A FULL FERVOUR POOL, raised by `UCataclysmSkillTemplate::BeginAttackOn` before anything that
     # attack spends: War Cry and Rapid Fire's "after attacking at maximum Fervour" (the War trees' slice E1, 2026-11-27).
     "attack_at_full_fervour",
+    # EACH 10 FERVOUR FRENZY'S DRAIN TAKES, raised by `UCataclysmAbilitySystemComponent::NoteFrenzyDrained`: Frenetic's
+    # bonus strike and Knife Dance's Fervour (the War trees' engine slice E2, 2026-11-27).
+    "frenzy_drained",
     # A CROWD CONTROL EFFECT LANDED ON THE CHARACTER, OR WAS REFUSED BY ITS IMMUNITY, raised by
     # `UCataclysmAbilitySystemComponent::NoteCrowdControlReceived` with whose act it was as the event's character: Iron
     # Mind ("Each crowd control effect applied to you generates 10 Fervour"), Dead Weight (R27) and Immovable Object
@@ -9509,7 +9525,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_strike_target_action(index, who, action, event, fraction_of,
                                     kind, raw, headers)
         return
-    if action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS:
+    if action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
+                  KNOCK_BACK_TARGET_ACTION) or action in NEXT_ATTACK_BONUS_ACTIONS:
         _check_sized_by_a_stat_action(index, who, action, event, fraction_of, kind, raw, headers)
         return
     if action == EXECUTE_TARGET_ACTION:
@@ -10118,7 +10135,10 @@ def _check_sized_by_a_stat_action(index: int, who: str, action: str, event: str,
     trees' engine slice E2 (2026-11-27). A strike needs an event naming a living character other than the wearer; a
     next-attack bonus needs an event the game fires. The share is checked where the value is read. A fraction, a value
     kind and a scale each mean nothing here, so each is refused rather than dropped."""
-    known = STRIKE_TARGET_EVENTS if action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION else tuple(sorted(granting_events()))
+    known = (STRIKE_TARGET_EVENTS
+             if action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION,
+                           KNOCK_BACK_TARGET_ACTION)
+             else tuple(sorted(granting_events())))
     if event not in known:
         raise DataError(
             f"Enchantment Effects row {index}: {who} acts on the event {event or '(none)'!r}. It may act on: "
@@ -10671,6 +10691,8 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 and action != GADGET_FIRES_AT_TRAP_ENEMY_ACTION \
                 and action != STRIKE_TARGET_ACTION \
                 and action != STRIKE_TARGET_OF_MAX_HEALTH_ACTION \
+                and action != STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION \
+                and action != KNOCK_BACK_TARGET_ACTION \
                 and action not in NEXT_ATTACK_BONUS_ACTIONS \
                 and action != EXECUTE_TARGET_ACTION \
                 and action != TEMPORARY_ABSORB_ACTION \
@@ -11060,7 +11082,13 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
 
     # A ROW SIZED BY A STAT OF THE WEARER'S IS A PER CENT OF IT, above 0 and up to the bound. The War trees' engine
     # slice E2 (2026-11-27).
-    if action == STRIKE_TARGET_OF_MAX_HEALTH_ACTION or action in NEXT_ATTACK_BONUS_ACTIONS:
+    if action == KNOCK_BACK_TARGET_ACTION:
+        if not (0 < low <= MAX_KNOCK_BACK_METRES and 0 < high <= MAX_KNOCK_BACK_METRES):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} knocks back {low:g} to {high:g} metres. It is above 0 and "
+                f"up to {MAX_KNOCK_BACK_METRES:g}.")
+    elif action in (STRIKE_TARGET_OF_MAX_HEALTH_ACTION, STRIKE_TARGET_OF_TARGET_MISSING_HEALTH_ACTION) \
+            or action in NEXT_ATTACK_BONUS_ACTIONS:
         if not (0 < low <= MAX_SIZED_BY_A_STAT_PERCENT and 0 < high <= MAX_SIZED_BY_A_STAT_PERCENT):
             raise DataError(
                 f"Enchantment Effects row {index}: {name} is {low:g} to {high:g} per cent of a stat of the "
@@ -11277,7 +11305,12 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
 
     # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
     # Issue #1833, the cooldown reduction action.
-    if action in COOLDOWN_REDUCE_ACTIONS:
+    if action == "cooldown_reduce_all_percent":
+        if not (0 < low <= 100 and 0 < high <= 100):
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} takes {low:g} to {high:g} per cent off cooldowns. It takes "
+                f"above 0 and up to 100.")
+    elif action in COOLDOWN_REDUCE_ACTIONS:
         if not (0 < low <= MAX_COOLDOWN_REDUCE_SECONDS
                 and 0 < high <= MAX_COOLDOWN_REDUCE_SECONDS):
             raise DataError(
@@ -11871,6 +11904,14 @@ def _effect_row(raw, headers: dict[str, int], index: int, name: str,
                 f"Enchantment Effects row {index}: {name} reaches "
                 f"{event_value:g} metres. The radius is above 0 and up to "
                 f"{MAX_SMITE_NEARBY_BY_HIT_METRES:g}.")
+    elif action == STRIKE_NEAREST_NEAR_ACTION:
+        # OR HOW MANY STRIKES THE NEAREST ENEMY TAKES, a whole number, empty for one. The War trees' engine slice E2.
+        if event_value_text:
+            event_value = number(event_value_text, "Event Value", index)
+            if event_value != int(event_value) or not 1 <= event_value <= MOST_NEAREST_STRIKES:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} strikes the nearest enemy {event_value:g} times. It is a "
+                    f"whole number from 1 to {MOST_NEAREST_STRIKES}, or empty for one.")
     elif action == TITANFALL_ACTION:
         # OR TITANFALL'S SHARE OF MAXIMUM HEALTH A BIG HIT MUST TAKE, in per
         # cent, required. 2026-11-25. See `TITANFALL_ACTION`.
@@ -13211,6 +13252,11 @@ CONDITIONED_STATS_WITH_AN_ASKER: dict[str, frozenset[str]] = {
     # AND THE RETALIATION RADIUS, under "While at maximum Fervour" (Outnumbered), the same slice. Asked by
     # `UCataclysmRetaliation::RadiusMetresFor` through `StatForSkill`; `ProbeConditionedRetaliationRadius` measures it.
     "retaliation_radius_metres": ASKER_PASSES_NOTHING_MORE,
+    # AND WHIRLWIND'S TWO, the War trees' engine slice E2 (2026-11-27): the full-circle swing, asked by
+    # `UCataclysmStrikeSkill::ArcDegrees`, and the Fervour per enemy hit, asked by `UCataclysmFervour::GainForEnemiesHit`,
+    # each through `StatForSkill`. `ProbeConditionedMeleeArcFullCircle` and `ProbeConditionedFervourPerEnemyHit`.
+    "melee_arc_full_circle": ASKER_PASSES_NOTHING_MORE,
+    "fervour_per_enemy_hit": ASKER_PASSES_NOTHING_MORE,
     # THE DEATH TREES' SLICE C3d (2026-11-25), each for a Soul Collector vow's
     # clause under `fervour_threshold_reached`: the extra projectile, asked by
     # `UCataclysmProjectileSkill::ExtraProjectilesWithRows` with the skill's tags,
@@ -16833,12 +16879,21 @@ MAX_FERVOUR_HOLD_EXTENDED_SECONDS = 10.0
 #: `MAX_STRIKE_TARGET_PERCENT`.
 STRIKE_STRONGEST_NEAR_ACTION = "strike_strongest_near"
 DASH_TO_STRONGEST_AND_STRIKE_ACTION = "dash_to_strongest_and_strike"
-STRONGEST_NEAR_ACTIONS = (STRIKE_STRONGEST_NEAR_ACTION, DASH_TO_STRONGEST_AND_STRIKE_ACTION)
+#: AND THE NEAREST ENEMY'S, the War trees' engine slice E2 (2026-11-27): the same strike on the nearest living enemy
+#: within the same 10 metres, for Frenetic and Unstoppable Force. Checked as the two above are.
+STRIKE_NEAREST_NEAR_ACTION = "strike_nearest_near"
+#: Its Event Value is HOW MANY STRIKES, a whole number from 1 to `MOST_NEAREST_STRIKES`; empty is one. Unstoppable Force's
+#: "strikes the nearest enemy three times".
+MOST_NEAREST_STRIKES = 10
+STRONGEST_NEAR_ACTIONS = (STRIKE_STRONGEST_NEAR_ACTION, DASH_TO_STRONGEST_AND_STRIKE_ACTION, STRIKE_NEAREST_NEAR_ACTION)
 #: AND `fervour_decayed`, SINCE 2026-11-27: the Soul Collector's Unquiet
 #: Souls, "Every 5 Fervour you lose to decay strikes the strongest enemy within
 #: 10 metres" (issue #2951). The strike is the wearer's own, aimed from where it
 #: stands; it needs no character from its event.
-STRONGEST_NEAR_EVENTS = ("kill", "fervour_decayed")
+STRONGEST_NEAR_EVENTS = ("kill", "fervour_decayed",
+                         # AND THE WAR TREES' ENGINE SLICE E2 (2026-11-27): Frenetic's strike per 10 Fervour Frenzy
+                         # drains, and Unstoppable Force's three on entering Frenzy.
+                         "frenzy_drained", "frenzy_entered")
 
 NEXT_HIT_CRITICAL_TWICE_ACTION = "next_hit_critical_twice"
 NEXT_HIT_CRITICAL_TWICE_EVENTS = ("dodge",)

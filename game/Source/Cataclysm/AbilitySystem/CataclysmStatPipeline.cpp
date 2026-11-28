@@ -193,6 +193,7 @@ namespace
 		{ TEXT("blow_was_critical"),              ECataclysmStatCondition::HitIsCritical },
 		{ TEXT("blow_was_not_critical"),          ECataclysmStatCondition::HitIsNotCritical },
 		{ TEXT("while_crowd_controlled"),       ECataclysmStatCondition::WhileCrowdControlled },
+		{ TEXT("dual_wielding_outside_frenzy"),                ECataclysmStatCondition::DualWieldingOutsideFrenzy },
 		{ TEXT("in_wrath"),                     ECataclysmStatCondition::InWrath },
 		{ TEXT("in_frenzy"),                    ECataclysmStatCondition::InFrenzy },
 		// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25.
@@ -468,6 +469,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitIsCritical:
 	case ECataclysmStatCondition::HitIsNotCritical:
 	case ECataclysmStatCondition::WhileCrowdControlled:
+	case ECataclysmStatCondition::DualWieldingOutsideFrenzy:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
 		// nothing for a number to be compared against. Each of the sixty-one says
 		// so in its own comment in the header, and
@@ -592,6 +594,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// speed again, so a speed row under either reads the new state.
 	case C::InWrath:
 	case C::InFrenzy:
+	case C::DualWieldingOutsideFrenzy:
 		return EOn::ClassResource;
 
 	// THE SABOTEUR'S DEVICE CONDITIONS, 2026-11-25. Whether the pool has room for another trap moves with the pool and
@@ -1255,6 +1258,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::InWrath:
 		// THE STATE THE ABILITY SYSTEM COMPONENT HOLDS. The Berserker's states, 2026-11-25.
 		return State.bInWrath;
+
+	case ECataclysmStatCondition::DualWieldingOutsideFrenzy:
+		// TWO ITEMS IN THE WEAPON SLOTS AND NOT IN FRENZY, the War trees' engine slice E2 (2026-11-27). -1, no equipment,
+		// refuses as `DualWielding` does.
+		return State.WeaponsWorn == 2 && !State.bInFrenzy;
 
 	case ECataclysmStatCondition::InFrenzy:
 		return State.bInFrenzy;

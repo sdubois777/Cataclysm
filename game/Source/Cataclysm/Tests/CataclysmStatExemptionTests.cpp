@@ -8677,6 +8677,84 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and it is asked for, so below half health the radius is 4 metres"), BelowHalf, 4.0f, 0.001f);
 	}
 
+	/**
+	 * `melee_arc_full_circle`, asked by `UCataclysmStrikeSkill::ArcDegrees` through `StatForSkill`. The War trees' engine
+	 * slice E2 (2026-11-27), shipped under `class_resource_at_maximum` (Whirlwind); a health condition stands for it.
+	 */
+	void ProbeConditionedMeleeArcFullCircle(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+		AtHealthShare(Fighter, 1.0f);
+		ConditionedBelowHalf(Fighter, UCataclysmStrikeSkill::MeleeArcFullCircleStat, ECataclysmStatBucket::Flat, 1.0f,
+							 0.0f);
+		const FGameplayAbilitySpecHandle Handle = Fighter.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy, /*Level=*/1, Fighter.Actor);
+		FGameplayAbilitySpec* Spec = Fighter.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmStrikeSkill* Swing = Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("set-up: a melee swing is granted"), Swing))
+		{
+			return;
+		}
+		Swing->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=3; Angle=60"));
+		Swing->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
+		Test.TestEqual(TEXT("melee_arc_full_circle at full health: the swing keeps its 60 degrees"),
+					   Swing->ArcDegrees(), 60.0f, 0.001f);
+		AtHealthShare(Fighter, 0.4f);
+		Test.TestEqual(TEXT("and it is asked for, so below half health the swing is a full circle"),
+					   Swing->ArcDegrees(), 360.0f, 0.001f);
+	}
+
+	/**
+	 * `fervour_per_enemy_hit`, asked by `UCataclysmFervour::GainForEnemiesHit` through `StatForSkill`. The War trees'
+	 * engine slice E2 (2026-11-27), shipped under `attack_at_full_fervour` (Whirlwind). A holder at 50 of 100 carries 3
+	 * per enemy under "Fervour above 40%", which holds, and then under "above 60%", which does not.
+	 */
+	void ProbeConditionedFervourPerEnemyHit(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		ACataclysmEnemyCharacter* Holder = RavagerReworkHolder(Test, World);
+		UCataclysmAbilitySystemComponent* System =
+			Holder ? Cast<UCataclysmAbilitySystemComponent>(Holder->GetAbilitySystemComponent()) : nullptr;
+		if (!System)
+		{
+			return;
+		}
+		const auto Hold = [System](float AbovePercent)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = 3.0f;
+			Row.Condition = ECataclysmStatCondition::ClassResourceAbovePercent;
+			Row.ConditionValue = AbovePercent;
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(UCataclysmFervour::PerEnemyHitStat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Row};
+			System->SetStatInputs(MoveTemp(Inputs));
+		};
+		const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Hold(60.0f);
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		const float Refused = UCataclysmFervour::GainForEnemiesHit(System, FGameplayTagContainer(), /*EnemiesHit=*/1);
+		Hold(40.0f);
+		System->SetNumericAttributeBase(Pool, 50.0f);
+		const float Held = UCataclysmFervour::GainForEnemiesHit(System, FGameplayTagContainer(), /*EnemiesHit=*/1);
+		Test.TestEqual(TEXT("fervour_per_enemy_hit under a condition that refuses: nothing is gained"), Refused, 0.0f);
+		Test.TestEqual(TEXT("and under one that holds, 3: so it is asked for with its condition"), Held, 3.0f, 0.001f);
+	}
+
 	void ProbeConditionedRetaliationCannotBeMitigated(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -14140,6 +14218,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("immune_to_stagger"), &ProbeConditionedImmuneToStagger},
 			{TEXT("retaliation_cannot_be_mitigated"), &ProbeConditionedRetaliationCannotBeMitigated},
 			{TEXT("retaliation_radius_metres"), &ProbeConditionedRetaliationRadius},
+			{TEXT("melee_arc_full_circle"), &ProbeConditionedMeleeArcFullCircle},
+			{TEXT("fervour_per_enemy_hit"), &ProbeConditionedFervourPerEnemyHit},
 			// AND THE SLICE C4d2's PATIENT BLADE AND DEATH BY INCHES (2026-11-25).
 			{TEXT("boss_ticks_pay_a_kill_every_seconds"), &ProbeConditionedBossTicksPayAKill},
 			{TEXT("boss_hits_counted_as_a_kill_every"), &ProbeConditionedBossHitsCountedAsAKill},
@@ -16750,9 +16830,9 @@ bool FCataclysmEveryConditionedProbeTest::RunTest(const FString&)
 	// C3d to C4d3 added eight probes and moved only the Python pin, so this one stood at 28 under a table of 36 until
 	// slice C6d1 added `immune_to_slow`. `test_every_conditioned_stat_has_an_asker.py` holds the two pins equal now.
 	// THIRTY-EIGHT ON 2026-11-26, for Ever Moving's `evasion_against_area_percent` (the Death line's finishing slice E).
-	// FORTY-THREE SINCE THE WAR TREES' SLICE E1 (2026-11-27): its three immunities, unmitigated retaliation and the
-	// retaliation radius.
-	if (!TestEqual(TEXT("the forty-three probes are all here"), ConditionedProbes().Num(), 43))
+	// FORTY-FIVE SINCE THE WAR TREES' ENGINE SLICES E1 AND E2 (2026-11-27): E1's three immunities, unmitigated
+	// retaliation and the retaliation radius, and E2's full-circle swing and Fervour per enemy hit.
+	if (!TestEqual(TEXT("the forty-five probes are all here"), ConditionedProbes().Num(), 45))
 	{
 		return false;
 	}

@@ -250,6 +250,49 @@ E2_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # UNRELENTING, the coordinating session's reading: "Killing an enemy refunds 10% of your maximum Fervour per point."
     ("Berserker_dw_015", "Unrelenting", (
         R(None, "", 10, action="class_resource", action_event="kill", fraction_of="maximum", **DUAL),)),
+    # APEX PREDATOR: "Killing an enemy with an attack made at maximum Fervour instantly reduces all cooldowns by 50%".
+    ("Berserker_twoh_ks_003", "Apex Predator", (
+        R(None, "", 50, action="cooldown_reduce_all_percent", action_event="kill", cond="attack_at_full_fervour",
+          cond2="wielding_two_handed_weapon"),)),
+    # COUP DE GRACE: "Your critical strikes deal bonus damage equal to 2% of the target's missing HP. This bonus is
+    # tripled on attacks made at maximum Fervour." Tripled is 4 more on the full-pool attack, 6 in all.
+    ("Berserker_crit_ks_001", "Coup de Grace", (
+        R(None, "", 2, action="strike_target_of_target_missing_health", action_event="critical_strike"),
+        R(None, "", 4, action="strike_target_of_target_missing_health", action_event="critical_strike",
+          cond="attack_at_full_fervour"))),
+    # WHIRLWIND: at maximum Fervour the strike hits all around (a full circle), each enemy hit gives 3 Fervour, and those
+    # hit are knocked back 3 metres and take 50% increased damage. The arc is read while the targets are chosen, before
+    # the attack begins and before Berserking spends the pool, so it reads the pool full; the Fervour, the damage and the
+    # knockback read the attack's snapshot.
+    ("Berserker_dw_ks_001", "Whirlwind", (
+        R("melee_arc_full_circle", "flat", 1, cond="class_resource_at_maximum", cond2="dual_wielding"),
+        R("fervour_per_enemy_hit", "flat", 3, cond="attack_at_full_fervour", cond2="dual_wielding"),
+        R("attack_damage", "increased", 50, tags=MELEE, cond="attack_at_full_fervour", cond2="dual_wielding"),
+        R(None, "", 3, tags=MELEE, action="knock_back_target", action_event="hit_dealt", cond="attack_at_full_fervour"))),
+    # DEATH STRIKE: below 20% outside Frenzy, below 35% in it, +2% a point per 1% of the target's health missing.
+    ("Berserker_dw_013", "Death Strike", (
+        R("attack_damage", "increased", 2, tags=MELEE, scale="target_health_missing", step=1,
+          cond="target_health_below", cond_value=20, cond2="dual_wielding_outside_frenzy"),
+        R("attack_damage", "increased", 2, tags=MELEE, scale="target_health_missing", step=1,
+          cond="target_health_below", cond_value=35, cond2="in_frenzy"))),
+    # FRENETIC: in Frenzy, for every 10 Fervour Frenzy drains, a strike of 20% weapon damage a point on the nearest enemy.
+    ("Berserker_dw_012", "Frenetic", (
+        R(None, "", 20, action="strike_nearest_near", action_event="frenzy_drained"),)),
+    # KNIFE DANCE: "Each automatic strike triggered by Frenetic generates 2 Fervour per point."
+    ("Berserker_dw_018", "Knife Dance", (
+        R(None, "", 2, action="class_resource", action_event="frenzy_drained", fraction_of="points"),)),
+    # UNSTOPPABLE FORCE, the project owner's ruling (2026-11-27): a kill in Frenzy triggers one Frenetic strike, and
+    # entering Frenzy strikes the nearest enemy three times. A keystone cannot read Frenetic's points, so each is 100% of
+    # weapon damage, the old sentence's "full damage".
+    ("Berserker_dw_ks_002", "Unstoppable Force", (
+        R(None, "", 100, action="strike_nearest_near", action_event="kill", cond="in_frenzy"),
+        R(None, "", 100, action="strike_nearest_near", action_event="frenzy_entered", event_value=3))),
+    # WRECKING BALL: +5% area of effect a point; from 5 points an enemy killed by an area skill (`Type.AOE`) bursts for
+    # 20% of its maximum health on the enemies near it.
+    ("Berserker_twoh_014", "Wrecking Ball", (
+        R("area_of_effect", "increased", 5, **TWO_HANDED),
+        R(None, "", 20, tags="Type.AOE", action="burst_slain_for_share_of_maximum_health", action_event="kill",
+          min_points=5, cond="wielding_two_handed_weapon"))),
     # SHATTER: "Critical melee strikes reduce enemy armor by 5% per point for 5 seconds, stacking up to 4 times."
     ("Berserker_twoh_009", "Shatter", (
         R(None, "", 5, tags=MELEE, action="enemy_armor_removed", action_event="critical_strike", stack_seconds=5,

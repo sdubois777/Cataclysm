@@ -1382,6 +1382,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					{
 						Action.CooldownReduce = ECataclysmCooldownReset::All;
 					}
+					// OR A SHARE OF WHAT IS LEFT, every cooldown on the keys: Apex Predator (the War trees' engine slice
+					// E2, 2026-11-27).
+					else if (Effect->Action.Equals(
+								 UCataclysmAbilitySystemComponent::CooldownReduceAllPercentAction,
+								 ESearchCase::IgnoreCase))
+					{
+						Action.CooldownReduce = ECataclysmCooldownReset::All;
+						Action.bCooldownReduceShare = true;
+					}
 					else if (Effect->Action.Equals(
 								 UCataclysmAbilitySystemComponent::CooldownReduceHeavyAction,
 								 ESearchCase::IgnoreCase))
@@ -1679,6 +1688,9 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						UCataclysmAbilitySystemComponent::StrikeStrongestNearAction, ESearchCase::IgnoreCase);
 					Action.bDashToStrongestAndStrike = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::DashToStrongestAndStrikeAction, ESearchCase::IgnoreCase);
+					// AND THE NEAREST ENEMY'S, the War trees' engine slice E2 (2026-11-27).
+					Action.bStrikeNearestNear = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeNearestNearAction, ESearchCase::IgnoreCase);
 					// AND WHETHER IT REFLECTS WHAT A BLOCK REMOVED, or smites by
 					// armour, and whether it counts to an Nth event in a window.
 					// Issue #1833 group E part 3. Stack Seconds is the window.
@@ -1774,6 +1786,10 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					}
 					Action.bStrikeTargetOfMaximumHealth = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::StrikeTargetOfMaximumHealthAction, ESearchCase::IgnoreCase);
+					Action.bStrikeTargetOfTargetMissingHealth = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::StrikeTargetOfTargetMissingHealthAction, ESearchCase::IgnoreCase);
+					Action.bKnockBackTarget = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::KnockBackTargetAction, ESearchCase::IgnoreCase);
 					if (Effect->Action.Equals(UCataclysmAbilitySystemComponent::NextAttackBonusOfMaximumHealthAction,
 											  ESearchCase::IgnoreCase))
 					{

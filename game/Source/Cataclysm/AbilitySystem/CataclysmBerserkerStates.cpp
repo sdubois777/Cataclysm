@@ -156,6 +156,12 @@ float FCataclysmBerserkerStates::DrainStep(ACataclysmCharacterBase* Character, f
 				Moved = Cataclysm->GetNumericAttribute(Pool) - Before;
 				// A DRAIN, for Crimson Tide (2026-11-25).
 				FCataclysmWarFervour::NoteFervourSpentOrDrained(Cataclysm, -Moved);
+				// AND, IN FRENZY, TOWARD FRENETIC'S STRIKES: one `frenzy_drained` per 10 taken (the War trees' engine
+				// slice E2, 2026-11-27).
+				if (Cataclysm->BerserkerState() == ECataclysmBerserkerState::Frenzy)
+				{
+					Cataclysm->NoteFrenzyDrained(-Moved);
+				}
 			}
 		}
 	}

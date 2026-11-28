@@ -3624,7 +3624,8 @@ namespace CataclysmPassiveConditionTest
 			|| Name == TEXT("attack_at_full_fervour")
 			|| Name == TEXT("blow_was_critical")
 			|| Name == TEXT("blow_was_not_critical")
-			|| Name == TEXT("while_crowd_controlled");
+			|| Name == TEXT("while_crowd_controlled")
+			|| Name == TEXT("dual_wielding_outside_frenzy");
 	}
 }
 

@@ -2300,6 +2300,15 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WhileCrowdControlled
 		UMETA(DisplayName = "While Crowd Controlled"),
+
+	/**
+	 * The character is DUAL WIELDING AND NOT IN FRENZY: `DualWielding` and the complement of `InFrenzy`, from the same
+	 * readings. The War trees' engine slice E2 (2026-11-27), for Death Strike's "Dual wield only. ... below 20% HP ...
+	 * While in Frenzy this threshold is increased to 35%": its 20% row holds outside Frenzy and its 35% row in it, so the
+	 * two never pay together, and a row holds two conditions, the threshold being the other. IT TAKES NO VALUE.
+	 */
+	DualWieldingOutsideFrenzy
+		UMETA(DisplayName = "Dual Wielding Outside Frenzy"),
 };
 
 /**
@@ -5534,6 +5543,26 @@ struct CATACLYSM_API FCataclysmPoolAction
 	ECataclysmCooldownReset CooldownReduce = ECataclysmCooldownReset::None;
 
 	/**
+	 * The reduction takes `Percent` PER CENT of each running cooldown's remaining time rather than `Percent` seconds:
+	 * `cooldown_reduce_all_percent`. The War trees' engine slice E2 (2026-11-27), Apex Predator's "instantly reduces all
+	 * cooldowns by 50%". On the keys only; a skill's kept cooldown off the keys is left as it is.
+	 */
+	bool bCooldownReduceShare = false;
+
+	/**
+	 * Direct damage of `Percent` per cent of the HEALTH THE EVENT'S OTHER CHARACTER IS MISSING: `strike_target_of_target_missing_health`.
+	 * The War trees' engine slice E2 (2026-11-27), Coup de Grace's "Your critical strikes deal bonus damage equal to 2%
+	 * of the target's missing HP".
+	 */
+	bool bStrikeTargetOfTargetMissingHealth = false;
+
+	/**
+	 * The event's other character is knocked back `Percent` metres from the wearer: `knock_back_target`. The War trees'
+	 * engine slice E2 (2026-11-27), Whirlwind's "Enemies hit while you are at maximum Fervour are knocked back".
+	 */
+	bool bKnockBackTarget = false;
+
+	/**
 	 * Set, this action CLEANSES ITS WEARER instead of moving a pool: `UCataclysmDebuffs::Cleanse`. For "You are
 	 * cleansed every 5 seconds", ruled 2026-09-26.
 	 *
@@ -5960,6 +5989,13 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bStrikeStrongestNear = false;
+
+	/**
+	 * The same strike on the NEAREST living enemy within the same 10 metres: `strike_nearest_near`. The War trees' engine
+	 * slice E2 (2026-11-27): Frenetic's bonus strike and Unstoppable Force's ("entering Frenzy strikes the nearest enemy
+	 * three times", the coordinating session's reading).
+	 */
+	bool bStrikeNearestNear = false;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bDashToStrongestAndStrike = false;

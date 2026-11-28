@@ -2081,6 +2081,12 @@ public:
 	static const TCHAR* NextAttackBonusOfMaximumHealthAction;
 	/** `next_attack_bonus_of_armor`. The same slice. */
 	static const TCHAR* NextAttackBonusOfArmourAction;
+	/** `cooldown_reduce_all_percent`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* CooldownReduceAllPercentAction;
+	/** `strike_target_of_target_missing_health`. The same slice. */
+	static const TCHAR* StrikeTargetOfTargetMissingHealthAction;
+	/** `knock_back_target`. The same slice. */
+	static const TCHAR* KnockBackTargetAction;
 
 	/**
 	 * Wrath Incarnate's pulse. The War vow options' third slice, V3a, 2026-11-25: "When a single hit takes more than 10%
@@ -2293,6 +2299,8 @@ public:
 	 * `STRIKE_STRONGEST_NEAR_ACTION` and `DASH_TO_STRONGEST_AND_STRIKE_ACTION` in `tools/generate_datatables.py`.
 	 */
 	static const TCHAR* StrikeStrongestNearAction;
+	/** `strike_nearest_near`. The War trees' engine slice E2 (2026-11-27). */
+	static const TCHAR* StrikeNearestNearAction;
 	static const TCHAR* DashToStrongestAndStrikeAction;
 
 	/** "The strongest enemy within 10 metres": Blade Echo's and Thousand Cuts' reach. */
@@ -5219,6 +5227,17 @@ public:
 	void NoteFervourDecayed(float Amount);
 
 	/**
+	 * Fervour Frenzy's drain took: raises `frenzy_drained` once for each 10 taken, counted across the steps that took
+	 * them, as `NoteFervourDecayed` counts its 5. The War trees' engine slice E2 (2026-11-27), for Frenetic's "for every 10
+	 * Fervour drained by the Frenzy state, automatically trigger a bonus strike" and Knife Dance. Called by
+	 * `FCataclysmBerserkerStates::DrainStep` while the state is Frenzy.
+	 */
+	void NoteFrenzyDrained(float Amount);
+
+	/** How much Frenzy's drain must take for one `frenzy_drained`: 10, Frenetic's sentence. */
+	static constexpr float FrenzyDrainedPerEvent = 10.0f;
+
+	/**
 	 * A stat as if asked against a creature of rarity rung `RarityStep` (0 common, 1 Elite ...) with no creature in
 	 * hand, so a row under `target_rarity_is` or `target_rarity_at_least` can be judged. The Death trees' slice C4b1
 	 * (2026-11-25): before any kill, the full length of the decay hold is a common kill's grace, as ruled, and the grace
@@ -7327,6 +7346,9 @@ protected:
 	 * counted with the next.
 	 */
 	float FervourDecayedTowardAnEvent = 0.0f;
+
+	/** What Frenzy's drain has taken toward the next `frenzy_drained`. The War trees' engine slice E2. */
+	float FrenzyDrainedTowardAnEvent = 0.0f;
 
 	/** When Phylactery's save may next be made, in world seconds. Negative means now. */
 	float FervourLethalSaveNextAllowedSeconds = -1.0f;

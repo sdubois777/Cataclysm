@@ -1145,7 +1145,7 @@
       "data": {
         "kind": "keystone",
         "name": "Unstoppable Force",
-        "description": "Dual wield only. Killing an enemy while in Frenzy immediately resets the Frenetic auto-strike timer. Additionally, entering Frenzy instantly triggers three bonus strikes at full damage.",
+        "description": "Dual wield only. Killing an enemy while in Frenzy triggers one Frenetic strike. Additionally, entering Frenzy strikes the nearest enemy three times at full damage.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
