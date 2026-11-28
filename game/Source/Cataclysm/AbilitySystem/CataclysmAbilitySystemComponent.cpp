@@ -1968,6 +1968,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// AND ITS OWN READINGS (the War trees' window 2, 2026-11-28).
 		PricedFor->FillGadgetReadings(State);
 	}
+	// AND PRECISION PLACEMENT'S READING, taken at the last trap's placing (window 2, 2026-11-28).
+	State.TrapsMaximumFervourCouldHold = TrapsMaximumFervourCouldHoldAtPlacing;
 
 	// THE CLASS RESOURCE'S MAXIMUM WITH ITS ROWS THAT HOLD NOW, IN ONE PASS, LAST BUT ONE. The War vow options' second
 	// slice, V2b, 2026-11-25, ruled in by the coordinating session: with Ragnarok's "Your maximum Fervour is doubled"
@@ -7085,6 +7087,87 @@ const TCHAR* UCataclysmAbilitySystemComponent::GadgetOverclockedAction = TEXT("g
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetExplodesAction = TEXT("gadget_explodes_for_share_of_maximum_health");
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetsAttackHitEnemyAction = TEXT("gadgets_attack_hit_enemy");
 const TCHAR* UCataclysmAbilitySystemComponent::GadgetMoveCooldownCutAction = TEXT("gadget_move_cooldown_cut");
+
+const TCHAR* UCataclysmAbilitySystemComponent::TrapLastSurpriseStat = TEXT("trap_last_surprise");
+
+void UCataclysmAbilitySystemComponent::NoteTrapDamageDealt(float Amount)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Amount <= 0.0f)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	RecentTrapDamage.RemoveAll([Now](const TPair<float, float>& Each)
+	{
+		return Now - Each.Key > LastSurpriseWindowSeconds;
+	});
+	RecentTrapDamage.Emplace(Now, Amount);
+}
+
+float UCataclysmAbilitySystemComponent::TrapDamageDealtWithin(float Seconds) const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.0f;
+	}
+	const float Now = World->GetTimeSeconds();
+	float Total = 0.0f;
+	for (const TPair<float, float>& Each : RecentTrapDamage)
+	{
+		if (Now - Each.Key <= Seconds)
+		{
+			Total += Each.Value;
+		}
+	}
+	return Total;
+}
+
+bool UCataclysmAbilitySystemComponent::ArmLastSurprise(const AActor* Trap)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Trap || StatForSkill(FName(TrapLastSurpriseStat), FGameplayTagContainer(), 0.0f) <= 0.0f)
+	{
+		return false;
+	}
+	const float Now = World->GetTimeSeconds();
+	if (LastSurpriseReadyAtSeconds >= 0.0f && Now < LastSurpriseReadyAtSeconds)
+	{
+		return false;
+	}
+	const float Total = TrapDamageDealtWithin(LastSurpriseWindowSeconds);
+	if (Total <= 0.0f)
+	{
+		return false;
+	}
+	LastSurpriseTrap = Trap;
+	LastSurpriseTotal = Total;
+	LastSurpriseEndsAtSeconds = Now + LastSurpriseBlowSeconds;
+	LastSurpriseReadyBefore = LastSurpriseReadyAtSeconds;
+	LastSurpriseReadyAtSeconds = Now + LastSurpriseEverySeconds;
+	LastSurpriseStruck.Reset();
+	return true;
+}
+
+void UCataclysmAbilitySystemComponent::DisarmLastSurprise()
+{
+	LastSurpriseTrap.Reset();
+	LastSurpriseTotal = 0.0f;
+	LastSurpriseReadyAtSeconds = LastSurpriseReadyBefore;
+}
+
+float UCataclysmAbilitySystemComponent::TakeLastSurpriseFor(TWeakObjectPtr<const AActor> Trap, const AActor* Target)
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Target || LastSurpriseTotal <= 0.0f || LastSurpriseTrap.IsExplicitlyNull() || Trap != LastSurpriseTrap
+		|| World->GetTimeSeconds() > LastSurpriseEndsAtSeconds || LastSurpriseStruck.Contains(Target))
+	{
+		return 0.0f;
+	}
+	LastSurpriseStruck.Add(Target);
+	return LastSurpriseTotal;
+}
 
 void UCataclysmAbilitySystemComponent::CutNextGadgetMoveCooldown(float Seconds)
 {
@@ -13015,6 +13098,13 @@ void UCataclysmAbilitySystemComponent::TrapDamageNamingTrap(const FGameplayTagCo
 	// Ambush's `TargetNotYetTriggeredYourTrap` (the Saboteur's device conditions, 2026-11-25).
 	TGuardValue<TWeakObjectPtr<const AActor>> PricingItsBlow(TrapWhoseBlowIsPriced, BlowsTrap);
 	TGuardValue<int32> PricingItsTriggering(TrapTriggeringWhoseBlowIsPriced, BlowsTriggering);
+	// AND REINFORCED HOUSING'S "Each subsequent trigger deals 20% more damage than the last" (window 2, 2026-11-28): a
+	// "more" for each triggering of this trap after its first, compounded, on every blow of the trap whatever rows name it.
+	const float MorePerTrigger = StatForSkill(FName(ACataclysmMinion::TrapReuseMorePercentStat), FGameplayTagContainer(), 0.0f);
+	const float Escalation = (MorePerTrigger > 0.0f && BlowsTriggering > 1)
+		? FMath::Pow(1.0f + MorePerTrigger / 100.0f, static_cast<float>(BlowsTriggering - 1))
+		: 1.0f;
+	OutMore = Escalation;
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(FName(TEXT("minion_damage")));
 	const FGameplayTag Trap = FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Trap")), /*ErrorIfNotFound=*/false);
 	if (!Inputs || !Trap.IsValid())
@@ -13040,7 +13130,7 @@ void UCataclysmAbilitySystemComponent::TrapDamageNamingTrap(const FGameplayTagCo
 		WithEnemiesInReach(Naming, WithTargetState(Naming, Target, CurrentConditions()));
 	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(0.0f, Naming, Tags, State);
 	OutIncreases = Result.SumOfIncreases / 100.0f;
-	OutMore = FMath::Max(0.0f, Result.MoreMultiplier);
+	OutMore = FMath::Max(0.0f, Result.MoreMultiplier) * Escalation;
 }
 
 // ==========================================================================

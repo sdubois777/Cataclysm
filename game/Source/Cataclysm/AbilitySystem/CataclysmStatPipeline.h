@@ -3387,6 +3387,13 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Fervour Gadget Overclocked"),
 
 	/**
+	 * `Value` per `ScaleStep` TRAPS THE WEARER'S MAXIMUM FERVOUR COULD HOLD, read when its last trap was placed: its
+	 * maximum over that trap's reserve, whole traps. Precision Placement (ruled 2026-11-28), window 2.
+	 */
+	PerTrapMaximumFervourCouldHold
+		UMETA(DisplayName = "Per Trap Maximum Fervour Could Hold"),
+
+	/**
 	 * `Value` per hostile character the character STRUCK IN THE LAST 3 SECONDS: Dancing Blades, "each unique enemy you
 	 * have hit in the last 3 seconds drains 2 additional Fervour per second". The War trees' slice E1 (2026-11-27). Read
 	 * from `EnemiesStruckRecently`, which `WithEnemiesInReach` counts when a row asks: every hostile within
@@ -4365,6 +4372,9 @@ struct CATACLYSM_API FCataclysmStatConditions
 	float GadgetOverclockFervour = -1.0f;
 	float SecondsSinceGadgetFellBelowQuarter = -1.0f;
 	bool bGadgetReprieved = false;
+
+	/** Whole traps the wearer's maximum Fervour could hold at its last trap's placing, or -1 none. Precision Placement. */
+	float TrapsMaximumFervourCouldHold = -1.0f;
 
 	/**
 	 * Seconds since the character last attacked. Issue #41, slice 2.

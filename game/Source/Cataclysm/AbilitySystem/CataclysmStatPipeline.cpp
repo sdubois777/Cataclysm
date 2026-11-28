@@ -245,6 +245,7 @@ namespace
 		{ TEXT("player_seconds_stationary"), ECataclysmStatScale::PerSecondPlayerStationary },
 		{ TEXT("gadget_empowered_fervour"), ECataclysmStatScale::PerFervourGadgetEmpowered },
 		{ TEXT("gadget_overclock_fervour"), ECataclysmStatScale::PerFervourGadgetOverclocked },
+		{ TEXT("traps_maximum_fervour_could_hold"), ECataclysmStatScale::PerTrapMaximumFervourCouldHold },
 		{ TEXT("enemies_struck_recently"), ECataclysmStatScale::PerEnemyStruckRecently },
 		{ TEXT("enemies_that_struck_you_recently"), ECataclysmStatScale::PerEnemyThatStruckYouRecently },
 		{ TEXT("remains_in_reach"),    ECataclysmStatScale::PerOwnRemainsInReach },
@@ -2496,6 +2497,7 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerSecondPlayerStationary:
 	case ECataclysmStatScale::PerFervourGadgetEmpowered:
 	case ECataclysmStatScale::PerFervourGadgetOverclocked:
+	case ECataclysmStatScale::PerTrapMaximumFervourCouldHold:
 	{
 		float Reading = -1.0f;
 		switch (Modifier.Scale)
@@ -2519,6 +2521,9 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			break;
 		case ECataclysmStatScale::PerFervourGadgetOverclocked:
 			Reading = State.GadgetOverclockFervour;
+			break;
+		case ECataclysmStatScale::PerTrapMaximumFervourCouldHold:
+			Reading = State.TrapsMaximumFervourCouldHold;
 			break;
 		default:
 			Reading = State.PlayerSecondsSinceMoved;

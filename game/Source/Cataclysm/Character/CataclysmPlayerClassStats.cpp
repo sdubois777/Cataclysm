@@ -1385,6 +1385,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("gadget_ignore_hit_chance"),
 		TEXT("coordinated_strike_all_gadgets"),
 		TEXT("gadget_power_surge"),
+		TEXT("trap_copy_on_place_chance"),
+		TEXT("trap_reuse_fervour_cost"),
+		TEXT("trap_reuse_fervour_cost_less"),
+		TEXT("trap_reuse_more_percent"),
+		TEXT("trap_most_active"),
+		TEXT("trap_first_trigger_stun_seconds"),
+		TEXT("trap_last_surprise"),
+		TEXT("trap_unreserved_drain_per_second"),
 		// Fervour taken a second by any row granting it, read by FCataclysmBerserkerStates::DrainStep from
 		// ACataclysmCharacterBase::RegenerationStep.
 		TEXT("fervour_drain_per_second"),

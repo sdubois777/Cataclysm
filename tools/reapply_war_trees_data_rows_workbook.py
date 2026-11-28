@@ -559,6 +559,29 @@ E4_NODES: tuple[tuple[str, str, tuple[base.Row, ...]], ...] = (
     # POWER SURGE (radius ruled 2026-11-28: the gadget's own attack reach).
     ("Saboteur_basic_gadget_sus_003", "Power Surge",
      (R("gadget_power_surge", "flat", 1),)),
+    # SCATTERSHOT (ruled 2026-11-27: the extra trap reserves as normal).
+    ("Saboteur_basic_trap_qty_004", "Scattershot",
+     (R("trap_copy_on_place_chance", "flat", 10),)),
+    # REINFORCED HOUSING (ruled 2026-11-27): "Traps are not consumed when triggered. Instead each subsequent trigger costs
+    # 15 Fervour, reduced by 1 Fervour per point. At 5 points: Each subsequent trigger deals 20% more damage than the last."
+    ("Saboteur_basic_trap_ql_002", "Reinforced Housing",
+     (R("trap_reuse_fervour_cost", "flat", 15, min_points=1), R("trap_reuse_fervour_cost_less", "flat", 1),
+      R("trap_reuse_more_percent", "flat", 20, min_points=5))),
+    # PRECISION PLACEMENT (ruled 2026-11-28): one active trap; +10% damage and +25% area for every 4 traps the maximum
+    # Fervour could hold, read at placing.
+    ("Saboteur_keystone_trap_ql", "Precision Placement",
+     (R("trap_most_active", "flat", 1),
+      R("minion_damage", "increased", 10, tags=TRAP, scale="traps_maximum_fervour_could_hold", step=4),
+      R("area_of_effect", "increased", 25, tags=TRAP, scale="traps_maximum_fervour_could_hold", step=4))),
+    # THE LAST SURPRISE (ruled 2026-11-28).
+    ("Saboteur_keystone_trap_deep_001", "The Last Surprise",
+     (R("trap_last_surprise", "flat", 1),)),
+    # CALCULATED CHAOS: "Each trap placed that way reserves nothing and drains 5 Fervour per second instead."
+    ("Saboteur_keystone_trap_deep_002", "Calculated Chaos",
+     (R("trap_unreserved_drain_per_second", "flat", 5),)),
+    # CONCEALED (R20, ruled 2026-11-27): "The first enemy to trigger each of your traps is stunned for 1 second."
+    ("Saboteur_basic_trap_mid_003", "Concealed",
+     (R("trap_first_trigger_stun_seconds", "flat", 1),)),
 )
 
 NODES = DATA_NODES + E1_NODES + E2_NODES + E3_NODES + E4_NODES

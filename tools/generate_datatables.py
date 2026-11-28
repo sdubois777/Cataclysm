@@ -6816,6 +6816,8 @@ SCALES = {
     # "for each Fervour drained".
     "gadget_empowered_fervour": (0.0, 1000.0, "an amount of the class resource"),
     "gadget_overclock_fervour": (0.0, 1000.0, "an amount of the class resource"),
+    # AND PRECISION PLACEMENT'S "for every 4 traps your maximum Fervour could hold", read at the last trap's placing.
+    "traps_maximum_fervour_could_hold": (0.0, 1000.0, "a number of traps"),
 
     # "For each creature's remains within 6 metres of you" is `remains_in_reach`
     # with a step of 1: Mantle of Bone, slice D of the Death finish

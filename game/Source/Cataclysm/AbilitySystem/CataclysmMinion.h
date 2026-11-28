@@ -286,6 +286,31 @@ public:
 	float PowerSurgeSeconds = 0.0f;
 	int32 PowerSurgeStacks = 0;
 
+	/**
+	 * THE TRAPS OF WINDOW 2 (2026-11-28), read off the player by name. Scattershot's chance to place a second trap
+	 * (`trap_copy_on_place_chance`); Reinforced Housing's cost for each trigger after the first, less a point's worth,
+	 * and its "more" for each (`trap_reuse_fervour_cost`, `trap_reuse_fervour_cost_less`, `trap_reuse_more_percent`);
+	 * Precision Placement's limit (`trap_most_active`); Concealed's stun (`trap_first_trigger_stun_seconds`, R20); and
+	 * Calculated Chaos's drain for a trap placed with no room (`trap_unreserved_drain_per_second`).
+	 */
+	static const TCHAR* TrapCopyOnPlaceChanceStat;
+	static const TCHAR* TrapReuseFervourCostStat;
+	static const TCHAR* TrapReuseFervourCostLessStat;
+	static const TCHAR* TrapReuseMorePercentStat;
+	static const TCHAR* TrapMostActiveStat;
+	static const TCHAR* TrapFirstTriggerStunSecondsStat;
+	static const TCHAR* TrapUnreservedDrainPerSecondStat;
+
+	/** Scattershot's second trap lands this far from the first, a judgement of window 2. */
+	static constexpr float ScattershotNearestCm = 150.0f;
+	static constexpr float ScattershotFarthestCm = 300.0f;
+
+	/** Placed by Calculated Chaos with no room: it reserves nothing, drains its player, and goes off at 0 Fervour. */
+	bool bSkillTrapUnreserved = false;
+
+	/** Calculated Chaos's drain for this trap's step, and, at 0 Fervour, every such trap of its player set off. */
+	void StepUnreservedSkillTrap(float StepSeconds);
+
 	/** Overclock's step, the fall below a quarter, and Persistent Systems' regeneration, run by `GadgetStep`. */
 	void StepGadgetReadings(float StepSeconds);
 

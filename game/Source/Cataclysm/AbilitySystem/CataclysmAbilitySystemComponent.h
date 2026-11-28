@@ -2150,6 +2150,33 @@ public:
 
 	/** What `CutNextGadgetMoveCooldown` holds for the next move's cooldown, taken by that move. */
 	float PendingGadgetMoveCooldownCut = 0.0f;
+
+	/**
+	 * THE LAST SURPRISE (ruled 2026-11-28), window 2: "the last trap's own blow deals, to each enemy it hits, the total
+	 * every trap dealt in the last 10 s (its own trigger not counted), at most once every 30 s". Every trap blow's damage
+	 * is noted (`NoteTrapDamageDealt`); the trigger of the only trap standing arms the surprise (`ArmLastSurprise`) with
+	 * that total before its cast starts; each enemy a blow of that trigger reaches within `LastSurpriseBlowSeconds` takes
+	 * it once (`TakeLastSurpriseFor`), as a hit of its own, unscaled.
+	 */
+	static const TCHAR* TrapLastSurpriseStat;
+	static constexpr float LastSurpriseWindowSeconds = 10.0f;
+	static constexpr float LastSurpriseEverySeconds = 30.0f;
+	static constexpr float LastSurpriseBlowSeconds = 3.0f;
+	void NoteTrapDamageDealt(float Amount);
+	float TrapDamageDealtWithin(float Seconds) const;
+	bool ArmLastSurprise(const AActor* Trap);
+	void DisarmLastSurprise();
+	float TakeLastSurpriseFor(TWeakObjectPtr<const AActor> Trap, const AActor* Target);
+	TArray<TPair<float, float>> RecentTrapDamage;
+	TWeakObjectPtr<const AActor> LastSurpriseTrap;
+	float LastSurpriseTotal = 0.0f;
+	float LastSurpriseEndsAtSeconds = -1.0f;
+	float LastSurpriseReadyAtSeconds = -1.0f;
+	float LastSurpriseReadyBefore = -1.0f;
+	TSet<TWeakObjectPtr<const AActor>> LastSurpriseStruck;
+
+	/** Precision Placement's reading, taken at each skill trap's placing. -1 before any. */
+	float TrapsMaximumFervourCouldHoldAtPlacing = -1.0f;
 	static const TCHAR* NextAttackBonusOfBlockedDamageAction;
 
 	/**
