@@ -33,7 +33,8 @@ Decisions made outside the Google Drive documents, newest first.
 - **ALL 27 SABOTEUR NODES WITHOUT A ROW NOW HAVE ROWS.** One part is left as an exception. Combat Engineer's "At 5
   points: Gadgets can attack enemies through terrain within their range" has no row, because gadgets already ignore
   terrain: nothing in the code checks line of sight. The coordinating session accepted that note.
-- **SIX JUDGEMENTS OF THE WRITING SESSION**, each labelled again where it is built:
+- **SIX JUDGEMENTS OF THE WRITING SESSION, ALL ACCEPTED BY THE COORDINATING SESSION ON 2026-11-28** (Rapid Deployment's
+  with the plan's progress, the other five with the window 2 registration), each labelled again where it is built:
   - Rapid Deployment cuts only what the player pays (ACCEPTED by the coordinating session on 2026-11-28). Overcharge and Overclock still count the full 2 Fervour per point,
     so buying the cost cut does not shrink their bonuses. A pool too short to pay empowers with the share actually paid.
   - Coordinated Strike's "+8% bonus damage per point" makes the gadget's shot 1 + 8% per point of its normal shot. It
